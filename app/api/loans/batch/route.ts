@@ -1,0 +1,163 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/rbac";
+import { addDays } from "date-fns";
+
+/**
+ * POST /api/loans/batch
+ * Borrow multiple books for one member in a single atomic transaction.
+ *
+ * Body (new): { memberId, items: { bookId, copyId? }[], loanDays }
+ * Body (legacy): { memberId, bookIds: string[], loanDays }
+ *
+ * If copyId is omitted for an item, the first AVAILABLE copy is auto-picked.
+ */
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session || !can(session.user?.role, "STAFF"))
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json() as {
+    memberId: string;
+    bookIds?: string[];                        // legacy
+    items?:   { bookId: string; copyId?: string }[];
+    loanDays?: number;
+    loanType?: "HOME" | "IN_LIBRARY";
+  };
+  const { memberId } = body;
+  const loanType = body.loanType === "IN_LIBRARY" ? "IN_LIBRARY" : "HOME";
+  // In-library loans expire at end of day; home loans use the configured duration
+  const loanDays = loanType === "IN_LIBRARY" ? 0 : (body.loanDays ?? 14);
+
+  // Normalize both payload shapes into one `items` array
+  const items = body.items
+    ?? (body.bookIds ?? []).map((bookId) => ({ bookId } as { bookId: string; copyId?: string }));
+
+  if (!memberId || items.length === 0)
+    return NextResponse.json({ error: "memberId and items[] are required" }, { status: 400 });
+
+  const member = await prisma.member.findUnique({ where: { id: memberId } });
+  if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+
+  // ── Quota + overdue check ─────────────────────────────────────────
+  const bookIds = items.map((i) => i.bookId);
+  const quotaSetting = await prisma.settings.findUnique({ where: { key: "MAX_LOANS_PER_MEMBER" } });
+  const maxLoans     = parseInt(quotaSetting?.value ?? process.env.MAX_LOANS_PER_MEMBER ?? "3", 10);
+
+  const [activeCount, overdueCount, reservationCount] = await Promise.all([
+    prisma.loan.count({ where: { memberId, status: "ACTIVE"  } }),
+    prisma.loan.count({ where: { memberId, status: "OVERDUE" } }),
+    prisma.reservation.count({
+      where: {
+        memberId,
+        status:  { in: ["PENDING", "APPROVED", "READY"] },
+        bookId:  { notIn: bookIds },
+      },
+    }),
+  ]);
+
+  // In-library loans don't count against the quota and don't require overdue clearance
+  if (loanType === "HOME") {
+    if (overdueCount > 0)
+      return NextResponse.json({
+        error: `Member has ${overdueCount} overdue book${overdueCount > 1 ? "s" : ""} — return them first`,
+      }, { status: 409 });
+
+    const slotsLeft = maxLoans - (activeCount + overdueCount + reservationCount);
+    if (slotsLeft < 1)
+      return NextResponse.json({
+        error: `Borrow limit reached — member has ${activeCount} borrowed, ${reservationCount} reserved (limit: ${maxLoans} total)`,
+      }, { status: 409 });
+
+    if (items.length > slotsLeft)
+      return NextResponse.json({
+        error: `Only ${slotsLeft} slot${slotsLeft !== 1 ? "s" : ""} left — cannot borrow ${items.length} books`,
+      }, { status: 409 });
+  }
+
+  // ── Validate books + pick copies ──────────────────────────────────
+  const books   = await prisma.book.findMany({ where: { id: { in: bookIds } } });
+  const bookMap = new Map(books.map((b) => [b.id, b]));
+
+  const errors: string[] = [];
+  const resolved: { bookId: string; copyId: string | null; title: string }[] = [];
+
+  for (const item of items) {
+    const book = bookMap.get(item.bookId);
+    if (!book) { errors.push(`Book ${item.bookId} not found`); continue; }
+    if (book.referenceOnly && loanType === "HOME") {
+      errors.push(`"${book.title}" is reference-only — use "Read in Library" loan type`);
+      continue;
+    }
+    if (book.availableCopies < 1) { errors.push(`"${book.title}" has no available copies`); continue; }
+
+    // For in-library loans, any AVAILABLE copy is fine (even non-loanable / reference copies)
+    const copyWhere = loanType === "IN_LIBRARY"
+      ? { bookId: item.bookId, status: "AVAILABLE" as const }
+      : { bookId: item.bookId, status: "AVAILABLE" as const, loanable: true };
+
+    let copy = item.copyId
+      ? await prisma.bookCopy.findUnique({ where: { id: item.copyId } })
+      : await prisma.bookCopy.findFirst({ where: copyWhere, orderBy: { copyNumber: "asc" } });
+
+    if (item.copyId && (!copy || copy.bookId !== item.bookId)) {
+      errors.push(`"${book.title}" — scanned copy does not match this book`);
+      continue;
+    }
+    if (copy && copy.status !== "AVAILABLE") {
+      errors.push(`"${book.title}" — copy #${copy.copyNumber} is currently ${copy.status}`);
+      continue;
+    }
+    if (copy && !copy.loanable && loanType === "HOME") {
+      errors.push(`"${book.title}" — copy #${copy.copyNumber} is for in-library use only`);
+      continue;
+    }
+    // copy === null is OK for legacy books with no copies generated yet
+    resolved.push({ bookId: item.bookId, copyId: copy?.id ?? null, title: book.title });
+  }
+
+  // Duplicate-borrow check — one active loan per book per member
+  const existing = await prisma.loan.findMany({
+    where: { memberId, bookId: { in: bookIds }, status: { in: ["ACTIVE", "OVERDUE"] } },
+    select: { bookId: true },
+  });
+  if (existing.length > 0) {
+    const titles = existing
+      .map((e) => `"${bookMap.get(e.bookId)?.title ?? e.bookId}"`)
+      .join(", ");
+    errors.push(
+      `Member already has ${titles} on loan — return current ${existing.length > 1 ? "copies" : "copy"} first, or place a reservation`
+    );
+  }
+
+  if (errors.length > 0)
+    return NextResponse.json({ error: errors.join("; ") }, { status: 409 });
+
+  // ── Atomic transaction ────────────────────────────────────────────
+  const now = new Date();
+  // In-library: due at 23:59 today; home: due in loanDays days
+  const dueDate = loanType === "IN_LIBRARY"
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+    : addDays(now, loanDays);
+
+  await prisma.$transaction(async (tx) => {
+    for (const r of resolved) {
+      await tx.loan.create({
+        data: { memberId, bookId: r.bookId, copyId: r.copyId, dueDate, status: "ACTIVE", loanType },
+      });
+      await tx.book.update({
+        where: { id: r.bookId },
+        data:  { availableCopies: { decrement: 1 } },
+      });
+      if (r.copyId) {
+        await tx.bookCopy.update({
+          where: { id: r.copyId },
+          data:  { status: "BORROWED" },
+        });
+      }
+    }
+  });
+
+  return NextResponse.json({ success: true, count: resolved.length }, { status: 201 });
+}

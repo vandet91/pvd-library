@@ -1,0 +1,265 @@
+@import "tailwindcss";
+
+/* ══════════════════════════════════════════════════════════════
+   THEME 1 — Ocean (default, deep navy blue)
+══════════════════════════════════════════════════════════════ */
+:root,
+[data-theme="ocean"] {
+  --sidebar:            #1e3a5f;
+  --sidebar-foreground: #ffffff;
+  --header-bg:          #ffffff;
+  --header-border:      #e5e7eb;
+  --page-bg:            #f9fafb;
+  --accent:             #1d4ed8;
+  --accent-hover:       #1e3a8a;
+  --accent-fg:          #ffffff;
+  --login-from:         #1e3a8a;
+  --login-to:           #1d4ed8;
+  --login-mid:          #2563eb;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   THEME 2 — Midnight (dark violet / deep space)
+══════════════════════════════════════════════════════════════ */
+[data-theme="midnight"] {
+  --sidebar:            #0c0a1e;
+  --sidebar-foreground: #ddd6fe;
+  --header-bg:          #13111f;
+  --header-border:      #2d2550;
+  --page-bg:            #0a0816;
+  --accent:             #7c3aed;
+  --accent-hover:       #6d28d9;
+  --accent-fg:          #ffffff;
+  --login-from:         #0c0a1e;
+  --login-to:           #1e1040;
+  --login-mid:          #3b1f8c;
+
+  /* body background / foreground — must be set or body falls back
+     to white (browser default), making gray-900 text invisible    */
+  --background:         #0a0816;
+  --foreground:         #f0f0f6;
+
+  /* ── Gray scale: neutral cool-gray (no red tint) ──────────
+     50  = darkest surface   →  900 = brightest text          */
+  --color-gray-50:  #131318;
+  --color-gray-100: #1c1c24;
+  --color-gray-200: #28283a;
+  --color-gray-300: #38384e;
+  --color-gray-400: #5a5a72;
+  --color-gray-500: #8888a0;
+  --color-gray-600: #a8a8bc;
+  --color-gray-700: #c4c4d4;
+  --color-gray-800: #dcdce8;
+  --color-gray-900: #f0f0f6;
+}
+
+/* bg-white needs a direct class override (not in gray scale) */
+[data-theme="midnight"] .bg-white      { background-color: #1c1c28; }
+[data-theme="midnight"] .bg-white\/60  { background-color: rgba(28,28,40,.60); }
+[data-theme="midnight"] .bg-white\/20  { background-color: rgba(255,255,255,.20); }
+
+/* Hover states */
+[data-theme="midnight"] .hover\:bg-gray-50:hover  { background-color: #1c1c24; }
+[data-theme="midnight"] .hover\:bg-gray-100:hover { background-color: #28283a; }
+
+/* Form controls */
+[data-theme="midnight"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="midnight"] textarea,
+[data-theme="midnight"] select {
+  background-color: #131318;
+  color:            #dcdce8;
+  border-color:     #38384e;
+}
+[data-theme="midnight"] input::placeholder,
+[data-theme="midnight"] textarea::placeholder { color: #5a5a72; }
+[data-theme="midnight"] input:disabled,
+[data-theme="midnight"] textarea:disabled,
+[data-theme="midnight"] select:disabled { background-color: #0f0f14; color: #5a5a72; }
+
+/* ── Soften reds — bright red on dark bg is too harsh ────────
+   Replace with a muted rose/salmon that's still clearly "error"
+   but doesn't bleed on a dark surface                         */
+[data-theme="midnight"] .text-red-600  { color: #f87171 !important; }
+[data-theme="midnight"] .text-red-500  { color: #f87171 !important; }
+[data-theme="midnight"] .bg-red-50     { background-color: rgba(239,68,68,.12) !important; }
+[data-theme="midnight"] .bg-red-50\/30 { background-color: rgba(239,68,68,.07) !important; }
+[data-theme="midnight"] .bg-red-50\/40 { background-color: rgba(239,68,68,.09) !important; }
+[data-theme="midnight"] .bg-red-50\/60 { background-color: rgba(239,68,68,.12) !important; }
+[data-theme="midnight"] .bg-red-100    { background-color: rgba(239,68,68,.18) !important; }
+[data-theme="midnight"] .border-red-200 { border-color: rgba(239,68,68,.30) !important; }
+[data-theme="midnight"] .hover\:text-red-500:hover,
+[data-theme="midnight"] .hover\:text-red-600:hover { color: #f87171 !important; }
+[data-theme="midnight"] .hover\:bg-red-50:hover { background-color: rgba(239,68,68,.12) !important; }
+
+/* ── Soften ambers/yellows ────────────────────────────────── */
+[data-theme="midnight"] .bg-amber-50       { background-color: rgba(245,158,11,.10) !important; }
+[data-theme="midnight"] .bg-amber-50\/40   { background-color: rgba(245,158,11,.10) !important; }
+[data-theme="midnight"] .bg-amber-100      { background-color: rgba(245,158,11,.18) !important; }
+[data-theme="midnight"] .border-amber-100  { border-color: rgba(245,158,11,.20) !important; }
+[data-theme="midnight"] .border-amber-200  { border-color: rgba(245,158,11,.28) !important; }
+[data-theme="midnight"] .text-amber-600    { color: #fbbf24 !important; }
+[data-theme="midnight"] .text-amber-700    { color: #fbbf24 !important; }
+[data-theme="midnight"] .text-amber-800    { color: #fde68a !important; }
+[data-theme="midnight"] .bg-yellow-50      { background-color: rgba(234,179,8,.10) !important; }
+[data-theme="midnight"] .border-yellow-200 { border-color: rgba(234,179,8,.25) !important; }
+
+/* ── Soften greens ────────────────────────────────────────── */
+[data-theme="midnight"] .bg-green-50     { background-color: rgba(16,185,129,.10) !important; }
+[data-theme="midnight"] .bg-green-100    { background-color: rgba(16,185,129,.18) !important; }
+[data-theme="midnight"] .border-green-200 { border-color: rgba(16,185,129,.28) !important; }
+[data-theme="midnight"] .text-green-700  { color: #34d399 !important; }
+
+/* Admin header */
+[data-theme="midnight"] .admin-header            { color: #c4b5fd; }
+[data-theme="midnight"] .admin-header-title      { color: #ede9fe !important; }
+[data-theme="midnight"] .admin-header-btn        { color: #a78bfa; }
+[data-theme="midnight"] .admin-header-btn:hover  { background-color: #2d2550 !important; color: #ede9fe; }
+[data-theme="midnight"] .admin-header-panel      { background-color: #1c1c28 !important; border-color: #2d2550 !important; }
+[data-theme="midnight"] .admin-header-user-name  { color: #ede9fe !important; }
+[data-theme="midnight"] .admin-header-user-sub   { color: #a78bfa !important; }
+
+/* Shadow on dark surfaces */
+[data-theme="midnight"] .shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0,0,0,.5), 0 1px 2px -1px rgba(0,0,0,.5);
+}
+
+/* ── Primary accent buttons ────────────────────────────────── */
+[data-theme="midnight"] .bg-blue-900,
+[data-theme="midnight"] .bg-indigo-600    { background-color: var(--accent) !important; }
+[data-theme="midnight"] .hover\:bg-blue-800:hover,
+[data-theme="midnight"] .hover\:bg-indigo-700:hover { background-color: var(--accent-hover) !important; }
+[data-theme="midnight"] .focus\:ring-blue-500:focus,
+[data-theme="midnight"] .focus\:ring-indigo-500:focus { --tw-ring-color: var(--accent) !important; }
+[data-theme="midnight"] .text-blue-900   { color: #a78bfa !important; }
+[data-theme="midnight"] .text-indigo-600 { color: #a78bfa !important; }
+[data-theme="midnight"] .bg-indigo-50    { background-color: rgba(124,58,237,.15) !important; }
+[data-theme="midnight"] .bg-indigo-100   { background-color: rgba(124,58,237,.22) !important; }
+[data-theme="midnight"] .text-indigo-700 { color: #c4b5fd !important; }
+[data-theme="midnight"] .border-indigo-200 { border-color: rgba(124,58,237,.38) !important; }
+
+/* ── Violet (Librarian badge) ───────────────────────────────── */
+[data-theme="midnight"] .bg-violet-50    { background-color: rgba(139,92,246,.12) !important; }
+[data-theme="midnight"] .bg-violet-100   { background-color: rgba(139,92,246,.22) !important; }
+[data-theme="midnight"] .text-violet-500 { color: #c4b5fd !important; }
+[data-theme="midnight"] .text-violet-700 { color: #c4b5fd !important; }
+[data-theme="midnight"] .border-violet-200 { border-color: rgba(139,92,246,.35) !important; }
+[data-theme="midnight"] .hover\:bg-violet-50:hover { background-color: rgba(139,92,246,.12) !important; }
+
+/* ── Blue (Staff badge) ─────────────────────────────────────── */
+[data-theme="midnight"] .bg-blue-50      { background-color: rgba(99,102,241,.12) !important; }
+[data-theme="midnight"] .bg-blue-100     { background-color: rgba(99,102,241,.22) !important; }
+[data-theme="midnight"] .text-blue-600   { color: #93c5fd !important; }
+[data-theme="midnight"] .text-blue-700   { color: #93c5fd !important; }
+[data-theme="midnight"] .border-blue-200 { border-color: rgba(99,102,241,.32) !important; }
+[data-theme="midnight"] .hover\:bg-blue-50:hover { background-color: rgba(99,102,241,.12) !important; }
+
+/* ── Emerald (Member badge) ─────────────────────────────────── */
+[data-theme="midnight"] .bg-emerald-50   { background-color: rgba(16,185,129,.10) !important; }
+[data-theme="midnight"] .bg-emerald-100  { background-color: rgba(16,185,129,.20) !important; }
+[data-theme="midnight"] .text-emerald-600 { color: #34d399 !important; }
+[data-theme="midnight"] .text-emerald-700 { color: #34d399 !important; }
+[data-theme="midnight"] .border-emerald-200 { border-color: rgba(16,185,129,.30) !important; }
+
+/* ── Readable secondary text — uplift near-invisible grays ──────
+   gray-300 (#38384e) and gray-400 (#5a5a72) have < 3:1 contrast
+   on the dark body background.  Bump each one level up so hint /
+   footer / label text is actually legible.                       */
+[data-theme="midnight"] .text-gray-300  { color: #5a5a72; }  /* was --color-gray-300 #38384e */
+[data-theme="midnight"] .text-gray-400  { color: #8888a0; }  /* was --color-gray-400 #5a5a72 */
+
+/* ── Subtle dividers — border-gray-100 (#1c1c24) is near-
+   identical to the dark body bg; bump to gray-200 so it shows.  */
+[data-theme="midnight"] .border-gray-100 { border-color: #28283a; }  /* was #1c1c24 */
+
+/* ══════════════════════════════════════════════════════════════
+   THEME 3 — Emerald (forest / nature green)
+══════════════════════════════════════════════════════════════ */
+[data-theme="emerald"] {
+  --sidebar:            #064e3b;
+  --sidebar-foreground: #ffffff;
+  --header-bg:          #ffffff;
+  --header-border:      #bbf7d0;
+  --page-bg:            #f0fdf4;
+  --accent:             #059669;
+  --accent-hover:       #047857;
+  --accent-fg:          #ffffff;
+  --login-from:         #064e3b;
+  --login-to:           #047857;
+  --login-mid:          #059669;
+}
+
+/* ── Primary accent buttons for Emerald ────────────────────── */
+[data-theme="emerald"] .bg-blue-900,
+[data-theme="emerald"] .bg-indigo-600    { background-color: var(--accent) !important; }
+[data-theme="emerald"] .hover\:bg-blue-800:hover,
+[data-theme="emerald"] .hover\:bg-indigo-700:hover { background-color: var(--accent-hover) !important; }
+[data-theme="emerald"] .focus\:ring-blue-500:focus,
+[data-theme="emerald"] .focus\:ring-indigo-500:focus { --tw-ring-color: var(--accent) !important; }
+[data-theme="emerald"] .text-blue-900   { color: #059669 !important; }
+[data-theme="emerald"] .text-indigo-600 { color: #059669 !important; }
+[data-theme="emerald"] .bg-indigo-50    { background-color: #d1fae5 !important; }
+[data-theme="emerald"] .text-indigo-700 { color: #065f46 !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   GLOBAL
+══════════════════════════════════════════════════════════════ */
+
+/*
+ * Khmer script size normalisation.
+ *
+ * Noto Sans Khmer's Khmer glyphs are optically smaller than Geist's Latin
+ * glyphs at the same px value.  We create a separate font-face alias
+ * ("Noto Sans Khmer Scaled") that applies size-adjust: 118% ONLY for
+ * Khmer code-points (unicode-range).  The alias is listed before the raw
+ * --font-khmer in every font stack, so the browser picks it first.
+ *
+ * Fallback chain for a Khmer character in EN mode:
+ *   1. Geist          → no Khmer glyphs, skip
+ *   2. NSK Scaled     → local Noto Sans Khmer found → renders at 118% ✓
+ *                       local() fails               → no source, skip
+ *   3. Noto Sans Khmer (next/font, no size-adjust)  → still correct font,
+ *                                                     just slightly smaller
+ *   4. sans-serif
+ */
+@font-face {
+  font-family: "Noto Sans Khmer Scaled";
+  src: local("Noto Sans Khmer"), local("NotoSansKhmer-Regular");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 100%;
+  unicode-range: U+1780-17FF, U+19E0-19FF, U+200C-200D, U+25CC;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /*
+   * EN mode body uses font-sans.  Including the Khmer fonts here ensures
+   * Khmer-script database content (titleKm, member names…) always uses our
+   * bundled Noto Sans Khmer instead of the OS "Khmer UI" (tiny on Windows).
+   * "Noto Sans Khmer Scaled" (above) is tried first and applies the size fix
+   * for Khmer code-points on devices where the font is installed locally.
+   */
+  --font-sans: var(--font-geist), "Noto Sans Khmer Scaled", var(--font-khmer), sans-serif;
+  --font-khmer: var(--font-khmer);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.font-khmer {
+  font-family: var(--font-khmer), sans-serif;
+}
+
+/* CSS-only Khmer font: triggers as soon as the server-set lang attr is
+   parsed — zero dependency on JS/React hydration timing. */
+:lang(km) body {
+  font-family: var(--font-khmer), sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}

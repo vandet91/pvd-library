@@ -1,0 +1,487 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  role          Role      @default(MEMBER)
+  image         String?
+  // Per-user preferences
+  theme         String?   // "ocean"|"midnight"|"emerald"  — null = use library default
+  authStyle     String?   // "split"|"glass"|"minimal"     — null = use library default
+  authMethods   String    @default("[\"password\",\"google\",\"magic\"]")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  member        Member?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Member {
+  id           String        @id @default(cuid())
+  memberId     String        @unique
+  userId       String?       @unique
+  name         String
+  email        String?       @unique
+  phone        String?
+  address      String?
+  memberType   MemberType    @default(STUDENT)
+  joinDate     DateTime      @default(now())
+  expireDate   DateTime?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User?         @relation(fields: [userId], references: [id])
+  loans        Loan[]
+  fines        Fine[]
+  reservations Reservation[]
+  bookRequests BookRequest[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  nameKm    String?
+  createdAt DateTime @default(now())
+  books     Book[]
+  ebooks    Ebook[]
+}
+
+model Author {
+  id              String   @id @default(cuid())
+  name            String
+  createdAt       DateTime @default(now())
+  books           Book[]
+  coAuthoredBooks Book[]   @relation("BookCoAuthors")
+  ebooks          Ebook[]
+}
+
+model Publisher {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  books     Book[]
+}
+
+model Location {
+  id          String   @id @default(cuid())
+  name        String   @unique         // shelf code, e.g. "A-12", "REF-2"
+  description String?                  // human-readable label, e.g. "Reference Section, 2nd floor"
+  createdAt   DateTime @default(now())
+  books       Book[]
+}
+
+model Book {
+  id              String        @id @default(cuid())
+  title           String
+  titleKm         String?
+  subtitle        String?
+  edition         String?
+  isbn            String?       @unique
+  barcode         String?       @unique
+  description     String?       @db.Text
+  coverImage      String?
+  publishYear     Int?
+  pages           Int?
+  language        String?       @default("en")
+  location        String?
+  totalCopies     Int           @default(1)
+  availableCopies Int           @default(1)
+  materialType    MaterialType  @default(BOOK)
+  condition       BookCondition @default(GOOD)
+  price           Float?
+  referenceOnly   Boolean       @default(false)  // title-level: all copies are in-library only
+  withdrawnAt     DateTime?
+  withdrawnReason String?
+  lastInventoryAt DateTime?
+  categoryId      String?
+  authorId        String?
+  publisherId     String?
+  locationId      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  category        Category?     @relation(fields: [categoryId], references: [id])
+  author          Author?       @relation(fields: [authorId], references: [id])
+  coAuthors       Author[]      @relation("BookCoAuthors")
+  publisher       Publisher?    @relation(fields: [publisherId], references: [id])
+  shelfLocation   Location?     @relation(fields: [locationId], references: [id])
+  loans           Loan[]
+  reservations    Reservation[]
+  ebooks          Ebook[]
+  inventoryItems  InventoryItem[]
+  basketItems     BasketItem[]
+  copies          BookCopy[]
+
+  @@index([title])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([materialType])
+  @@index([availableCopies])
+  @@index([createdAt])
+}
+
+model Loan {
+  id           String     @id @default(cuid())
+  memberId     String
+  bookId       String
+  copyId       String?    // specific physical copy borrowed (NULL = legacy loan)
+  loanType     LoanType   @default(HOME)
+  borrowDate   DateTime   @default(now())
+  dueDate      DateTime
+  returnDate   DateTime?
+  status       LoanStatus @default(ACTIVE)
+  renewalCount Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  member       Member     @relation(fields: [memberId], references: [id])
+  book         Book       @relation(fields: [bookId], references: [id])
+  copy         BookCopy?  @relation(fields: [copyId], references: [id])
+  fine         Fine?
+
+  @@index([status])
+  @@index([memberId])
+  @@index([bookId])
+  @@index([copyId])
+  @@index([dueDate])
+  @@index([status, dueDate])
+}
+
+model BookCopy {
+  id          String        @id @default(cuid())
+  bookId      String
+  copyNumber  Int           // 1, 2, 3, ... unique per book
+  barcode     String?       @unique
+  rfid        String?       @unique
+  condition   BookCondition @default(GOOD)
+  status      CopyStatus    @default(AVAILABLE)
+  loanable    Boolean       @default(true)   // false = in-library only (reference, rare, etc.)
+  acquiredAt  DateTime      @default(now())
+  price       Float?
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  loans        Loan[]
+  basketItems  BasketItem[]
+  reservations Reservation[]
+
+  @@unique([bookId, copyNumber])
+  @@index([bookId])
+  @@index([status])
+  @@index([condition])
+}
+
+enum CopyStatus {
+  AVAILABLE
+  BORROWED
+  RESERVED
+  LOST
+  DAMAGED
+  WITHDRAWN
+}
+
+model Fine {
+  id        String     @id @default(cuid())
+  loanId    String     @unique
+  memberId  String
+  amount    Float
+  daysLate  Int        @default(0)
+  type      FineType   @default(LATE_FEE)
+  status    FineStatus @default(UNPAID)
+  paidAt    DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  loan      Loan       @relation(fields: [loanId], references: [id])
+  member    Member     @relation(fields: [memberId], references: [id])
+
+  @@index([status])
+  @@index([memberId])
+  @@index([type])
+}
+
+model Ebook {
+  id          String    @id @default(cuid())
+  title       String
+  titleKm     String?
+  description String?   @db.Text
+  ebookType   EbookType
+  fileUrl     String
+  coverImage  String?
+  language    String?   @default("en")
+  publishYear Int?
+  categoryId  String?
+  authorId    String?
+  bookId      String?
+  isPublic    Boolean   @default(true)
+  views       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  category    Category? @relation(fields: [categoryId], references: [id])
+  author      Author?   @relation(fields: [authorId], references: [id])
+  book        Book?     @relation(fields: [bookId], references: [id])
+
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([ebookType])
+  @@index([views])
+}
+
+model Reservation {
+  id        String            @id @default(cuid())
+  memberId  String
+  bookId    String
+  copyId    String?           // specific copy pulled to hold shelf when READY (NULL until then)
+  status    ReservationStatus @default(PENDING)
+  note      String?
+  holdShelf String?           // where the book is placed when READY (e.g. "Hold Shelf A")
+  expiresAt DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  member    Member            @relation(fields: [memberId], references: [id])
+  book      Book              @relation(fields: [bookId], references: [id])
+  copy      BookCopy?         @relation(fields: [copyId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([memberId])
+  @@index([bookId])
+  @@index([copyId])
+  @@index([expiresAt])
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model BookRequest {
+  id        String             @id @default(cuid())
+  memberId  String
+  title     String
+  author    String?
+  isbn      String?
+  notes     String?            @db.Text
+  status    BookRequestStatus  @default(PENDING)
+  adminNote String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  member    Member             @relation(fields: [memberId], references: [id])
+
+  @@index([status])
+  @@index([memberId])
+}
+
+enum Role {
+  ADMIN
+  LIBRARIAN
+  STAFF
+  MEMBER
+}
+
+enum MemberType {
+  STUDENT
+  TEACHER
+  STAFF
+  PUBLIC
+}
+
+enum LoanStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+  LOST
+}
+
+enum LoanType {
+  HOME
+  IN_LIBRARY
+}
+
+enum FineStatus {
+  UNPAID
+  PAID
+  WAIVED
+}
+
+enum FineType {
+  LATE_FEE
+  REPLACEMENT
+}
+
+enum ReservationStatus {
+  PENDING
+  APPROVED
+  READY       // book pulled from shelf and placed in hold area
+  CANCELLED
+  FULFILLED
+  EXPIRED
+}
+
+enum EbookType {
+  PDF
+  EPUB
+  LINK
+  VIDEO
+  AUDIO
+}
+
+enum BookRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+}
+
+enum MaterialType {
+  BOOK
+  MAGAZINE
+  JOURNAL
+  NEWSPAPER
+  DVD
+  AUDIO_CD
+  THESIS
+  MAP
+  OTHER
+}
+
+enum BookCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+  LOST
+  WITHDRAWN
+  ARCHIVED
+}
+
+model Inventory {
+  id          String          @id @default(cuid())
+  name        String
+  notes       String?         @db.Text
+  status      InventoryStatus @default(ACTIVE)
+  startedAt   DateTime        @default(now())
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  items       InventoryItem[]
+}
+
+model InventoryItem {
+  id          String    @id @default(cuid())
+  inventoryId String
+  bookId      String
+  scannedAt   DateTime  @default(now())
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  book        Book      @relation(fields: [bookId], references: [id])
+
+  @@unique([inventoryId, bookId])
+}
+
+enum InventoryStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Notification {
+  id            String             @id @default(cuid())
+  type          NotificationType
+  memberId      String
+  loanId        String?
+  reservationId String?
+  recipient     String             // email address it was sent to
+  subject       String
+  status        NotificationStatus @default(PENDING)
+  error         String?            @db.Text
+  sentAt        DateTime?
+  createdAt     DateTime           @default(now())
+
+  @@index([memberId])
+  @@index([loanId])
+  @@index([reservationId])
+  @@index([type, sentAt])
+  @@index([status])
+}
+
+enum NotificationType {
+  DUE_SOON
+  OVERDUE
+  RESERVATION_READY
+  TEST
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Basket {
+  id        String       @id @default(cuid())
+  name      String
+  notes     String?      @db.Text
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  items     BasketItem[]
+}
+
+model BasketItem {
+  id       String    @id @default(cuid())
+  basketId String
+  bookId   String
+  copyId   String    // always a specific physical copy — no title-level items
+  tagged   Boolean   @default(false)
+  addedAt  DateTime  @default(now())
+  basket   Basket    @relation(fields: [basketId], references: [id], onDelete: Cascade)
+  book     Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  copy     BookCopy  @relation(fields: [copyId], references: [id], onDelete: Cascade)
+
+  @@unique([basketId, copyId])
+  @@index([bookId])
+}
