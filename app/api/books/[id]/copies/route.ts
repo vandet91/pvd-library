@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const book = await prisma.book.findUnique({
     where:  { id: bookId },
-    select: { id: true, title: true, barcode: true, referenceOnly: true, branchId: true },
+    select: { id: true, title: true, barcode: true, isbn: true, referenceOnly: true, branchId: true },
   });
   if (!book) return NextResponse.json({ error: "Book not found" }, { status: 404 });
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       });
       const nextNumber = (last?.copyNumber ?? 0) + 1;
       const pad         = String(nextNumber).padStart(3, "0");
-      const autoBarcode = `${book.barcode ?? bookId.slice(-8)}-C${pad}`;
+      const autoBarcode = `${book.barcode ?? book.isbn ?? bookId.slice(-8)}-C${pad}`;
 
       const created = await tx.bookCopy.create({
         data: {
