@@ -9,7 +9,7 @@ const updateSchema = z.object({
   barcode:      z.string().optional(),
   rfid:         z.string().optional().nullable(),
   condition:    z.enum(["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED", "LOST", "WITHDRAWN", "ARCHIVED"]).optional(),
-  status:       z.enum(["STOCK", "AVAILABLE", "FOR_SALE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
+  status:       z.enum(["STOCK", "AVAILABLE", "FOR_SALE", "BORROWED", "RESERVED", "SOLD", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
   loanable:     z.boolean().optional(),
   price:        z.number().nullable().optional(),
   notes:        z.string().optional().nullable(),

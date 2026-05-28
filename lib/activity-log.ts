@@ -81,6 +81,14 @@ export const Actions = {
   STOCK_TRANSFERRED:    "stock.transferred",
   STOCK_RETURNED:       "stock.returned_to_stock",
   STOCK_WITHDRAWN:      "stock.withdrawn",
+  // Sale orders
+  SALE_ORDER_CREATED:   "sale.order_created",
+  SALE_PAYMENT_CONFIRMED: "sale.payment_confirmed",
+  SALE_ORDER_SHIPPED:   "sale.order_shipped",
+  SALE_ORDER_COMPLETED: "sale.order_completed",
+  SALE_ORDER_CANCELLED: "sale.order_cancelled",
+  SALE_RETURN_APPROVED: "sale.return_approved",
+  SALE_REFUNDED:        "sale.refunded",
   // Loans
   LOAN_CHECKOUT:        "loan.checkout",
   LOAN_RETURNED:        "loan.returned",

@@ -57,6 +57,7 @@
     "weeding": "ការដកចេញ",
     "acquisition": "ការទិញទំនិញ",
     "stock": "ស្តុក",
+    "saleOrders": "ការបញ្ជាទិញ",
     "aiAssistant": "AI ជំនួយការ"
   },
   "auth": {
@@ -742,6 +743,8 @@
     "eLibrary": "បណ្ណាល័យអេឡិចត្រូនិក",
     "discover": "ស្វែងរក",
     "basket": "កន្ត្រករបស់ខ្ញុំ",
+    "shop": "ហាងសៀវភៅ",
+    "myOrders": "ការបញ្ជាទិញ",
     "admin": "គ្រប់គ្រង",
     "signIn": "ចូលប្រព័ន្ធ",
     "signOut": "ចេញ",
@@ -1078,6 +1081,7 @@
     "statusStock": "នៅស្តុក",
     "statusAvailable": "នៅទំនេរ",
     "statusForSale": "លក់",
+    "statusSold": "បានលក់",
     "statusBorrowed": "បានខ្ចី",
     "statusReserved": "បានកក់",
     "statusLost": "បាត់",

@@ -57,6 +57,7 @@
     "weeding": "Weeding",
     "acquisition": "Acquisition",
     "stock": "Stock",
+    "saleOrders": "Sale Orders",
     "aiAssistant": "AI Assistant"
   },
   "auth": {
@@ -742,6 +743,8 @@
     "eLibrary": "E-Library",
     "discover": "Discover",
     "basket": "My Basket",
+    "shop": "Book Shop",
+    "myOrders": "My Orders",
     "admin": "Admin",
     "signIn": "Sign In",
     "signOut": "Sign Out",
@@ -1078,6 +1081,7 @@
     "statusStock": "In Stock",
     "statusAvailable": "Available",
     "statusForSale": "For Sale",
+    "statusSold": "Sold",
     "statusBorrowed": "Borrowed",
     "statusReserved": "Reserved",
     "statusLost": "Lost",

@@ -8,7 +8,7 @@ import {
   LayoutDashboard, BookOpen, BookMarked, Users, ArrowLeftRight,
   AlertCircle, BarChart3, Search, Settings, LogOut, ShoppingCart, ShieldCheck, Inbox,
   ClipboardList, ShoppingBasket, Barcode, Shield, DatabaseBackup, Bell, Tags, Activity,
-  Bot, Tag, Trash2, PackagePlus, Warehouse,
+  Bot, Tag, Trash2, PackagePlus, Warehouse, ShoppingBag,
 } from "lucide-react";
 import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
@@ -251,6 +251,12 @@ export default function Sidebar({ role }: { role: string }) {
       label: t("stock"),
       icon: Warehouse,
       minRole: "LIBRARIAN",
+    },
+    {
+      href: `/${locale}/admin/orders`,
+      label: t("saleOrders"),
+      icon: ShoppingBag,
+      minRole: "STAFF",
     },
     ...(aiAdminEnabled ? [{
       href: `/${locale}/admin/ai-assistant`,

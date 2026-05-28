@@ -38,6 +38,15 @@ const DEFAULTS: Record<string, string> = {
   STOCK_CURRENCY:                    "USD",   // primary currency (USD / KHR / THB …)
   STOCK_SECONDARY_CURRENCY:          "",      // optional second currency (e.g. KHR); empty = off
   STOCK_SECONDARY_RATE:              "4100",  // 1 USD = X secondary units
+  // Book sale / shop
+  BOOK_SALE_ENABLED:                 "false",
+  BOOK_SALE_QR_IMAGE:                "",      // URL of payment QR code image
+  BOOK_SALE_PAYMENT_METHODS:         "qr",    // comma-separated: qr,cash_on_pickup
+  BOOK_SALE_SHIPPING_FEE:            "2.00",  // default delivery fee in primary currency
+  BOOK_SALE_DELIVERY_ENABLED:        "true",
+  BOOK_SALE_PICKUP_ENABLED:          "true",
+  BOOK_SALE_RETURN_WINDOW_DAYS:      "7",
+  BOOK_SALE_CART_HOLD_MINUTES:       "60",    // reserve copy in cart for X minutes
   // Member self-registration
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",

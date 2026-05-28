@@ -92,6 +92,8 @@ model Member {
   bookRequests        BookRequest[]
   ratings             Rating[]
   incidents           MemberIncident[]
+  saleCart            SaleCart?
+  saleOrders          SaleOrder[]
 
   @@index([restrictionStatus])
 }
@@ -144,6 +146,7 @@ model Branch {
   loans          Loan[]
   movementsFrom  StockMovement[] @relation("MovementFrom")
   movementsTo    StockMovement[] @relation("MovementTo")
+  saleOrders     SaleOrder[]     @relation("SaleOrderBranch")
 }
 
 model Book {
@@ -190,6 +193,8 @@ model Book {
   copies          BookCopy[]
   ratings         Rating[]
   stockMovements  StockMovement[]
+  saleCartItems   SaleCartItem[]
+  saleOrderItems  SaleOrderItem[]
 
   @@index([title])
   @@index([categoryId])
@@ -249,6 +254,8 @@ model BookCopy {
   basketItems    BasketItem[]
   reservations   Reservation[]
   stockMovements StockMovement[]
+  saleCartItem   SaleCartItem?
+  saleOrderItems SaleOrderItem[]
 
   @@unique([bookId, copyNumber])
   @@index([bookId])
@@ -262,6 +269,7 @@ enum CopyStatus {
   FOR_SALE      // pulled from stock and listed for purchase by members
   BORROWED
   RESERVED
+  SOLD          // successfully sold to a member
   LOST
   DAMAGED
   WITHDRAWN
@@ -648,4 +656,118 @@ model BasketItem {
 
   @@unique([basketId, copyId])
   @@index([bookId])
+}
+
+// ─── Sale / Bookshop ─────────────────────────────────────────────────────────
+
+model SaleCart {
+  id        String         @id @default(cuid())
+  memberId  String         @unique   // one cart per member
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  member    Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  items     SaleCartItem[]
+}
+
+model SaleCartItem {
+  id      String   @id @default(cuid())
+  cartId  String
+  copyId  String   @unique   // one copy can only sit in one cart at a time
+  bookId  String
+  addedAt DateTime @default(now())
+  cart    SaleCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  copy    BookCopy @relation(fields: [copyId], references: [id], onDelete: Cascade)
+  book    Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, copyId])
+  @@index([cartId])
+  @@index([bookId])
+}
+
+model SaleOrder {
+  id            String           @id @default(cuid())
+  orderNumber   String           @unique  // e.g. "SO-2025-0001"
+  memberId      String
+  status        SaleOrderStatus  @default(PENDING_PAYMENT)
+  deliveryType  SaleDeliveryType @default(PICKUP)
+
+  // Delivery / pickup
+  deliveryAddress String?  @db.Text  // filled when DELIVERY
+  branchId        String?            // filled when PICKUP
+
+  // Payment
+  paymentMethod String?   // "qr" | "card" | "cash_on_pickup"
+  paymentProof  String?   // uploaded image URL (screenshot of QR payment)
+  paymentRef    String?   // transaction / reference ID from payment
+  paidAt        DateTime?
+
+  // Financials (snapshot at checkout time)
+  subtotal    Float
+  shippingFee Float  @default(0)
+  total       Float
+  currency    String @default("USD")
+
+  // Logistics (staff fills when SHIPPED)
+  logisticsCompany String?
+  trackingNumber   String?
+  expectedDelivery DateTime?
+  shippedAt        DateTime?
+  deliveredAt      DateTime?
+
+  // Notes
+  memberNote  String?  @db.Text
+  staffNote   String?  @db.Text
+
+  // Cancellation
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch    Branch?        @relation("SaleOrderBranch", fields: [branchId], references: [id])
+  memberRel Member         @relation(fields: [memberId], references: [id])
+  items     SaleOrderItem[]
+
+  @@index([memberId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SaleOrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  copyId    String
+  bookId    String
+  unitPrice Float
+  currency  String  @default("USD")
+
+  order SaleOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  copy  BookCopy  @relation(fields: [copyId], references: [id])
+  book  Book      @relation(fields: [bookId], references: [id])
+
+  @@unique([orderId, copyId])
+  @@index([orderId])
+  @@index([copyId])
+  @@index([bookId])
+}
+
+enum SaleOrderStatus {
+  PENDING_PAYMENT    // order created, awaiting payment
+  PAYMENT_SUBMITTED  // member uploaded proof, awaiting staff confirmation
+  PAYMENT_CONFIRMED  // staff confirmed payment received
+  PREPARING          // staff is packaging the order
+  READY_FOR_PICKUP   // ready at branch for member to collect
+  SHIPPED            // dispatched with logistics info
+  DELIVERED          // confirmed received by member
+  COMPLETED          // fully closed
+  CANCELLED          // cancelled by member or staff
+  RETURN_REQUESTED   // member wants to return
+  RETURNED           // physical item back with library
+  REFUNDED           // refund processed
+}
+
+enum SaleDeliveryType {
+  PICKUP    // member collects at a branch
+  DELIVERY  // shipped to member's address
 }

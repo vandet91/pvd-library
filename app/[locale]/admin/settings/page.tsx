@@ -54,6 +54,17 @@ interface SettingsData {
   MEMBER_SELF_REGISTER:              string;
   MEMBER_SELF_REGISTER_AUTO_APPROVE: string;
   OPAC_THEME:                        string;
+  // Book Sale
+  BOOK_SALE_ENABLED:                 string;
+  BOOK_SALE_QR_IMAGE:                string;
+  BOOK_SALE_PAYMENT_METHODS:         string;
+  BOOK_SALE_SHIPPING_FEE:            string;
+  BOOK_SALE_DELIVERY_ENABLED:        string;
+  BOOK_SALE_PICKUP_ENABLED:          string;
+  BOOK_SALE_RETURN_WINDOW_DAYS:      string;
+  STOCK_CURRENCY:                    string;
+  STOCK_SECONDARY_CURRENCY:          string;
+  STOCK_SECONDARY_RATE:              string;
 }
 
 const DEFAULT: SettingsData = {
@@ -79,6 +90,16 @@ const DEFAULT: SettingsData = {
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
   OPAC_THEME:                        "royal",
+  BOOK_SALE_ENABLED:                 "false",
+  BOOK_SALE_QR_IMAGE:                "",
+  BOOK_SALE_PAYMENT_METHODS:         "qr",
+  BOOK_SALE_SHIPPING_FEE:            "2.00",
+  BOOK_SALE_DELIVERY_ENABLED:        "true",
+  BOOK_SALE_PICKUP_ENABLED:          "true",
+  BOOK_SALE_RETURN_WINDOW_DAYS:      "7",
+  STOCK_CURRENCY:                    "USD",
+  STOCK_SECONDARY_CURRENCY:          "",
+  STOCK_SECONDARY_RATE:              "4100",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -690,6 +711,65 @@ export default function SettingsPage() {
             Registration is closed. Only staff can create member accounts via the admin panel.
           </div>
         )}
+      </Section>
+
+      {/* ── Book Sale / Shop ──────────────────────────────────────────── */}
+      <Section title="Book Sale & Shop" icon={<DollarSign className="w-4 h-4 text-violet-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">
+          Allow members to purchase FOR_SALE copies directly from the portal. Enable the feature, configure currency and payment QR.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Field label="Enable Book Sale" hint="Master switch — shows the /shop page to members and allows adding to sale cart." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <select value={data.BOOK_SALE_ENABLED} onChange={(e) => set("BOOK_SALE_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </Field>
+
+          <Field label="Primary Currency" hint="Currency symbol used for all sale prices (USD, KHR, THB, …)." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.STOCK_CURRENCY} onChange={(e) => set("STOCK_CURRENCY", e.target.value)} placeholder="USD" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Secondary Currency" hint="Optional second currency shown alongside prices (e.g. KHR). Leave blank to disable." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.STOCK_SECONDARY_CURRENCY} onChange={(e) => set("STOCK_SECONDARY_CURRENCY", e.target.value)} placeholder="KHR (leave blank to disable)" disabled={busy} className={inputCls} />
+          </Field>
+
+          {data.STOCK_SECONDARY_CURRENCY && (
+            <Field label="Exchange Rate" hint={`1 ${data.STOCK_CURRENCY} = X ${data.STOCK_SECONDARY_CURRENCY}`} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+              <input type="number" value={data.STOCK_SECONDARY_RATE} onChange={(e) => set("STOCK_SECONDARY_RATE", e.target.value)} disabled={busy} className={inputCls} />
+            </Field>
+          )}
+
+          <Field label="Payment QR Image URL" hint="URL of the KHQR / ABA / bank QR image shown to members at checkout." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.BOOK_SALE_QR_IMAGE} onChange={(e) => set("BOOK_SALE_QR_IMAGE", e.target.value)} placeholder="https://…/qr.png" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Payment Methods" hint="Comma-separated: qr, cash_on_pickup" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.BOOK_SALE_PAYMENT_METHODS} onChange={(e) => set("BOOK_SALE_PAYMENT_METHODS", e.target.value)} placeholder="qr,cash_on_pickup" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Enable Delivery" hint="Members can choose home delivery at checkout." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <select value={data.BOOK_SALE_DELIVERY_ENABLED} onChange={(e) => set("BOOK_SALE_DELIVERY_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </Field>
+
+          <Field label="Enable Pickup" hint="Members can choose to collect at a library branch." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <select value={data.BOOK_SALE_PICKUP_ENABLED} onChange={(e) => set("BOOK_SALE_PICKUP_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </Field>
+
+          <Field label="Delivery / Shipping Fee" hint={`Default shipping fee in ${data.STOCK_CURRENCY || "USD"}.`} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input type="number" step="0.01" min="0" value={data.BOOK_SALE_SHIPPING_FEE} onChange={(e) => set("BOOK_SALE_SHIPPING_FEE", e.target.value)} disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Return Window (days)" hint="How many days after purchase a member can request a return." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input type="number" min="0" value={data.BOOK_SALE_RETURN_WINDOW_DAYS} onChange={(e) => set("BOOK_SALE_RETURN_WINDOW_DAYS", e.target.value)} disabled={busy} className={inputCls} />
+          </Field>
+        </div>
       </Section>
 
       {/* ── Library Information ────────────────────────────────────────── */}
