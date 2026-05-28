@@ -65,7 +65,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   return NextResponse.json(result);
 }
 
-/** POST /api/books/[id]/copies — add a new copy. Auto-assigns next copyNumber + barcode */
+/** POST /api/books/[id]/copies — add one or more copies (pass quantity for bulk).
+ *  Auto-assigns sequential copyNumbers and barcodes.
+ *  All copies land in STOCK. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session || !can(session.user?.role, "LIBRARIAN"))
@@ -74,72 +76,85 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id: bookId } = await params;
   const body = await request.json().catch(() => ({}));
 
+  // quantity: 1–50, default 1
+  const quantity = Math.min(50, Math.max(1, Math.round(Number(body.quantity ?? 1))));
+
   const book = await prisma.book.findUnique({
     where:  { id: bookId },
     select: { id: true, title: true, barcode: true, referenceOnly: true, branchId: true },
   });
   if (!book) return NextResponse.json({ error: "Book not found" }, { status: 404 });
 
-  // Find next copy number
-  const last = await prisma.bookCopy.findFirst({
-    where:   { bookId },
-    orderBy: { copyNumber: "desc" },
-    select:  { copyNumber: true },
-  });
-  const nextNumber = (last?.copyNumber ?? 0) + 1;
-  const pad = String(nextNumber).padStart(3, "0");
-  const autoBarcode = `${book.barcode ?? bookId.slice(-8)}-C${pad}`;
+  const copies = await prisma.$transaction(async (tx) => {
+    const results = [];
 
-  const copy = await prisma.$transaction(async (tx) => {
-    const created = await tx.bookCopy.create({
-      data: {
-        bookId,
-        copyNumber: nextNumber,
-        barcode:    body.barcode || autoBarcode,
-        rfid:       body.rfid    || null,
-        condition:  body.condition || "GOOD",
-        // New copies always land in STOCK first — staff deploys them to a branch/shelf
-        status:     "STOCK",
-        loanable:   body.loanable !== undefined ? !!body.loanable : !book.referenceOnly,
-        price:      body.price ? Number(body.price) : null,
-        notes:      body.notes || null,
-        // No branch yet — assigned when deployed
-        branchId:   null,
-      },
-    });
+    for (let i = 0; i < quantity; i++) {
+      // Re-query inside the loop so each iteration sees the previous insert
+      const last = await tx.bookCopy.findFirst({
+        where:   { bookId },
+        orderBy: { copyNumber: "desc" },
+        select:  { copyNumber: true },
+      });
+      const nextNumber = (last?.copyNumber ?? 0) + 1;
+      const pad         = String(nextNumber).padStart(3, "0");
+      const autoBarcode = `${book.barcode ?? bookId.slice(-8)}-C${pad}`;
 
-    // Keep totalCopies in sync; availableCopies NOT incremented — copy is in stock, not on shelf
-    await tx.book.update({
-      where: { id: bookId },
-      data:  { totalCopies: { increment: 1 } },
-    });
+      const created = await tx.bookCopy.create({
+        data: {
+          bookId,
+          copyNumber: nextNumber,
+          // Custom barcode only honoured when adding a single copy
+          barcode:   quantity === 1 ? (body.barcode || autoBarcode) : autoBarcode,
+          rfid:      quantity === 1 ? (body.rfid    || null)        : null,
+          condition: body.condition || "GOOD",
+          status:    "STOCK",
+          loanable:  body.loanable !== undefined ? !!body.loanable : !book.referenceOnly,
+          price:     body.price  ? Number(body.price) : null,
+          notes:     body.notes  || null,
+          branchId:  null,
+        },
+      });
 
-    // Create the first stock movement — RECEIVED
-    await tx.stockMovement.create({
-      data: {
-        copyId:    created.id,
-        bookId,
-        type:      "RECEIVED",
-        toStatus:  "STOCK",
-        source:    body.source    || "PURCHASE",
-        reference: body.reference || null,
-        unitCost:  body.price  ? Number(body.price) : null,
-        currency:  body.currency  || "USD",
-        notes:     body.notes     || null,
-        actorId:   session.user?.id   ?? null,
-        actorName: session.user?.name ?? null,
-      },
-    });
+      // totalCopies +1 per copy; availableCopies NOT touched (copy is in stock, not on shelf)
+      await tx.book.update({
+        where: { id: bookId },
+        data:  { totalCopies: { increment: 1 } },
+      });
 
-    return created;
+      await tx.stockMovement.create({
+        data: {
+          copyId:    created.id,
+          bookId,
+          type:      "RECEIVED",
+          toStatus:  "STOCK",
+          source:    body.source    || "PURCHASE",
+          reference: body.reference || null,
+          unitCost:  body.price     ? Number(body.price) : null,
+          currency:  body.currency  || "USD",
+          notes:     body.notes     || null,
+          actorId:   session.user?.id   ?? null,
+          actorName: session.user?.name ?? null,
+        },
+      });
+
+      results.push(created);
+    }
+
+    return results;
   });
 
   await logActivity(actorFromSession(session), Actions.BOOK_COPY_ADDED, {
     entityType: "Book",
     entityId:   bookId,
     entityName: book.title,
-    detail:     { copyNumber: copy.copyNumber, barcode: copy.barcode, condition: copy.condition },
+    detail:     {
+      quantity,
+      firstCopyNumber: copies[0].copyNumber,
+      lastCopyNumber:  copies[copies.length - 1].copyNumber,
+      condition:       copies[0].condition,
+    },
   });
 
-  return NextResponse.json(copy, { status: 201 });
+  // Return array when bulk; single object when quantity=1 (backwards-compatible)
+  return NextResponse.json(quantity === 1 ? copies[0] : copies, { status: 201 });
 }

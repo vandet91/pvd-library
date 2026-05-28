@@ -67,6 +67,8 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
   const [busy,       setBusy]       = useState(false);
   const [editing,    setEditing]    = useState<string | null>(null);
   const [error,      setError]      = useState<string | null>(null);
+  const [success,    setSuccess]    = useState<string | null>(null);
+  const [quantity,   setQuantity]   = useState(1);
   const [labelBusy,  setLabelBusy]  = useState<Set<string>>(new Set());
 
   // Branch list for the copy editor
@@ -142,17 +144,20 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
   }
 
   async function addCopy() {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setSuccess(null);
+    const qty = Math.min(50, Math.max(1, quantity));
     const res = await fetch(`/api/books/${bookId}/copies`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({}),
+      body:    JSON.stringify({ quantity: qty }),
     });
     if (res.ok) {
       fetchCopies();
+      setSuccess(qty === 1 ? "1 copy added to stock." : `${qty} copies added to stock.`);
+      setTimeout(() => setSuccess(null), 4000);
     } else {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "Failed to add copy");
+      setError(d.error ?? "Failed to add copies");
     }
     setBusy(false);
   }
@@ -211,6 +216,29 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
               {t("printAllLabels")}
             </button>
           )}
+          {/* Quantity input */}
+          <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              disabled={busy || quantity <= 1}
+              className="px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            >−</button>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={quantity}
+              onChange={(e) => setQuantity(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
+              className="w-9 text-center text-xs font-semibold text-gray-700 border-none outline-none py-1.5 bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.min(50, q + 1))}
+              disabled={busy || quantity >= 50}
+              className="px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            >+</button>
+          </div>
           <button
             type="button"
             onClick={addCopy}
@@ -218,7 +246,7 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
             className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            {t("addCopy")}
+            {quantity > 1 ? `${t("addCopy")} ×${quantity}` : t("addCopy")}
           </button>
         </div>
       </div>
@@ -226,7 +254,8 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
         {t("eachCopyHint")}
       </p>
 
-      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{error}</p>}
+      {error   && <p className="text-xs text-red-600   bg-red-50   border border-red-200   px-3 py-2 rounded-lg">{error}</p>}
+      {success && <p className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg">✓ {success}</p>}
 
       {loading ? (
         <div className="text-center text-xs text-gray-400 py-6">{t("loading")}</div>
