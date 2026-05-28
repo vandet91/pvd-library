@@ -51,6 +51,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
   if (!before) return NextResponse.json({ error: "Copy not found" }, { status: 404 });
 
+  // ── Guard: BORROWED / RESERVED / SOLD are flow-driven — block manual transitions ──
+  const FLOW_ONLY = ["BORROWED", "RESERVED", "SOLD"] as const;
+  if (parsed.data.status && (FLOW_ONLY as readonly string[]).includes(parsed.data.status)) {
+    return NextResponse.json(
+      {
+        error: `"${parsed.data.status}" can only be set through its proper flow (loan / reservation / sale order) — not by manual edit.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  // ── Guard: if copy is in a sale cart and status is leaving FOR_SALE, remove it ──
+  const cartItemToRemove =
+    before.status === "FOR_SALE" &&
+    parsed.data.status &&
+    parsed.data.status !== "FOR_SALE"
+      ? await prisma.saleCartItem.findUnique({ where: { copyId: id }, select: { id: true } })
+      : null;
+
   // If the copy was holding a reservation (READY), find that reservation up-front
   // so we can release it inside the same transaction when the librarian frees the copy.
   const heldReservation = before.status === "RESERVED"
@@ -61,6 +80,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     : null;
 
   const result = await prisma.$transaction(async (tx) => {
+    // Remove from cart inside the transaction so it's atomic with the status change
+    if (cartItemToRemove) {
+      await tx.saleCartItem.delete({ where: { id: cartItemToRemove.id } });
+    }
+
     const updated = await tx.bookCopy.update({ where: { id }, data: parsed.data });
 
     // Keep Book.availableCopies in sync if status moved in/out of AVAILABLE
@@ -105,9 +129,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
 
   return NextResponse.json(result.copy, {
-    headers: result.releasedReservation
-      ? { "X-Reservation-Released": result.releasedReservation.id }
-      : undefined,
+    headers: {
+      ...(result.releasedReservation ? { "X-Reservation-Released": result.releasedReservation.id } : {}),
+      ...(cartItemToRemove          ? { "X-Cart-Item-Removed":    "1"                            } : {}),
+    },
   });
 }
 

@@ -56,6 +56,12 @@ const CONDITION_LABEL_KEYS: Record<string, string> = {
 const CONDITIONS = ["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED"] as const;
 const STATUSES   = ["STOCK", "AVAILABLE", "FOR_SALE", "BORROWED", "RESERVED", "SOLD", "LOST", "DAMAGED", "WITHDRAWN"] as const;
 
+// BORROWED / RESERVED / SOLD are set exclusively by their own flows (loans, reservations, sale orders).
+// Librarians must not set these manually — the dropdown only shows manually-safe statuses.
+const MANUAL_STATUSES = STATUSES.filter(
+  (s) => !["BORROWED", "RESERVED", "SOLD"].includes(s),
+) as readonly string[];
+
 interface BasketSummary { id: string; name: string }
 
 export default function BookCopiesPanel({ bookId }: { bookId: string }) {
@@ -176,7 +182,7 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
   }
 
   async function saveCopy(id: string, patch: Partial<Copy>) {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setSuccess(null);
     const res = await fetch(`/api/copies/${id}`, {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -185,6 +191,10 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
     if (res.ok) {
       setEditing(null);
       fetchCopies();
+      if (res.headers.get("X-Cart-Item-Removed") === "1") {
+        setSuccess("Copy updated. It was removed from a member's cart because it is no longer For Sale.");
+        setTimeout(() => setSuccess(null), 6000);
+      }
     } else {
       const d = await res.json().catch(() => ({}));
       setError(d.error ?? "Failed to update copy");
@@ -548,7 +558,7 @@ function CopyRow({
         </select>
         <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
           className="px-2 py-1.5 text-xs border border-gray-200 rounded">
-          {STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_META[s]?.labelKey ?? s)}</option>)}
+          {MANUAL_STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_META[s]?.labelKey ?? s)}</option>)}
         </select>
         {branches.length > 0 ? (
           <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}
@@ -562,6 +572,17 @@ function CopyRow({
         <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
           placeholder={t("notes")} className="px-2 py-1.5 text-xs border border-gray-200 rounded col-span-2 md:col-span-3" />
       </div>
+      {/* Warn when moving a FOR_SALE copy to another status */}
+      {copy.status === "FOR_SALE" && form.status !== "FOR_SALE" && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg">
+          ⚠️ This copy may be in a member&apos;s cart. Changing its status will automatically remove it from any active cart.
+        </p>
+      )}
+      {/* Remind librarian that BORROWED / RESERVED / SOLD are managed by their own flows */}
+      <p className="text-[10px] text-gray-400">
+        Borrowed, Reserved, and Sold statuses are set automatically by the loan / reservation / sale flows — they are not available here.
+      </p>
+
       <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer pt-1">
         <input
           type="checkbox"
