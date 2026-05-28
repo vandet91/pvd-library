@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 export function useMemberLoginForm() {
   const locale = useLocale();
   const router  = useRouter();
+  const t = useTranslations("memberPortal");
 
   const [identifier,   setIdentifier]   = useState("");
   const [password,     setPassword]     = useState("");
@@ -30,7 +31,16 @@ export function useMemberLoginForm() {
     setLoading(false);
 
     if (result?.error) {
-      setError("Invalid email / Member ID or password.");
+      // next-auth/react extracts ?error= from the redirect URL into result.error directly
+      if (result.error === "PendingApproval") {
+        setError(t("errorPendingApproval"));
+      } else if (result.error === "AccountInactive") {
+        setError(t("errorAccountInactive"));
+      } else if (result.error === "AccountBlocked") {
+        setError(t("errorAccountBlocked"));
+      } else {
+        setError(t("invalidCredentials"));
+      }
       return;
     }
 

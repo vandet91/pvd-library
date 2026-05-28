@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <style>
+      .bg { fill: #1a1a2e; }
+      .stripe-1 { fill: #e8c97a; }
+      .stripe-2 { fill: #d4704a; }
+      .stripe-3 { fill: #4a8fa8; }
+      .stripe-4 { fill: #2e6e4e; }
+      .circle-border { fill: none; stroke: #e8c97a; stroke-width: 6; }
+      .inner-border { fill: none; stroke: #e8c97a; stroke-width: 2; stroke-dasharray: 6 4; }
+      .text-main { font-family: 'Georgia', serif; fill: #f5e6c8; }
+      .text-accent { font-family: 'Georgia', serif; fill: #e8c97a; }
+      .sloth-body { fill: #8b6f47; }
+      .sloth-face { fill: #c4956a; }
+      .sloth-eye { fill: #2c1a0e; }
+      .sloth-eye-shine { fill: #ffffff; }
+      .book-cover { fill: #4a8fa8; }
+      .book-pages { fill: #f5e6c8; }
+      .book-spine { fill: #2e6069; }
+      .tea-cup { fill: #e8c97a; }
+      .tea-liquid { fill: #8b4513; }
+      .steam { fill: none; stroke: #f5e6c8; stroke-width: 2; stroke-linecap: round; opacity: 0.7; }
+      .leaf { fill: #4a8f5a; }
+    </style>
+    <clipPath id="circle-clip">
+      <circle cx="200" cy="200" r="185"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="195" fill="#1a1a2e"/>
+
+  <!-- Vintage stripe bands (clipped to circle) -->
+  <g clip-path="url(#circle-clip)">
+    <rect x="0" y="290" width="400" height="35" class="stripe-1"/>
+    <rect x="0" y="325" width="400" height="30" class="stripe-2"/>
+    <rect x="0" y="355" width="400" height="25" class="stripe-3"/>
+    <rect x="0" y="0" width="400" height="25" class="stripe-4"/>
+    <rect x="0" y="25" width="400" height="20" class="stripe-3"/>
+    <rect x="0" y="45" width="400" height="15" class="stripe-2"/>
+  </g>
+
+  <!-- Border rings -->
+  <circle cx="200" cy="200" r="185" class="circle-border"/>
+  <circle cx="200" cy="200" r="175" class="inner-border"/>
+
+  <!-- TOP TEXT: "IF IT INVOLVES" -->
+  <text x="200" y="95" text-anchor="middle" class="text-main"
+        font-size="18" font-weight="bold" letter-spacing="3">IF IT INVOLVES</text>
+
+  <!-- Decorative dividers -->
+  <line x1="75" y1="103" x2="145" y2="103" stroke="#e8c97a" stroke-width="1.5"/>
+  <circle cx="70" cy="103" r="3" fill="#e8c97a"/>
+  <line x1="255" y1="103" x2="325" y2="103" stroke="#e8c97a" stroke-width="1.5"/>
+  <circle cx="330" cy="103" r="3" fill="#e8c97a"/>
+
+  <!-- SLOTH ILLUSTRATION (center) -->
+  <!-- Body -->
+  <ellipse cx="200" cy="195" rx="52" ry="58" class="sloth-body"/>
+  <!-- Arms hanging over a branch suggestion -->
+  <ellipse cx="148" cy="175" rx="14" ry="8" transform="rotate(-30 148 175)" class="sloth-body"/>
+  <ellipse cx="252" cy="175" rx="14" ry="8" transform="rotate(30 252 175)" class="sloth-body"/>
+  <!-- Claws left -->
+  <ellipse cx="137" cy="181" rx="5" ry="3" transform="rotate(-20 137 181)" fill="#5a3e28"/>
+  <ellipse cx="141" cy="186" rx="5" ry="3" transform="rotate(-10 141 186)" fill="#5a3e28"/>
+  <!-- Claws right -->
+  <ellipse cx="263" cy="181" rx="5" ry="3" transform="rotate(20 263 181)" fill="#5a3e28"/>
+  <ellipse cx="259" cy="186" rx="5" ry="3" transform="rotate(10 259 186)" fill="#5a3e28"/>
+
+  <!-- Face -->
+  <ellipse cx="200" cy="178" rx="32" ry="30" class="sloth-face"/>
+  <!-- Dark face mask (classic sloth pattern) -->
+  <ellipse cx="188" cy="176" rx="12" ry="13" fill="#6b4c30" opacity="0.6"/>
+  <ellipse cx="212" cy="176" rx="12" ry="13" fill="#6b4c30" opacity="0.6"/>
+  <!-- Nose -->
+  <ellipse cx="200" cy="183" rx="6" ry="4" fill="#5a3e28"/>
+  <ellipse cx="200" cy="182" rx="3" ry="2" fill="#7a5040"/>
+  <!-- Eyes (lazy/sleepy look) -->
+  <ellipse cx="189" cy="170" rx="7" ry="6" class="sloth-eye"/>
+  <ellipse cx="211" cy="170" rx="7" ry="6" class="sloth-eye"/>
+  <!-- Sleepy half-closed lids -->
+  <path d="M182 170 Q189 163 196 170" fill="#8b6f47"/>
+  <path d="M204 170 Q211 163 218 170" fill="#8b6f47"/>
+  <!-- Eye shines -->
+  <circle cx="191" cy="168" r="2" class="sloth-eye-shine"/>
+  <circle cx="213" cy="168" r="2" class="sloth-eye-shine"/>
+  <!-- Smile -->
+  <path d="M193 188 Q200 194 207 188" fill="none" stroke="#5a3e28" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Book (held at bottom) -->
+  <rect x="162" y="215" width="45" height="35" rx="2" class="book-spine"/>
+  <rect x="166" y="212" width="42" height="35" rx="2" class="book-cover"/>
+  <rect x="206" y="212" width="6" height="35" rx="1" class="book-spine"/>
+  <!-- Book pages -->
+  <rect x="169" y="215" width="35" height="29" rx="1" class="book-pages"/>
+  <!-- Book lines -->
+  <line x1="172" y1="221" x2="201" y2="221" stroke="#c8b89a" stroke-width="1.5"/>
+  <line x1="172" y1="226" x2="201" y2="226" stroke="#c8b89a" stroke-width="1.5"/>
+  <line x1="172" y1="231" x2="201" y2="231" stroke="#c8b89a" stroke-width="1.5"/>
+  <line x1="172" y1="236" x2="195" y2="236" stroke="#c8b89a" stroke-width="1.5"/>
+
+  <!-- Tea cup (right side) -->
+  <rect x="216" y="222" width="28" height="20" rx="3" class="tea-cup"/>
+  <!-- Tea liquid -->
+  <rect x="218" y="224" width="24" height="14" rx="2" class="tea-liquid"/>
+  <!-- Cup handle -->
+  <path d="M244 226 Q252 226 252 232 Q252 238 244 238" fill="none" stroke="#e8c97a" stroke-width="3" stroke-linecap="round"/>
+  <!-- Saucer -->
+  <ellipse cx="230" cy="243" rx="18" ry="4" class="tea-cup"/>
+  <!-- Steam -->
+  <path d="M222 220 Q220 214 222 208" class="steam"/>
+  <path d="M228 219 Q228 212 230 206" class="steam"/>
+  <path d="M234 220 Q236 214 234 208" class="steam"/>
+
+  <!-- Decorative leaves -->
+  <ellipse cx="155" cy="255" rx="12" ry="6" transform="rotate(-40 155 255)" class="leaf"/>
+  <ellipse cx="245" cy="255" rx="12" ry="6" transform="rotate(40 245 255)" class="leaf"/>
+  <ellipse cx="148" cy="262" rx="10" ry="5" transform="rotate(-20 148 262)" class="leaf"/>
+  <ellipse cx="252" cy="262" rx="10" ry="5" transform="rotate(20 252 262)" class="leaf"/>
+
+  <!-- MIDDLE TEXT: "TEA AND BOOKS" -->
+  <text x="200" y="288" text-anchor="middle" class="text-accent"
+        font-size="22" font-weight="bold" letter-spacing="2"
+        font-style="italic">Tea &amp; Books</text>
+
+  <!-- BOTTOM TEXT: "COUNT ME IN" -->
+  <text x="200" y="320" text-anchor="middle" class="text-main"
+        font-size="17" font-weight="bold" letter-spacing="4">COUNT ME IN</text>
+
+  <!-- Small star decorations -->
+  <text x="120" y="323" text-anchor="middle" class="text-accent" font-size="10">✦</text>
+  <text x="280" y="323" text-anchor="middle" class="text-accent" font-size="10">✦</text>
+  <text x="200" y="340" text-anchor="middle" class="text-accent" font-size="8">✦ ✦ ✦</text>
+
+</svg>

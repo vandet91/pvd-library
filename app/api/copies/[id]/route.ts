@@ -3,21 +3,27 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { z } from "zod";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
 const updateSchema = z.object({
-  barcode:   z.string().optional(),
-  rfid:      z.string().optional().nullable(),
-  condition: z.enum(["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED", "LOST", "WITHDRAWN", "ARCHIVED"]).optional(),
-  status:    z.enum(["AVAILABLE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
-  loanable:  z.boolean().optional(),
-  price:     z.number().nullable().optional(),
-  notes:     z.string().optional().nullable(),
+  barcode:      z.string().optional(),
+  rfid:         z.string().optional().nullable(),
+  condition:    z.enum(["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED", "LOST", "WITHDRAWN", "ARCHIVED"]).optional(),
+  status:       z.enum(["AVAILABLE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
+  loanable:     z.boolean().optional(),
+  price:        z.number().nullable().optional(),
+  notes:        z.string().optional().nullable(),
+  branchId:     z.string().optional().nullable(),
+  labelPrinted: z.boolean().optional(), // true once spine label has been physically applied
 });
 
-/** PATCH /api/copies/[id] — update a single copy */
+/** PATCH /api/copies/[id] — update a single copy.
+ *  - STAFF may update labelPrinted only (physical label-application step).
+ *  - All other fields (barcode, status, condition, etc.) require LIBRARIAN.
+ */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session || !can(session.user?.role, "LIBRARIAN"))
+  if (!session || !can(session.user?.role, "STAFF"))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
@@ -25,8 +31,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  // Need previous status to know whether availableCopies changes
-  const before = await prisma.bookCopy.findUnique({ where: { id }, select: { status: true, bookId: true } });
+  // STAFF may only toggle labelPrinted — any other field requires LIBRARIAN
+  const fields = Object.keys(parsed.data);
+  const isLabelOnlyUpdate = fields.length === 1 && fields[0] === "labelPrinted";
+  if (!isLabelOnlyUpdate && !can(session.user?.role, "LIBRARIAN")) {
+    return NextResponse.json(
+      { error: "Updating barcode, status, condition and other copy fields requires Librarian access." },
+      { status: 403 },
+    );
+  }
+
+  // Need previous state to sync availableCopies and to produce a diff in the activity log
+  const before = await prisma.bookCopy.findUnique({
+    where:  { id },
+    select: {
+      status: true, bookId: true, barcode: true, condition: true, copyNumber: true,
+      book: { select: { title: true } },
+    },
+  });
   if (!before) return NextResponse.json({ error: "Copy not found" }, { status: 404 });
 
   // If the copy was holding a reservation (READY), find that reservation up-front
@@ -69,6 +91,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return { copy: updated, releasedReservation };
   });
 
+  await logActivity(actorFromSession(session), Actions.BOOK_COPY_UPDATED, {
+    entityType: "Book",
+    entityId:   before.bookId,
+    entityName: before.book?.title ?? undefined,
+    detail: {
+      copyNumber: before.copyNumber,
+      barcode:    before.barcode,
+      before: { status: before.status, condition: before.condition },
+      after:  { status: result.copy.status, condition: result.copy.condition },
+    },
+  });
+
   return NextResponse.json(result.copy, {
     headers: result.releasedReservation
       ? { "X-Reservation-Released": result.releasedReservation.id }
@@ -85,7 +119,10 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const copy = await prisma.bookCopy.findUnique({
     where:   { id },
-    include: { loans: { where: { status: { in: ["ACTIVE", "OVERDUE"] } }, select: { id: true } } },
+    include: {
+      loans: { where: { status: { in: ["ACTIVE", "OVERDUE"] } }, select: { id: true } },
+      book:  { select: { title: true } },
+    },
   });
   if (!copy) return NextResponse.json({ error: "Copy not found" }, { status: 404 });
   if (copy.loans.length > 0) {
@@ -118,6 +155,13 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
         ...(copy.status === "AVAILABLE" && { availableCopies: { decrement: 1 } }),
       },
     });
+  });
+
+  await logActivity(actorFromSession(session), Actions.BOOK_COPY_DELETED, {
+    entityType: "Book",
+    entityId:   copy.bookId,
+    entityName: copy.book?.title ?? undefined,
+    detail:     { copyNumber: copy.copyNumber, barcode: copy.barcode, condition: copy.condition },
   });
 
   return NextResponse.json({ success: true });

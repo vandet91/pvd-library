@@ -5,6 +5,7 @@ import { BookCondition } from "@prisma/client";
 import { z } from "zod";
 import { generateBarcode } from "@/lib/barcode";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
 const MATERIAL_TYPES = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
 
@@ -21,6 +22,7 @@ const bookSchema = z.object({
   language: z.string().optional(),
   location: z.string().optional(),
   locationId: z.string().optional().nullable(),
+  branchId: z.string().optional().nullable(),
   totalCopies: z.number().min(1).default(1),
   price: z.number().min(0).optional().nullable(),
   referenceOnly: z.boolean().optional(),
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest) {
   const available     = searchParams.get("available") === "true";
   const condition     = searchParams.get("condition") || undefined;
   const materialType  = searchParams.get("materialType") || undefined;
+  const branchIdFilter = searchParams.get("branchId") || undefined;
   const sort          = searchParams.get("sort") || "newest";
   const limit         = parseInt(searchParams.get("limit") || "500", 10);
   const includeCopies = searchParams.get("copies") === "true";
@@ -61,11 +64,11 @@ export async function GET(request: NextRequest) {
 
   // First, see if the query matches a SPECIFIC copy barcode (or RFID).
   // If so, surface that copy's book first and flag which copy matched.
-  let scannedCopy: { id: string; bookId: string; copyNumber: number; barcode: string | null } | null = null;
+  let scannedCopy: { id: string; bookId: string; copyNumber: number; barcode: string | null; branchId: string | null } | null = null;
   if (query) {
     scannedCopy = await prisma.bookCopy.findFirst({
       where:  { OR: [{ barcode: query }, { rfid: query }] },
-      select: { id: true, bookId: true, copyNumber: true, barcode: true },
+      select: { id: true, bookId: true, copyNumber: true, barcode: true, branchId: true },
     });
   }
 
@@ -85,10 +88,11 @@ export async function GET(request: NextRequest) {
       ...(available     && { availableCopies: { gt: 0 } }),
       ...(condition     && condition in BookCondition && { condition: condition as BookCondition }),
       ...(materialType  && { materialType: materialType as typeof MATERIAL_TYPES[number] }),
+      ...(branchIdFilter && { branchId: branchIdFilter }),
     },
     include: {
       category: true, author: true, coAuthors: true, publisher: true, shelfLocation: true,
-      _count: { select: { loans: true } },
+      _count: { select: { loans: true, ebooks: true } },
       ...(includeCopies && {
         copies: {
           where:   { status: "AVAILABLE", loanable: true },
@@ -101,11 +105,27 @@ export async function GET(request: NextRequest) {
     take: limit,
   });
 
+  // ── Attach avg rating for each book (one groupBy query) ──────────────
+  const bookIds = books.map((b) => b.id);
+  const ratingAggs = await prisma.rating.groupBy({
+    by:    ["bookId"],
+    where: { bookId: { in: bookIds } },
+    _avg:   { score: true },
+    _count: { score: true },
+  });
+  const ratingMap = new Map(ratingAggs.map((r) => [
+    r.bookId,
+    { avgRating: r._avg.score ? Math.round(r._avg.score * 10) / 10 : null, ratingCount: r._count.score },
+  ]));
+
   // Stamp `_scannedCopy` on the book that matched the scanned copy barcode (if any).
   // The borrow flow can then pass copyId to /api/loans to grab THIS specific copy.
-  let payload: unknown[] = books;
+  let payload: unknown[] = books.map((b) => ({
+    ...b,
+    ...(ratingMap.get(b.id) ?? { avgRating: null, ratingCount: 0 }),
+  }));
   if (scannedCopy) {
-    payload = books.map((b) =>
+    payload = (payload as { id: string; _scannedCopy?: unknown }[]).map((b) =>
       b.id === scannedCopy!.bookId ? { ...b, _scannedCopy: scannedCopy } : b
     );
     // Put the scanned-copy book first
@@ -141,12 +161,13 @@ export async function POST(request: NextRequest) {
   const barcode = await generateBarcode();
 
   // coAuthorIds is a relation, not a column — pull it out and handle via connect
-  const { coAuthorIds, locationId: locationIdFromForm, ...bookData } = parsed.data;
+  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, ...bookData } = parsed.data;
 
   // Prefer explicit locationId from form; fall back to resolving free-text location string
   const locationId = locationIdFromForm !== undefined
     ? (locationIdFromForm ?? undefined)
     : await resolveLocationId(bookData.location);
+  const branchId = branchIdFromForm ?? undefined;
 
   const book = await prisma.$transaction(async (tx) => {
     const created = await tx.book.create({
@@ -155,6 +176,7 @@ export async function POST(request: NextRequest) {
         barcode,
         availableCopies: bookData.totalCopies,
         ...(locationId && { locationId }),
+        ...(branchId   && { branchId }),
         ...(coAuthorIds && coAuthorIds.length > 0 && {
           coAuthors: { connect: coAuthorIds.map((id) => ({ id })) },
         }),
@@ -172,10 +194,20 @@ export async function POST(request: NextRequest) {
           condition:  "GOOD",
           status:     "AVAILABLE",
           price:      bookData.price ?? null,
+          // Copies inherit the book's home branch so the physical location
+          // starts in sync. It will float on the first return if needed.
+          ...(branchId && { branchId }),
         },
       });
     }
     return created;
+  });
+
+  await logActivity(actorFromSession(session), Actions.BOOK_CREATED, {
+    entityType: "Book",
+    entityId:   book.id,
+    entityName: book.title,
+    detail:     { isbn: book.isbn, totalCopies: book.totalCopies, materialType: book.materialType },
   });
 
   return NextResponse.json(book, { status: 201 });

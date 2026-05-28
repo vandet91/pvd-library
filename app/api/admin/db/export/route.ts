@@ -183,7 +183,7 @@ export async function GET(req: NextRequest) {
       Title:      r.title,
       Author:     r.author ?? "",
       ISBN:       r.isbn ?? "",
-      Reason:     r.reason ?? "",
+      Reason:     r.notes ?? "",
       Status:     r.status,
       AdminNote:  r.adminNote ?? "",
       CreatedAt:  fmt(r.createdAt),

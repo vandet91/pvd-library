@@ -9,6 +9,7 @@ import {
   AlertCircle, Plus, Send, Loader2, BookOpen,
 } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
+import RestrictionBanner from "@/components/shared/RestrictionBanner";
 import { useLibraryName } from "@/context/library-name";
 
 interface BookRequest {
@@ -134,6 +135,8 @@ export default function RequestsPage() {
           <MemberHeader theme="dark" />
         </div>
       </nav>
+
+      <RestrictionBanner />
 
       {/* ── Page header ── */}
       <header className="bg-gradient-to-br from-blue-900 via-blue-900 to-indigo-900 text-white px-4 py-4">

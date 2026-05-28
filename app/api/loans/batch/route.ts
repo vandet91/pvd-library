@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { addDays } from "date-fns";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 /**
  * POST /api/loans/batch
@@ -24,11 +26,23 @@ export async function POST(request: NextRequest) {
     items?:   { bookId: string; copyId?: string }[];
     loanDays?: number;
     loanType?: "HOME" | "IN_LIBRARY";
+    branchId?: string;                         // branch processing the checkout
+    overrideRestriction?: boolean;             // LIBRARIAN+ can override IN_LIBRARY_ONLY
   };
   const { memberId } = body;
+  const checkoutBranchId = body.branchId || null;
   const loanType = body.loanType === "IN_LIBRARY" ? "IN_LIBRARY" : "HOME";
   // In-library loans expire at end of day; home loans use the configured duration
-  const loanDays = loanType === "IN_LIBRARY" ? 0 : (body.loanDays ?? 14);
+  let loanDays: number;
+  if (loanType === "IN_LIBRARY") {
+    loanDays = 0;
+  } else if (body.loanDays) {
+    loanDays = body.loanDays;
+  } else {
+    // Fall back to the admin setting, then hard-coded safety net
+    const setting = await prisma.settings.findUnique({ where: { key: "DEFAULT_LOAN_DAYS" } });
+    loanDays = parseInt(setting?.value ?? "14", 10);
+  }
 
   // Normalize both payload shapes into one `items` array
   const items = body.items
@@ -39,6 +53,26 @@ export async function POST(request: NextRequest) {
 
   const member = await prisma.member.findUnique({ where: { id: memberId } });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+
+  // ── Restriction guard ────────────────────────────────────────────
+  const blockedStatuses = ["BLOCKED", "BLACKLISTED", "SUSPENDED"];
+  if (blockedStatuses.includes(member.restrictionStatus)) {
+    return NextResponse.json({
+      error: `Member account is ${member.restrictionStatus.toLowerCase().replace(/_/g, " ")} — borrowing is not permitted. Reason: ${member.restrictionReason ?? "Contact the librarian."}`,
+      code:  "ACCOUNT_RESTRICTED",
+      restrictionStatus: member.restrictionStatus,
+    }, { status: 403 });
+  }
+  if (member.restrictionStatus === "IN_LIBRARY_ONLY" && loanType === "HOME") {
+    const canOverride = body.overrideRestriction === true && can(session.user?.role, "LIBRARIAN");
+    if (!canOverride) {
+      return NextResponse.json({
+        error: `Member is restricted to in-library borrowing only. Use "In-Library" loan type, or ask a librarian to override.`,
+        code:  "IN_LIBRARY_ONLY",
+        restrictionStatus: member.restrictionStatus,
+      }, { status: 403 });
+    }
+  }
 
   // ── Quota + overdue check ─────────────────────────────────────────
   const bookIds = items.map((i) => i.bookId);
@@ -141,10 +175,20 @@ export async function POST(request: NextRequest) {
     ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
     : addDays(now, loanDays);
 
-  await prisma.$transaction(async (tx) => {
+  const createdLoans = await prisma.$transaction(async (tx) => {
+    const loans: { id: string; bookId: string; title: string }[] = [];
     for (const r of resolved) {
-      await tx.loan.create({
-        data: { memberId, bookId: r.bookId, copyId: r.copyId, dueDate, status: "ACTIVE", loanType },
+      const loan = await tx.loan.create({
+        data: {
+          memberId,
+          bookId:   r.bookId,
+          copyId:   r.copyId,
+          dueDate,
+          status:   "ACTIVE",
+          loanType,
+          ...(checkoutBranchId ? { branchId: checkoutBranchId } : {}),
+        },
+        select: { id: true, bookId: true },
       });
       await tx.book.update({
         where: { id: r.bookId },
@@ -156,8 +200,38 @@ export async function POST(request: NextRequest) {
           data:  { status: "BORROWED" },
         });
       }
+      loans.push({ id: loan.id, bookId: r.bookId, title: r.title });
     }
+    return loans;
   });
+
+  // Log one activity entry per book checked out
+  const actor = actorFromSession(session);
+  await Promise.all(
+    createdLoans.map((loan) =>
+      logActivity(actor, Actions.LOAN_CHECKOUT, {
+        entityType: "Loan",
+        entityId:   loan.id,
+        entityName: `${loan.title} → ${member.name}`,
+        detail: {
+          memberId,
+          memberName: member.name,
+          bookId:     loan.bookId,
+          bookTitle:  loan.title,
+          dueDate,
+          loanType,
+        },
+      })
+    )
+  );
+
+  // Send one Telegram notification covering all books in this checkout
+  if (loanType === "HOME") {
+    const message = createdLoans.length === 1
+      ? tg.checkout(member.name, createdLoans[0].title, dueDate)
+      : `📖 <b>Books Checked Out</b>\n\nHi ${member.name}! You have borrowed ${createdLoans.length} books:\n${createdLoans.map((l, i) => `${i + 1}. <i>${l.title}</i>`).join("\n")}\n\nDue date: <b>${dueDate.toLocaleDateString()}</b>`;
+    notifyMember(memberId, message).catch(() => {});
+  }
 
   return NextResponse.json({ success: true, count: resolved.length }, { status: 201 });
 }

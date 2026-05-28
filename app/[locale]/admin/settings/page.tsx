@@ -18,15 +18,17 @@ import {
   Users,
   Palette,
   Monitor,
-  Bell,
   Globe,
   Info,
   Lock,
   ImagePlus,
   Trash2,
+  Bot,
+  UserPlus,
 } from "lucide-react";
 import { useLibraryLogo } from "@/context/library-logo";
 import { ALL_LOCALES, DEFAULT_LOCALE } from "@/lib/locales";
+import { OPAC_THEMES, type OpacThemeKey } from "@/lib/opac-theme";
 import { useTranslations } from "next-intl";
 
 interface SettingsData {
@@ -42,10 +44,16 @@ interface SettingsData {
   LIBRARY_NAME:                     string;
   LIBRARY_EMAIL:                    string;
   LIBRARY_PHONE:                    string;
+  LIBRARY_ADDRESS:                  string;
   DEFAULT_STAFF_THEME:              string;
   DEFAULT_STAFF_AUTH_STYLE:         string;
   DEFAULT_STAFF_AUTH_METHODS:       string;
   ENABLED_LOCALES:                  string;
+  AI_SEARCH_ADMIN:                  string;
+  AI_SEARCH_MEMBER:                 string;
+  MEMBER_SELF_REGISTER:              string;
+  MEMBER_SELF_REGISTER_AUTO_APPROVE: string;
+  OPAC_THEME:                        string;
 }
 
 const DEFAULT: SettingsData = {
@@ -61,10 +69,16 @@ const DEFAULT: SettingsData = {
   LIBRARY_NAME:                     "PVD Library",
   LIBRARY_EMAIL:                    "",
   LIBRARY_PHONE:                    "",
+  LIBRARY_ADDRESS:                  "",
   DEFAULT_STAFF_THEME:              "ocean",
   DEFAULT_STAFF_AUTH_STYLE:         "split",
   DEFAULT_STAFF_AUTH_METHODS:       '["password","google","magic"]',
   ENABLED_LOCALES:                  JSON.stringify(ALL_LOCALES.map(l => l.code)),
+  AI_SEARCH_ADMIN:                  "true",
+  AI_SEARCH_MEMBER:                 "true",
+  MEMBER_SELF_REGISTER:              "false",
+  MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
+  OPAC_THEME:                        "royal",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -420,6 +434,60 @@ export default function SettingsPage() {
         </div>
       </Section>
 
+      {/* ── Public Catalog Theme ──────────────────────────────────────── */}
+      <Section title="Public Catalog Theme" icon={<Palette className="w-4 h-4 text-pink-500" />}>
+        <p className="text-xs text-gray-400 -mt-2">
+          Applied to the <strong>Discover</strong> and <strong>E-Library</strong> pages visible to all members and visitors.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(Object.entries(OPAC_THEMES) as [OpacThemeKey, typeof OPAC_THEMES[OpacThemeKey]][]).map(([key, thm]) => {
+            const labels: Record<OpacThemeKey, { name: string; desc: string }> = {
+              royal:  { name: "Royal Blue", desc: "Deep navy & indigo — the classic look" },
+              forest: { name: "Forest",     desc: "Deep green & teal — calm and natural" },
+              sunset: { name: "Sunset",     desc: "Rose & violet — warm and inviting"    },
+            };
+            const active = data.OPAC_THEME === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => set("OPAC_THEME", key)}
+                disabled={busy}
+                className={`relative rounded-xl border-2 p-4 text-left transition-all focus:outline-none hover:shadow-md disabled:opacity-60
+                  ${active ? "border-indigo-500 shadow-md ring-2 ring-indigo-100" : "border-gray-100 hover:border-gray-200"}`}
+              >
+                {/* Mini page preview */}
+                <div className="h-16 rounded-lg overflow-hidden mb-3 flex flex-col gap-px">
+                  <div className={`h-5 flex-shrink-0 ${thm.previewNav} flex items-center px-2 gap-1`}>
+                    <div className="w-2 h-2 rounded bg-white/30" />
+                    <div className="w-8 h-1.5 rounded bg-white/20" />
+                  </div>
+                  <div className={`flex-1 ${thm.previewHero} flex items-center px-2`}>
+                    <div className="space-y-1">
+                      <div className="w-16 h-1.5 rounded bg-white/40" />
+                      <div className="w-10 h-1 rounded bg-white/25" />
+                    </div>
+                  </div>
+                  <div className="h-5 flex-shrink-0 bg-gray-100 flex items-center px-2 gap-1">
+                    <div className="w-4 h-1.5 rounded bg-gray-300" />
+                    <div className="w-4 h-1.5 rounded bg-gray-300" />
+                    <div className="w-4 h-1.5 rounded" style={{ background: thm.accentHex }} />
+                  </div>
+                </div>
+                <p className="font-semibold text-gray-800 text-sm">{labels[key].name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{labels[key].desc}</p>
+                {active && (
+                  <span
+                    className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px]"
+                    style={{ background: thm.accentHex }}
+                  >✓</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+
       {/* ── Loan & Fine Policy ─────────────────────────────────────────── */}
       <Section title={t("sectionLoanPolicy")} icon={<BookOpen className="w-4 h-4 text-indigo-500" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -537,17 +605,18 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ── Email Notifications ────────────────────────────────────────── */}
-      <Section title={t("sectionNotifications")} icon={<Bell className="w-4 h-4 text-amber-500" />}>
+      {/* ── AI Book Search ─────────────────────────────────────────────── */}
+      <Section title={t("sectionAI")} icon={<Bot className="w-4 h-4 text-violet-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">{t("aiSectionNote")}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Field
-            label={t("fieldNotificationsEnabledLabel")}
-            hint={t("fieldNotificationsEnabledHint")}
-            icon={<Bell className="w-4 h-4 text-gray-400" />}
+            label={t("fieldAIAdminLabel")}
+            hint={t("fieldAIAdminHint")}
+            icon={<Bot className="w-4 h-4 text-gray-400" />}
           >
             <select
-              value={data.NOTIFICATIONS_ENABLED}
-              onChange={(e) => set("NOTIFICATIONS_ENABLED", e.target.value)}
+              value={data.AI_SEARCH_ADMIN}
+              onChange={(e) => set("AI_SEARCH_ADMIN", e.target.value)}
               disabled={busy}
               className={inputCls}
             >
@@ -557,25 +626,70 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label={t("fieldDueSoonDaysLabel")}
-            hint={t("fieldDueSoonDaysHint")}
-            icon={<Clock className="w-4 h-4 text-gray-400" />}
+            label={t("fieldAIMemberLabel")}
+            hint={t("fieldAIMemberHint")}
+            icon={<Bot className="w-4 h-4 text-gray-400" />}
           >
-            <input
-              type="number"
-              min={1}
-              max={14}
-              value={data.DUE_SOON_DAYS}
-              onChange={(e) => set("DUE_SOON_DAYS", e.target.value)}
+            <select
+              value={data.AI_SEARCH_MEMBER}
+              onChange={(e) => set("AI_SEARCH_MEMBER", e.target.value)}
               disabled={busy}
               className={inputCls}
-            />
+            >
+              <option value="true">{t("enabled")}</option>
+              <option value="false">{t("disabled")}</option>
+            </select>
           </Field>
         </div>
-        <p className="text-xs text-gray-400 mt-4">
-          {t("notifManageNote")}{" "}
-          <a href="notifications" className="text-blue-600 hover:underline">{t("notifManageLink")}</a>.
-        </p>
+      </Section>
+
+      {/* ── Member Self-Registration ──────────────────────────────────── */}
+      <Section title="Member Self-Registration" icon={<UserPlus className="w-4 h-4 text-emerald-500" />}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Field
+            label="Allow Self-Registration"
+            hint='When enabled, a "Create account" button appears on the member login page and the /member/register page is accessible.'
+            icon={<UserPlus className="w-4 h-4 text-gray-400" />}
+          >
+            <select
+              value={data.MEMBER_SELF_REGISTER}
+              onChange={(e) => set("MEMBER_SELF_REGISTER", e.target.value)}
+              disabled={busy}
+              className={inputCls}
+            >
+              <option value="true">Open — anyone can register</option>
+              <option value="false">Closed — staff only</option>
+            </select>
+          </Field>
+
+          <Field
+            label="Auto-Approve New Accounts"
+            hint="Enabled: new members can log in immediately. Disabled: accounts are inactive until a staff member approves them."
+            icon={<Users className="w-4 h-4 text-gray-400" />}
+          >
+            <select
+              value={data.MEMBER_SELF_REGISTER_AUTO_APPROVE}
+              onChange={(e) => set("MEMBER_SELF_REGISTER_AUTO_APPROVE", e.target.value)}
+              disabled={busy || data.MEMBER_SELF_REGISTER !== "true"}
+              className={inputCls}
+            >
+              <option value="false">Pending approval (recommended)</option>
+              <option value="true">Auto-approve (instant access)</option>
+            </select>
+          </Field>
+        </div>
+
+        {data.MEMBER_SELF_REGISTER === "true" && data.MEMBER_SELF_REGISTER_AUTO_APPROVE === "false" && (
+          <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-xs text-amber-700">
+            ⚠️ <strong>Pending approval mode:</strong> New registrations will appear in the Members list with <code>isActive = false</code>. A staff member must manually activate the account before the member can log in.
+          </div>
+        )}
+
+        {data.MEMBER_SELF_REGISTER === "false" && (
+          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 text-xs text-gray-500">
+            Registration is closed. Only staff can create member accounts via the admin panel.
+          </div>
+        )}
       </Section>
 
       {/* ── Library Information ────────────────────────────────────────── */}
@@ -699,6 +813,16 @@ export default function SettingsPage() {
               disabled={busy}
               className={inputCls}
               placeholder="+855 23 000 000"
+            />
+          </Field>
+          <Field label="Library Address" hint="Shown on POS thermal receipts" icon={<Building2 className="w-4 h-4 text-gray-400" />}>
+            <input
+              type="text"
+              value={data.LIBRARY_ADDRESS}
+              onChange={(e) => set("LIBRARY_ADDRESS", e.target.value)}
+              disabled={busy}
+              className={inputCls}
+              placeholder="123 Street, Phnom Penh"
             />
           </Field>
         </div>

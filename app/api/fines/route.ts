@@ -9,13 +9,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const status   = searchParams.get("status") as "PAID" | "UNPAID" | null;
+  const status   = searchParams.get("status") as "PAID" | "UNPAID" | "WAIVED" | null;
   const memberId = searchParams.get("memberId") || undefined;
+  const search   = searchParams.get("search")?.trim() || undefined;
 
   const fines = await prisma.fine.findMany({
     where: {
       ...(status   ? { status }   : {}),
       ...(memberId ? { memberId } : {}),
+      ...(search   ? {
+        OR: [
+          { member: { name:     { contains: search, mode: "insensitive" } } },
+          { member: { memberId: { contains: search, mode: "insensitive" } } },
+        ],
+      } : {}),
     },
     include: {
       member: true,

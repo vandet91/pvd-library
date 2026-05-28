@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
+import { useSession } from "next-auth/react";
 import {
   ArrowRightLeft, ScanLine, CheckCheck, Clock, AlertTriangle, X,
   RefreshCw, Loader2, Barcode, BookOpen, User, Plus, Trash2,
-  ShoppingBasket, RotateCcw, Calendar, PackageX, DollarSign, Home, BookMarked,
+  ShoppingBasket, RotateCcw, Calendar, PackageX, DollarSign, Home, BookMarked, Landmark,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -19,10 +20,13 @@ interface Loan {
   fine?: { amount: number; status: string } | null;
 }
 
+interface Branch { id: string; name: string; isActive: boolean }
+
 interface MemberResult {
   id: string; name: string; memberId: string; memberType: string;
   expireDate?: string | null;
   hasOverdue?: boolean;
+  restrictionStatus?: string | null;
   _count?: { loans: number };
 }
 
@@ -30,7 +34,7 @@ interface BookResult {
   id: string; title: string; isbn: string | null; barcode: string | null;
   availableCopies?: number; materialType?: string; referenceOnly?: boolean;
   author?: { name: string } | null;
-  _scannedCopy?: { id: string; copyNumber: number; barcode: string | null };
+  _scannedCopy?: { id: string; copyNumber: number; barcode: string | null; branchId: string | null };
   copies?: { id: string; copyNumber: number; barcode: string | null }[];
 }
 
@@ -80,8 +84,9 @@ function MemberSearch({
     const timer = setTimeout(async () => {
       setBusy(true);
       try {
-        const res: MemberResult[] = await fetch(`/api/members?q=${encodeURIComponent(q)}`).then((r) => r.json());
-        setSuggestions(Array.isArray(res) ? res.slice(0, 6) : []);
+        const data = await fetch(`/api/members?q=${encodeURIComponent(q)}`).then((r) => r.json());
+        const res: MemberResult[] = data.members ?? (Array.isArray(data) ? data : []);
+        setSuggestions(res.slice(0, 6));
         setOpen(true);
       } catch { setSuggestions([]); }
       setBusy(false);
@@ -152,17 +157,49 @@ function MemberSearch({
 export default function CirculationPage() {
   const t  = useTranslations("circulation");
   const tc = useTranslations("common");
+  const { data: authSession } = useSession();
+  const isLibrarian = authSession?.user?.role === "LIBRARIAN" || authSession?.user?.role === "ADMIN";
 
   const [tab, setTab] = useState<Tab>("active");
 
-  /* Quota from settings */
+  /* Quota + loan duration from settings */
   const [maxLoans, setMaxLoans] = useState(3);
+  const [loanDays, setLoanDays] = useState(14);
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((s) => { if (s.MAX_LOANS_PER_MEMBER) setMaxLoans(Number(s.MAX_LOANS_PER_MEMBER)); })
+      .then((s) => {
+        if (s.MAX_LOANS_PER_MEMBER) setMaxLoans(Number(s.MAX_LOANS_PER_MEMBER));
+        if (s.DEFAULT_LOAN_DAYS)    setLoanDays(Number(s.DEFAULT_LOAN_DAYS));
+      })
       .catch(() => {});
   }, []);
+
+  /* Branch selector — persisted in localStorage so staff don't re-select every visit */
+  const [branches,        setBranches]        = useState<Branch[]>([]);
+  const [currentBranchId, setCurrentBranchId] = useState<string>("");
+  useEffect(() => {
+    fetch("/api/branches")
+      .then((r) => r.json())
+      .then((brs: Branch[]) => {
+        if (Array.isArray(brs)) {
+          const active = brs.filter((b) => b.isActive);
+          setBranches(active);
+          // Restore saved branch (only if still in active list)
+          const saved = typeof window !== "undefined" ? localStorage.getItem("pvd-circ-branch") : null;
+          if (saved && active.some((b) => b.id === saved)) setCurrentBranchId(saved);
+        }
+      })
+      .catch(() => {});
+  }, []);
+  function handleBranchChange(id: string) {
+    setCurrentBranchId(id);
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem("pvd-circ-branch", id);
+      else     localStorage.removeItem("pvd-circ-branch");
+    }
+  }
+  const currentBranch = branches.find((b) => b.id === currentBranchId);
 
   /* ── Active loans (all) ──────────────────────────────────────── */
   const [loans,        setLoans]        = useState<Loan[]>([]);
@@ -250,7 +287,10 @@ export default function CirculationPage() {
       const res = await fetch(`/api/loans/${loanId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "return" }),
+        body: JSON.stringify({
+          action: "return",
+          ...(currentBranchId ? { returnBranchId: currentBranchId } : {}),
+        }),
       });
       if (res.ok) {
         setReturnMsg({ id: loanId, ok: true, text: t("returnSuccess") });
@@ -275,23 +315,26 @@ export default function CirculationPage() {
   const [bookBusy,      setBookBusy]      = useState(false);
   const [showBookDrop,  setShowBookDrop]  = useState(false);
   const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
-  const [loanDays,      setLoanDays]      = useState(14);
   const [loanType,      setLoanType]      = useState<"HOME" | "IN_LIBRARY">("HOME");
   const [borrowLoading, setBorrowLoading] = useState(false);
   const [activeInLibLoans, setActiveInLibLoans] = useState<{ title: string; dueDate: string }[]>([]);
-  const [inLibOverride, setInLibOverride] = useState(false);
-  const [borrowMsg,     setBorrowMsg]     = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [inLibOverride,    setInLibOverride]    = useState(false);
+  const [homeLoanOverride, setHomeLoanOverride] = useState(false); // LIBRARIAN override for IN_LIBRARY_ONLY member
+  const [borrowMsg,        setBorrowMsg]        = useState<{ type: "success" | "error"; text: string } | null>(null);
   const bookRef    = useRef<HTMLDivElement>(null);
   const bookVideoRef = useRef<HTMLVideoElement>(null);
   const [scanTarget, setScanTarget] = useState<"member-b" | "book" | "member-r" | null>(null);
   const memberBVideoRef = useRef<HTMLVideoElement>(null);
 
-  const activeLoans    = borrowMember?._count?.loans ?? 0;
-  const hasOverdue     = borrowMember?.hasOverdue ?? false;
-  const atQuota        = activeLoans >= maxLoans;
-  const memberExpired  = !!borrowMember?.expireDate && new Date(borrowMember.expireDate) < new Date();
+  const activeLoans      = borrowMember?._count?.loans ?? 0;
+  const hasOverdue       = borrowMember?.hasOverdue ?? false;
+  const atQuota          = activeLoans >= maxLoans;
+  const memberExpired    = !!borrowMember?.expireDate && new Date(borrowMember.expireDate) < new Date();
+  const isInLibraryOnly  = borrowMember?.restrictionStatus === "IN_LIBRARY_ONLY";
+  // needsHomeLoanOverride: IN_LIBRARY_ONLY member trying to do a HOME loan without librarian override
+  const needsHomeLoanOverride = isInLibraryOnly && loanType === "HOME" && !homeLoanOverride;
   // Expired blocks all loans. Overdue/quota only blocks take-home.
-  const memberBlocked  = !!borrowMember && (memberExpired || (loanType === "HOME" && (hasOverdue || atQuota)));
+  const memberBlocked    = !!borrowMember && (memberExpired || (loanType === "HOME" && (hasOverdue || atQuota)));
   const IN_LIB_LIMIT   = 1;
   const slotsLeft      = loanType === "IN_LIBRARY"
     ? Math.max(0, IN_LIB_LIMIT - bookCart.length)
@@ -336,7 +379,7 @@ export default function CirculationPage() {
 
   async function selectBorrowMember(m: MemberResult) {
     setBorrowMember(m); setBorrowQuery(m.memberId);
-    setBookCart([]); setBorrowMsg(null); setInLibOverride(false);
+    setBookCart([]); setBorrowMsg(null); setInLibOverride(false); setHomeLoanOverride(false);
     // Preload the books this member already has on loan so we can block re-adding
     try {
       const [active, overdue] = await Promise.all([
@@ -359,7 +402,7 @@ export default function CirculationPage() {
   function clearBorrowMember() {
     setBorrowMember(null); setBorrowQuery(""); setBookCart([]); setBorrowMsg(null);
     setBorrowedIds(new Set()); setLoanType("HOME");
-    setActiveInLibLoans([]); setInLibOverride(false);
+    setActiveInLibLoans([]); setInLibOverride(false); setHomeLoanOverride(false);
   }
   function addToCart(b: BookResult) {
     if (!canAddBook) return;
@@ -372,6 +415,10 @@ export default function CirculationPage() {
     }
     // Auto-switch to in-library if a reference-only book is added
     if (b.referenceOnly && loanType === "HOME") setLoanType("IN_LIBRARY");
+    // Auto-set active branch from the scanned copy's branch (only when no branch is selected yet)
+    if (b._scannedCopy?.branchId && !currentBranchId) {
+      handleBranchChange(b._scannedCopy.branchId);
+    }
     setBookCart((p) => [...p, b]);
     setBookQuery(""); setBookSuggestions([]); setShowBookDrop(false);
   }
@@ -414,22 +461,25 @@ export default function CirculationPage() {
         })),
         loanDays,
         loanType,
+        ...(currentBranchId ? { branchId: currentBranchId } : {}),
+        ...(homeLoanOverride ? { overrideRestriction: true } : {}),
       }),
     });
     setBorrowLoading(false);
     if (res.ok) {
       const { count } = await res.json();
       setBorrowMsg({ type: "success", text: loanType === "IN_LIBRARY" ? t("issuedForInLibrary", { count }) : t("borrowedSuccess", { count }) });
-      setBookCart([]); setLoanType("HOME"); setInLibOverride(false);
+      setBookCart([]); setLoanType("HOME"); setInLibOverride(false); setHomeLoanOverride(false);
 
       // Refresh member quota + in-library loan list (ACTIVE and OVERDUE both)
       // so the conflict warning shows the true total for the next attempt.
-      const [updatedMembers, freshActive, freshOverdue] = await Promise.all([
+      const [updatedMembersData, freshActive, freshOverdue] = await Promise.all([
         fetch(`/api/members?q=${borrowMember.memberId}`).then((r) => r.json()),
         fetch(`/api/loans?memberId=${borrowMember.id}&status=ACTIVE`).then((r) => r.json()),
         fetch(`/api/loans?memberId=${borrowMember.id}&status=OVERDUE`).then((r) => r.json()),
       ]);
-      const refreshed = (updatedMembers as MemberResult[]).find((m) => m.id === borrowMember.id);
+      const updatedMembers: MemberResult[] = updatedMembersData.members ?? (Array.isArray(updatedMembersData) ? updatedMembersData : []);
+      const refreshed = updatedMembers.find((m) => m.id === borrowMember.id);
       if (refreshed) setBorrowMember(refreshed);
       const allFresh = [
         ...(Array.isArray(freshActive)  ? (freshActive  as Loan[]) : []),
@@ -491,7 +541,8 @@ export default function CirculationPage() {
       if (returnMember) {
         fetch(`/api/members?q=${returnMember.memberId}`)
           .then((r) => r.json())
-          .then((res: MemberResult[]) => {
+          .then((data) => {
+            const res: MemberResult[] = data.members ?? (Array.isArray(data) ? data : []);
             const refreshed = res.find((m) => m.id === returnMember.id);
             if (refreshed) setReturnMember(refreshed);
           }).catch(() => {});
@@ -590,7 +641,30 @@ export default function CirculationPage() {
   /* ── UI ──────────────────────────────────────────────────────── */
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+      {/* Header row: title + branch selector */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+        {branches.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <select
+              value={currentBranchId}
+              onChange={(e) => handleBranchChange(e.target.value)}
+              className="pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— {t("allBranches")} —</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            {currentBranch && (
+              <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-lg font-medium whitespace-nowrap">
+                {t("currentBranchLabel")}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-200">
@@ -717,7 +791,7 @@ export default function CirculationPage() {
                     <Home className="w-4 h-4" /> {t("takeHome")}
                   </button>
                   <button type="button"
-                    onClick={() => { setLoanType("IN_LIBRARY"); setInLibOverride(false); }}
+                    onClick={() => { setLoanType("IN_LIBRARY"); setInLibOverride(false); setHomeLoanOverride(false); }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       loanType === "IN_LIBRARY"
                         ? "bg-amber-100 text-amber-800 shadow-sm"
@@ -730,6 +804,70 @@ export default function CirculationPage() {
                   <p className="mt-1.5 text-xs text-amber-700">
                     {t("inLibraryDesc")}
                   </p>
+                )}
+
+                {/* ── IN_LIBRARY_ONLY member trying HOME loan — librarian override ── */}
+                {isInLibraryOnly && loanType === "HOME" && (
+                  <div className={`mt-3 rounded-xl border px-4 py-3 ${
+                    homeLoanOverride
+                      ? "bg-green-50 border-green-200"
+                      : "bg-amber-50 border-amber-300"
+                  }`}>
+                    {homeLoanOverride ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCheck className="w-4 h-4 text-green-600 flex-shrink-0" />
+                          <p className="text-xs font-semibold text-green-700">
+                            Home loan override active — restriction bypassed for this checkout
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHomeLoanOverride(false)}
+                          className="text-xs text-green-600 underline hover:no-underline flex-shrink-0">
+                          Undo
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start gap-2 mb-3">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
+                          <div>
+                            <p className="text-xs font-bold text-amber-800">
+                              Member is restricted to In-Library use only
+                            </p>
+                            {borrowMember?.restrictionStatus === "IN_LIBRARY_ONLY" && (
+                              <p className="text-xs text-amber-700 mt-0.5">
+                                Home loans are blocked. Switch to "In-Library" or a librarian can override below.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setLoanType("IN_LIBRARY"); setHomeLoanOverride(false); }}
+                            className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors border border-amber-200">
+                            <BookMarked className="w-3.5 h-3.5 inline mr-1" />
+                            Switch to In-Library
+                          </button>
+                          {isLibrarian ? (
+                            <button
+                              type="button"
+                              onClick={() => setHomeLoanOverride(true)}
+                              className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition-colors">
+                              <Home className="w-3.5 h-3.5 inline mr-1" />
+                              Allow Home Loan (Override)
+                            </button>
+                          ) : (
+                            <div className="flex-1 text-xs text-gray-500 italic px-3 py-2 text-center">
+                              Librarian permission required to override
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
 
                 {/* ── In-library advisory warnings ── */}
@@ -886,7 +1024,7 @@ export default function CirculationPage() {
                                     </span>
                                   )}
                                   <span className={`text-xs font-medium ${!unavailable ? "text-green-600" : "text-red-500"}`}>
-                                    {!unavailable ? t("availCopies", { count: b.availableCopies }) : t("unavailable")}
+                                    {!unavailable ? t("availCopies", { count: b.availableCopies ?? 0 }) : t("unavailable")}
                                   </span>
                                   {alreadyOnLoan && (
                                     <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-bold uppercase tracking-wide">{t("alreadyOnLoanTitle")}</span>
@@ -926,7 +1064,7 @@ export default function CirculationPage() {
                                   type="button"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
-                                    addToCart({ ...b, _scannedCopy: copy });
+                                    addToCart({ ...b, _scannedCopy: { ...copy, branchId: null } });
                                     setExpandedBookId(null);
                                   }}
                                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-medium text-indigo-700 hover:bg-indigo-100 hover:border-indigo-400 transition-colors"
@@ -1031,7 +1169,7 @@ export default function CirculationPage() {
             )}
             <form onSubmit={handleBorrow}>
               <button type="submit"
-                disabled={borrowLoading || !borrowMember || bookCart.length === 0 || memberBlocked || inLibNeedsOverride}
+                disabled={borrowLoading || !borrowMember || bookCart.length === 0 || memberBlocked || inLibNeedsOverride || needsHomeLoanOverride}
                 className={`w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
                   loanType === "IN_LIBRARY" ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-900 hover:bg-blue-800"
                 }`}>
@@ -1214,6 +1352,13 @@ export default function CirculationPage() {
                         <CheckCheck className="w-4 h-4" /> {t("confirmReturn")}
                       </button>
                     )}
+                    {/* Branch float indicator */}
+                    {currentBranch && (
+                      <p className="text-xs text-center text-gray-400 flex items-center justify-center gap-1 mt-1">
+                        <Landmark className="w-3 h-3" />
+                        {t("copyCheckInAt", { branch: currentBranch.name })}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1283,6 +1428,11 @@ export default function CirculationPage() {
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                   <RotateCcw className="w-4 h-4 text-gray-400" />
                   <h2 className="font-semibold text-gray-800">{t("activeLoans")}</h2>
+                  {currentBranch && (
+                    <span className="ml-auto flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg font-medium">
+                      <Landmark className="w-3 h-3" /> {currentBranch.name}
+                    </span>
+                  )}
                   {memberLoans.length > 0 && (
                     <span className="ml-auto text-xs bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded-full">
                       {memberLoans.length} {t("booksLabel")}

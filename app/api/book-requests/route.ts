@@ -53,13 +53,17 @@ export async function POST(request: NextRequest) {
   /* Resolve member record */
   const member = await prisma.member.findFirst({
     where: { userId: session.user?.id },
-    select: { id: true },
+    select: { id: true, isActive: true, pendingApproval: true },
   });
   if (!member)
     return NextResponse.json(
       { error: "You must be a registered member to submit requests" },
       { status: 403 },
     );
+  if (member.pendingApproval)
+    return NextResponse.json({ error: "Your account is pending staff approval", code: "PENDING_APPROVAL" }, { status: 403 });
+  if (!member.isActive)
+    return NextResponse.json({ error: "Your account is inactive. Please contact the library.", code: "ACCOUNT_INACTIVE" }, { status: 403 });
 
   const req = await prisma.bookRequest.create({
     data: { memberId: member.id, title: title.trim(), author, isbn, notes },

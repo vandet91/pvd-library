@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
-import { ScanLine, X, Upload, ImageIcon, BookMarked, ExternalLink, Plus, Printer, RefreshCw, Loader2 } from "lucide-react";
+import { ScanLine, X, Upload, ImageIcon, BookMarked, ExternalLink, Plus, Printer, RefreshCw, Loader2, Wand2, CheckCircle2 } from "lucide-react";
 import LanguageSelect from "@/components/shared/LanguageSelect";
 import BarcodeDisplay from "@/components/admin/BarcodeDisplay";
 import BookCopiesPanel from "@/components/admin/BookCopiesPanel";
@@ -13,6 +13,7 @@ interface Category  { id: string; name: string }
 interface Author    { id: string; name: string }
 interface Publisher { id: string; name: string }
 interface Location  { id: string; name: string; description?: string | null }
+interface Branch    { id: string; name: string; nameKm?: string | null; isActive: boolean }
 interface LinkedEbook { id: string; title: string; ebookType: string; fileUrl: string }
 
 const MATERIAL_TYPES = [
@@ -27,6 +28,7 @@ interface BookFormProps {
     description?: string; coverImage?: string;
     publishYear?: number; pages?: number; language?: string;
     locationId?: string | null;
+    branchId?: string | null;
     totalCopies: number; price?: number | null;
     referenceOnly?: boolean;
     materialType?: string;
@@ -56,6 +58,7 @@ export default function BookForm({ initial }: BookFormProps) {
   const [authors,    setAuthors]    = useState<Author[]>([]);
   const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [locations,  setLocations]  = useState<Location[]>([]);
+  const [branches,   setBranches]   = useState<Branch[]>([]);
   const [scanning,   setScanning]   = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -71,6 +74,7 @@ export default function BookForm({ initial }: BookFormProps) {
     pages:       initial?.pages       ?? ("" as number | ""),
     language:     initial?.language     ?? "en",
     locationId:   initial?.locationId   ?? "",
+    branchId:     initial?.branchId     ?? "",
     totalCopies:  initial?.totalCopies  ?? 1,
     price:        initial?.price        ?? ("" as number | ""),
     referenceOnly: initial?.referenceOnly ?? false,
@@ -88,6 +92,9 @@ export default function BookForm({ initial }: BookFormProps) {
   const [barcode,         setBarcode]         = useState<string | null>(initial?.barcode ?? null);
   const [genBusy,         setGenBusy]         = useState(false);
   const [genError,        setGenError]        = useState<string | null>(null);
+  const [isbnLooking,     setIsbnLooking]     = useState(false);
+  const [isbnFilled,      setIsbnFilled]      = useState<string[] | null>(null);
+  const [isbnError,       setIsbnError]       = useState<string | null>(null);
 
   const linkedEbooks = initial?.ebooks ?? [];
 
@@ -97,11 +104,13 @@ export default function BookForm({ initial }: BookFormProps) {
       fetch("/api/authors").then((r)    => r.json()),
       fetch("/api/publishers").then((r) => r.json()),
       fetch("/api/locations").then((r)  => r.json()),
-    ]).then(([cats, auths, pubs, locs]) => {
+      fetch("/api/branches").then((r)   => r.json()),
+    ]).then(([cats, auths, pubs, locs, brs]) => {
       setCategories(cats);
       setAuthors(auths);
       setPublishers(pubs);
       setLocations(locs);
+      setBranches(Array.isArray(brs) ? brs.filter((b: Branch) => b.isActive) : []);
     });
   }, []);
 
@@ -137,6 +146,201 @@ export default function BookForm({ initial }: BookFormProps) {
     }
   }
 
+  /* ── ISBN auto-fill ────────────────────────────────────────────────────
+   *  Sources tried in order (each fills only fields still empty):
+   *    1. OpenLibrary data API          — free, no key
+   *    2. Google Books API              — free, no key
+   *    3. BnF (French National Library) — free, no key; good Khmer coverage
+   *    4. ISBNdb                        — optional: set NEXT_PUBLIC_ISBNDB_API_KEY
+   *    5. Open Library Covers API       — cover-only fallback, free
+   * ─────────────────────────────────────────────────────────────────────── */
+  async function lookupISBN() {
+    const isbn = form.isbn.trim().replace(/[-\s]/g, "");
+    if (!isbn) { setIsbnError("Enter an ISBN first"); return; }
+    setIsbnLooking(true); setIsbnError(null); setIsbnFilled(null);
+
+    // Accumulate all updates here so stale-closure reads between sources are avoided.
+    const patch: Record<string, unknown> = {};
+    const items: string[] = [];  // displayed to user: field labels + author/publisher hints
+
+    // has(k) → true if this field is already set in the form OR in patch
+    const has = (k: string) =>
+      !!(form as Record<string, unknown>)[k] || patch[k] !== undefined;
+
+    const fill = (k: string, v: unknown, label: string) => {
+      if (v && !has(k)) { patch[k] = v; items.push(label); }
+    };
+
+    const fillCover = (url: string) => {
+      if (url && !has("coverImage"))
+        fill("coverImage", url.replace("http://", "https://"), "Cover");
+    };
+
+    const hint = (text: string) => { if (text) items.push(text); };
+
+    // Should we keep trying? Stop early once the three most-wanted fields are set.
+    const needsMore = () => !has("title") || !has("publishYear") || !has("coverImage");
+
+    // ISO 639-2 (3-letter, used by BnF) → ISO 639-1 (2-letter)
+    const iso3to2: Record<string, string> = {
+      khm: "km", fre: "fr", eng: "en", spa: "es", deu: "de",
+      chi: "zh", jpn: "ja", kor: "ko", ara: "ar", por: "pt",
+      ita: "it", rus: "ru", vie: "vi", tha: "th", zho: "zh",
+    };
+
+    /* ── 1. Open Library ──────────────────────────────────────────── */
+    try {
+      const r = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (r.ok) {
+        const d = await r.json() as Record<string, unknown>;
+        const b = d[Object.keys(d)[0]] as Record<string, unknown> | undefined;
+        if (b) {
+          fill("title", b.title, "Title");
+          const pubDate = b.publish_date as string | undefined;
+          if (pubDate) { const y = parseInt(pubDate.slice(-4), 10); if (!isNaN(y)) fill("publishYear", y, "Year"); }
+          const desc = b.description as { value?: string } | string | undefined;
+          fill("description", typeof desc === "string" ? desc : (desc as { value?: string })?.value, "Description");
+          fill("pages", b.number_of_pages, "Pages");
+          const langs = b.languages as { key: string }[] | undefined;
+          if (langs?.[0]) fill("language", langs[0].key.replace("/languages/", "").slice(0, 2), "Language");
+          (b.authors  as { name: string }[] | undefined)?.[0]?.name  && hint(`Author: ${(b.authors as { name: string }[])[0].name} (select from dropdown)`);
+          (b.publishers as { name: string }[] | undefined)?.[0]?.name && hint(`Publisher: ${(b.publishers as { name: string }[])[0].name} (select from dropdown)`);
+          const olCov = b.cover as { large?: string; medium?: string } | undefined;
+          fillCover(olCov?.large ?? olCov?.medium ?? "");
+        }
+      }
+    } catch { /* source unavailable — continue to next */ }
+
+    /* ── 2. Google Books ──────────────────────────────────────────── */
+    if (needsMore()) {
+      try {
+        const r = await fetch(
+          `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        if (r.ok) {
+          const d = await r.json() as { totalItems: number; items?: unknown[] };
+          if (d.totalItems > 0 && d.items?.[0]) {
+            const vi = (d.items[0] as { volumeInfo: Record<string, unknown> }).volumeInfo;
+            fill("title",       vi.title,       "Title");
+            fill("description", vi.description, "Description");
+            fill("pages",       vi.pageCount,   "Pages");
+            if (vi.publishedDate) { const y = parseInt((vi.publishedDate as string).slice(0, 4), 10); if (!isNaN(y)) fill("publishYear", y, "Year"); }
+            (vi.authors  as string[] | undefined)?.[0] && hint(`Author: ${(vi.authors as string[])[0]} (select from dropdown)`);
+            (vi.publisher as string | undefined)        && hint(`Publisher: ${vi.publisher as string} (select from dropdown)`);
+            const img = vi.imageLinks as { thumbnail?: string; smallThumbnail?: string } | undefined;
+            fillCover(img?.thumbnail ?? img?.smallThumbnail ?? "");
+          }
+        }
+      } catch { /* source unavailable — continue to next */ }
+    }
+
+    /* ── 3. Bibliothèque nationale de France (BnF) ────────────────
+         Free SRU/Dublin-Core endpoint. Excellent for Khmer books:
+         France administered Cambodia 1863–1953 and BnF holds a large
+         Khmer-language collection. No API key required.            ── */
+    if (needsMore()) {
+      try {
+        const r = await fetch(
+          "https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve" +
+          `&query=bib.isbn%20all%20${isbn}&maximumRecords=1&recordSchema=dublincore`,
+          { signal: AbortSignal.timeout(10000) },
+        );
+        if (r.ok) {
+          const xml = await r.text();
+          // Regex extraction — avoids XML-namespace parsing complexity
+          const tag = (t: string) =>
+            xml.match(new RegExp(`<(?:[a-z]+:)?${t}[^>]*>([^<]+)<`, "i"))?.[1]?.trim() ?? "";
+
+          const bnfTitle = tag("title");
+          const bnfDate  = tag("date");
+          const bnfLang  = tag("language");
+          const bnfDesc  = tag("description");
+          const bnfAuth  = tag("creator");
+          const bnfPub   = tag("publisher");
+
+          if (bnfTitle) fill("title",       bnfTitle, "Title (BnF)");
+          if (bnfDesc)  fill("description", bnfDesc,  "Description (BnF)");
+          if (bnfDate)  { const y = parseInt(bnfDate.slice(0, 4), 10); if (!isNaN(y)) fill("publishYear", y, "Year (BnF)"); }
+          if (bnfLang) {
+            const code3 = bnfLang.slice(0, 3).toLowerCase();
+            fill("language", iso3to2[code3] ?? code3.slice(0, 2), "Language (BnF)");
+          }
+          if (bnfAuth) hint(`Author: ${bnfAuth} — BnF (select from dropdown)`);
+          if (bnfPub)  hint(`Publisher: ${bnfPub} — BnF (select from dropdown)`);
+
+          // BnF cover thumbnail — extract ARK identifier from the response
+          const arkMatch = xml.match(/ark:\/12148\/([a-z0-9]+)/i);
+          if (arkMatch) {
+            fillCover(`https://catalogue.bnf.fr/couverture?appName=NE&idArk=ark:/12148/${arkMatch[1]}&width=400`);
+          }
+        }
+      } catch { /* source unavailable — continue to next */ }
+    }
+
+    /* ── 4. ISBNdb  (optional — best Asian / Khmer book coverage) ──
+         Sign up at https://isbndb.com (free tier: 1 req/s, paid plans
+         from ~$10/month). Add to .env:  NEXT_PUBLIC_ISBNDB_API_KEY=… ── */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isbndbKey = (process.env as Record<string, string | undefined>).NEXT_PUBLIC_ISBNDB_API_KEY;
+    if (needsMore() && isbndbKey) {
+      try {
+        const r = await fetch(
+          `https://api2.isbndb.com/book/${isbn}`,
+          { headers: { Authorization: isbndbKey }, signal: AbortSignal.timeout(8000) },
+        );
+        if (r.ok) {
+          const d = await r.json() as { book?: Record<string, unknown> };
+          const b = d.book;
+          if (b) {
+            fill("title",       b.title,    "Title (ISBNdb)");
+            fill("description", b.synopsis, "Description (ISBNdb)");
+            fill("pages",       b.pages,    "Pages (ISBNdb)");
+            if (b.date_published) { const y = parseInt((b.date_published as string).slice(0, 4), 10); if (!isNaN(y)) fill("publishYear", y, "Year (ISBNdb)"); }
+            const ibLang = b.language as string | undefined;
+            if (ibLang) { const c3 = ibLang.slice(0, 3).toLowerCase(); fill("language", iso3to2[c3] ?? c3.slice(0, 2), "Language (ISBNdb)"); }
+            (b.authors as string[] | undefined)?.[0] && hint(`Author: ${(b.authors as string[])[0]} — ISBNdb (select from dropdown)`);
+            (b.publisher as string | undefined)       && hint(`Publisher: ${b.publisher as string} — ISBNdb (select from dropdown)`);
+            fillCover(((b.image ?? b.cover) as string | undefined) ?? "");
+          }
+        }
+      } catch { /* source unavailable */ }
+    }
+
+    /* ── 5. Open Library Covers API  (cover-only fallback) ─────────
+         Hits the OL image endpoint directly — sometimes a cover image
+         exists here even when the full book record is absent or empty.
+         OL serves a tiny placeholder (< 800 B) for unknown ISBNs;
+         real covers are typically > 5 KB.                          ── */
+    if (!has("coverImage")) {
+      try {
+        const covUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+        const r = await fetch(covUrl, { signal: AbortSignal.timeout(6000) });
+        if (r.ok) {
+          const blob = await r.blob();
+          if (blob.size > 5000 && blob.type.startsWith("image/")) fillCover(covUrl);
+        }
+      } catch { /* ignore */ }
+    }
+
+    /* ── Apply all accumulated changes in one setState call ─────── */
+    if (Object.keys(patch).length > 0) {
+      const { coverImage, ...rest } = patch;
+      setForm((f) => ({ ...f, ...(rest as Partial<typeof f>), ...(coverImage ? { coverImage: coverImage as string } : {}) }));
+      if (coverImage) setCoverPreview(coverImage as string);
+    }
+
+    if (items.length === 0) {
+      setIsbnError("No metadata found across all sources. Try entering details manually.");
+    } else {
+      setIsbnFilled(items);
+    }
+    setIsbnLooking(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -149,6 +353,7 @@ export default function BookForm({ initial }: BookFormProps) {
       price:       form.price       !== "" ? Number(form.price)       : undefined,
       referenceOnly: !!form.referenceOnly,
       locationId:  form.locationId  || null,
+      branchId:    form.branchId    || null,
       categoryId:  form.categoryId  || undefined,
       authorId:    form.authorId    || undefined,
       coAuthorIds: coAuthorIds.filter((id) => id && id !== form.authorId),
@@ -217,18 +422,54 @@ export default function BookForm({ initial }: BookFormProps) {
         </div>
       </div>
 
-      {/* ISBN + scan */}
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label htmlFor="book-isbn" className={labelCls}>{t("isbn")}</label>
-          <input id="book-isbn" type="text" value={form.isbn} onChange={set("isbn")} className={inputCls} />
+      {/* ISBN + scan + auto-fill */}
+      <div className="space-y-2">
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label htmlFor="book-isbn" className={labelCls}>{t("isbn")}</label>
+            <input id="book-isbn" type="text" value={form.isbn} onChange={(e) => {
+              set("isbn")(e);
+              setIsbnFilled(null); setIsbnError(null);
+            }} className={inputCls} placeholder="e.g. 9780141441146" />
+          </div>
+          <div className="self-end flex gap-2">
+            <button type="button" onClick={startScan}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+              <ScanLine className="w-4 h-4" />{t("scanISBN")}
+            </button>
+            <button
+              type="button"
+              onClick={lookupISBN}
+              disabled={isbnLooking || !form.isbn.trim()}
+              className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              title="Auto-fill book details from ISBN using OpenLibrary / Google Books"
+            >
+              {isbnLooking
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Wand2 className="w-4 h-4" />}
+              Auto-fill
+            </button>
+          </div>
         </div>
-        <div className="self-end">
-          <button type="button" onClick={startScan}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
-            <ScanLine className="w-4 h-4" />{t("scanISBN")}
-          </button>
-        </div>
+
+        {/* ISBN lookup feedback */}
+        {isbnFilled && isbnFilled.length > 0 && (
+          <div className="flex items-start gap-2 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-xs">
+            <CheckCircle2 className="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-violet-800">Filled from ISBN lookup:</p>
+              <p className="text-violet-700 mt-0.5">{isbnFilled.join(" · ")}</p>
+            </div>
+            <button onClick={() => setIsbnFilled(null)} className="ml-auto text-violet-400 hover:text-violet-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {isbnError && (
+          <p className="text-xs text-red-600 flex items-center gap-1">
+            <X className="w-3.5 h-3.5" /> {isbnError}
+          </p>
+        )}
       </div>
 
       {/* System Barcode */}
@@ -473,8 +714,8 @@ export default function BookForm({ initial }: BookFormProps) {
         </label>
       </div>
 
-      {/* Material Type + Location */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Material Type + Location + Branch */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label htmlFor="book-material" className={labelCls}>{t("materialType")}</label>
           <select id="book-material" value={form.materialType} onChange={set("materialType")} className={inputCls}>
@@ -508,6 +749,27 @@ export default function BookForm({ initial }: BookFormProps) {
             {locations.length > 0
               ? <Link href={`/${locale}/admin/taxonomy?tab=locations`} className="text-blue-500 hover:underline">{t("manageLocations")}</Link>
               : <Link href={`/${locale}/admin/taxonomy?tab=locations`} className="text-blue-600 hover:underline">{t("addLocations")}</Link>}
+          </p>
+        </div>
+        <div>
+          <label htmlFor="book-branch" className={labelCls}>{t("branch")}</label>
+          <select
+            id="book-branch"
+            value={form.branchId}
+            onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
+            className={inputCls}
+          >
+            <option value="">{t("noBranch")}</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}{b.nameKm ? ` · ${b.nameKm}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {branches.length > 0
+              ? <Link href={`/${locale}/admin/taxonomy?tab=branches`} className="text-blue-500 hover:underline">{t("manageBranches")}</Link>
+              : <Link href={`/${locale}/admin/taxonomy?tab=branches`} className="text-blue-600 hover:underline">{t("addBranches")}</Link>}
           </p>
         </div>
       </div>

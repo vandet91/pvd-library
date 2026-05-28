@@ -144,10 +144,12 @@ export async function POST(request: NextRequest, { params }: Ctx) {
 /* PATCH /api/baskets/[id]/items
    { copyId, tagged }       — toggle single copy
    { all: "tag"|"untag" }   — bulk tag/untag all
+   Tagging = physical label-application step → STAFF can do it.
+   Adding / removing copies from baskets (POST/DELETE) still requires LIBRARIAN.
 */
 export async function PATCH(request: NextRequest, { params }: Ctx) {
   const session = await auth();
-  if (!session || !can(session.user?.role, "LIBRARIAN"))
+  if (!session || !can(session.user?.role, "STAFF"))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: basketId } = await params;

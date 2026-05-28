@@ -51,10 +51,24 @@ export async function GET(request: NextRequest) {
     take: limit,
   });
 
+  // ── Attach avg rating (one groupBy query) ────────────────────────────
+  const ebookIds = ebooks.map((e) => e.id);
+  const ratingAggs = await prisma.rating.groupBy({
+    by:    ["ebookId"],
+    where: { ebookId: { in: ebookIds } },
+    _avg:   { score: true },
+    _count: { score: true },
+  });
+  const ratingMap = new Map(ratingAggs.map((r) => [
+    r.ebookId,
+    { avgRating: r._avg.score ? Math.round(r._avg.score * 10) / 10 : null, ratingCount: r._count.score },
+  ]));
+
   // Strip fileUrl from protected ebooks unless the requester is an admin
   const sanitised = ebooks.map((e) => ({
     ...e,
     fileUrl: isAdmin || e.isPublic ? e.fileUrl : null,
+    ...(ratingMap.get(e.id) ?? { avgRating: null, ratingCount: 0 }),
   }));
 
   return NextResponse.json(sanitised);

@@ -3,6 +3,8 @@ import { addDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 // PATCH — staff approves/cancels/fulfils; member cancels own
 export async function PATCH(
@@ -67,7 +69,7 @@ export async function PATCH(
         where: { id },
         data:  { status: "READY", holdShelf, copyId: pickedCopy.id },
         include: {
-          member: { select: { name: true, memberId: true } },
+          member: { select: { id: true, name: true, memberId: true } },
           book:   { select: { title: true, location: true, shelfLocation: { select: { name: true } } } },
           copy:   { select: { id: true, copyNumber: true, barcode: true } },
         },
@@ -84,6 +86,18 @@ export async function PATCH(
       });
       return r;
     });
+    await logActivity(actorFromSession(session), Actions.RESERVATION_READY, {
+      entityType: "Member",
+      entityId:   updated.member.id,
+      entityName: updated.member.name,
+      detail: {
+        bookTitle:  updated.book.title,
+        copyNumber: updated.copy?.copyNumber,
+        barcode:    updated.copy?.barcode,
+        holdShelf,
+      },
+    });
+    notifyMember(updated.member.id, tg.reservationReady(updated.member.name, updated.book.title, updated.expiresAt ?? null)).catch(() => {});
     return NextResponse.json(updated);
   }
 
@@ -108,6 +122,7 @@ export async function PATCH(
     // Read default loan days from settings (fallback 14)
     const setting  = await prisma.settings.findUnique({ where: { key: "DEFAULT_LOAN_DAYS" } });
     const loanDays = parseInt(setting?.value ?? process.env.DEFAULT_LOAN_DAYS ?? "14", 10);
+    const dueDate  = addDays(new Date(), loanDays);
 
     // Use the copy that was held on the shelf. Fall back to any AVAILABLE copy
     // for legacy reservations created before copyId was tracked.
@@ -128,7 +143,7 @@ export async function PATCH(
         where: { id },
         data:  { status: "FULFILLED" },
         include: {
-          member: { select: { name: true, memberId: true } },
+          member: { select: { id: true, name: true, memberId: true } },
           book:   { select: { title: true } },
           copy:   { select: { id: true, copyNumber: true, barcode: true } },
         },
@@ -139,7 +154,7 @@ export async function PATCH(
           bookId:     reservation.bookId,
           copyId:     copyToBorrow?.id ?? null,
           borrowDate: new Date(),
-          dueDate:    addDays(new Date(), loanDays),
+          dueDate,
           status:     "ACTIVE",
         },
       });
@@ -160,6 +175,17 @@ export async function PATCH(
       return r;
     });
 
+    await logActivity(actorFromSession(session), Actions.RESERVATION_FULFILLED, {
+      entityType: "Member",
+      entityId:   updated.member.id,
+      entityName: updated.member.name,
+      detail: {
+        bookTitle:  updated.book.title,
+        copyNumber: updated.copy?.copyNumber,
+        barcode:    updated.copy?.barcode,
+      },
+    });
+    notifyMember(updated.member.id, tg.checkout(updated.member.name, updated.book.title, dueDate)).catch(() => {});
     return NextResponse.json(updated);
   }
 
@@ -179,7 +205,7 @@ export async function PATCH(
         where: { id },
         data:  { status: status as "CANCELLED" | "EXPIRED" },
         include: {
-          member: { select: { name: true, memberId: true } },
+          member: { select: { id: true, name: true, memberId: true } },
           book:   { select: { title: true } },
         },
       });
@@ -196,6 +222,16 @@ export async function PATCH(
       }
       return r;
     });
+    const cancelAction = status === "EXPIRED" ? Actions.RESERVATION_EXPIRED : Actions.RESERVATION_CANCELLED;
+    await logActivity(actorFromSession(session), cancelAction, {
+      entityType: "Member",
+      entityId:   updated.member.id,
+      entityName: updated.member.name,
+      detail:     { bookTitle: updated.book.title, wasReady },
+    });
+    if (status === "CANCELLED") {
+      notifyMember(updated.member.id, tg.reservationCancelled(updated.member.name, updated.book.title)).catch(() => {});
+    }
     return NextResponse.json(updated);
   }
 
@@ -204,11 +240,20 @@ export async function PATCH(
     where: { id },
     data:  { status: status as "PENDING" | "APPROVED" },
     include: {
-      member: { select: { name: true, memberId: true } },
+      member: { select: { id: true, name: true, memberId: true } },
       book:   { select: { title: true } },
     },
   });
 
+  await logActivity(actorFromSession(session), Actions.RESERVATION_UPDATED, {
+    entityType: "Member",
+    entityId:   updated.member.id,
+    entityName: updated.member.name,
+    detail:     { bookTitle: updated.book.title, status },
+  });
+  if (status === "APPROVED") {
+    notifyMember(updated.member.id, tg.reservationApproved(updated.member.name, updated.book.title)).catch(() => {});
+  }
   return NextResponse.json(updated);
 }
 
@@ -233,6 +278,14 @@ export async function DELETE(
   const reservation = await prisma.reservation.findUnique({
     where: { id }, include: { copy: true },
   });
+  const resWithMember = await prisma.reservation.findUnique({
+    where:   { id },
+    include: {
+      member: { select: { id: true, name: true } },
+      book:   { select: { title: true } },
+    },
+  });
+
   await prisma.$transaction(async (tx) => {
     if (reservation?.status === "READY" && reservation.copyId && reservation.copy?.status === "RESERVED") {
       await tx.bookCopy.update({
@@ -245,6 +298,13 @@ export async function DELETE(
       });
     }
     await tx.reservation.delete({ where: { id } });
+  });
+
+  await logActivity(actorFromSession(session), Actions.RESERVATION_DELETED, {
+    entityType: "Member",
+    entityId:   resWithMember?.member.id,
+    entityName: resWithMember?.member.name,
+    detail:     { bookTitle: resWithMember?.book.title },
   });
   return NextResponse.json({ success: true });
 }

@@ -13,6 +13,7 @@ const DEFAULTS: Record<string, string> = {
   LIBRARY_NAME:             "PVD Library",
   LIBRARY_EMAIL:            "",
   LIBRARY_PHONE:            "",
+  LIBRARY_ADDRESS:          "",
   BARCODE_PREFIX:           "PVD",
   BARCODE_PADDING:          "6",
   RESERVATION_EXPIRE_DAYS:  "7",
@@ -22,6 +23,22 @@ const DEFAULTS: Record<string, string> = {
   DEFAULT_STAFF_AUTH_METHODS: '["password","google","magic"]',
   // All registered locales are enabled by default
   ENABLED_LOCALES: JSON.stringify(LOCALE_CODES),
+  // AI book search — can be toggled per audience
+  AI_SEARCH_ADMIN:  "true",
+  AI_SEARCH_MEMBER: "true",
+  // Email notifications
+  NOTIFICATIONS_ENABLED:             "true",
+  DUE_SOON_DAYS:                     "3",
+  // Telegram bot notifications
+  TELEGRAM_NOTIFICATIONS_ENABLED:   "true",
+  TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:   "7",
+  TELEGRAM_LINK_MEMBER:              "true",
+  PHONE_CLICK_ACTION:                "both",
+  // Member self-registration
+  MEMBER_SELF_REGISTER:              "false",
+  MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
+  // Public catalog (Discover + E-Library) theme
+  OPAC_THEME:                        "royal",
   // NOTE: LIBRARY_LOGO is intentionally excluded here.
   // It is managed exclusively via POST/DELETE /api/settings/logo
   // and must never be overwritten by the bulk PUT handler.

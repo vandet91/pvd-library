@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
 /** GET /api/books/[id]/copies — copies with current borrower + basket membership */
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -10,6 +11,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     where:   { bookId: id },
     orderBy: { copyNumber: "asc" },
     include: {
+      branch: { select: { id: true, name: true } },
       // Only ACTIVE/OVERDUE loans (one per copy at most) — gives us the current borrower
       loans: {
         where:   { status: { in: ["ACTIVE", "OVERDUE"] } },
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const book = await prisma.book.findUnique({
     where:  { id: bookId },
-    select: { id: true, barcode: true, referenceOnly: true },
+    select: { id: true, title: true, barcode: true, referenceOnly: true, branchId: true },
   });
   if (!book) return NextResponse.json({ error: "Book not found" }, { status: 404 });
 
@@ -101,6 +103,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         loanable:   body.loanable !== undefined ? !!body.loanable : !book.referenceOnly,
         price:      body.price ? Number(body.price) : null,
         notes:      body.notes || null,
+        // Inherit the book's home branch so copy location starts in sync
+        ...(book.branchId && { branchId: book.branchId }),
       },
     });
     // Keep denormalized counters in sync
@@ -109,6 +113,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data:  { totalCopies: { increment: 1 }, availableCopies: { increment: 1 } },
     });
     return created;
+  });
+
+  await logActivity(actorFromSession(session), Actions.BOOK_COPY_ADDED, {
+    entityType: "Book",
+    entityId:   bookId,
+    entityName: book.title,
+    detail:     { copyNumber: copy.copyNumber, barcode: copy.barcode, condition: copy.condition },
   });
 
   return NextResponse.json(copy, { status: 201 });

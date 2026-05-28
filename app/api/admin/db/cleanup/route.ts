@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
 
   // ── 4. Create missing fines for OVERDUE take-home loans ─────────────────
   // IN_LIBRARY loans are same-day reads — they do not generate daily fines.
-  const fineRateSetting = await prisma.settings.findUnique({ where: { key: "finePerDay" } });
-  const finePerDay = parseFloat(fineRateSetting?.value ?? "0.25");
+  const fineRateSetting = await prisma.settings.findUnique({ where: { key: "FINE_PER_DAY" } });
+  const finePerDay = parseFloat(fineRateSetting?.value ?? "0.50");
 
   const overdueNoFine = await prisma.loan.findMany({
     where: { status: "OVERDUE", loanType: "HOME", fine: { is: null } },

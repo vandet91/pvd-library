@@ -173,6 +173,7 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
     { id: "ocean",    color: "#1d4ed8", label: "Ocean"    },
     { id: "midnight", color: "#7c3aed", label: "Midnight" },
     { id: "emerald",  color: "#059669", label: "Emerald"  },
+    { id: "academic", color: "#0f766e", label: "Academic" },
   ];
 
   /* ── render ── */

@@ -51,6 +51,20 @@ const MAT_LABELS: Record<string, string> = {
 };
 const PIE_COLORS = ["#1e3a8a","#3b82f6","#60a5fa","#93c5fd","#bfdbfe","#dbeafe","#eff6ff","#6366f1","#8b5cf6","#a78bfa"];
 
+// Richer palette for the donut chart: dark navy → teal → amber → purple → rose
+const DONUT_COLORS = [
+  "#1e3a8a", // deep navy  – Fiction
+  "#0ea5e9", // sky blue   – Technology
+  "#f59e0b", // amber      – Science
+  "#8b5cf6", // violet     – History
+  "#d1d5db", // light gray – Others
+  "#10b981", // emerald
+  "#ef4444", // red
+  "#f97316", // orange
+  "#06b6d4", // cyan
+  "#a855f7", // purple
+];
+
 // tKey-based catalog — labels/descs are looked up via t(key) at render time
 const REPORT_GROUPS = [
   "groupCirculation",
@@ -218,15 +232,6 @@ const REPORT_CATALOG = [
     icon: Package,
     color: "text-teal-700 bg-teal-50 border-teal-200",
     activeColor: "border-teal-500 bg-teal-100 text-teal-800",
-  },
-  {
-    id: "call-numbers",
-    group: "groupCollection",
-    labelKey: "catCallNumbersLabel",
-    descKey:  "catCallNumbersDesc",
-    icon: List,
-    color: "text-cyan-600 bg-cyan-50 border-cyan-100",
-    activeColor: "border-cyan-400 bg-cyan-50 text-cyan-700",
   },
   {
     id: "copies-added",
@@ -402,7 +407,6 @@ const COL_LABEL_KEYS: Record<string, string> = {
   "Condition":   "colCondition",
   "Loanable":    "colLoanable",
   "Acquired":    "colAcquired",
-  "Call Number": "colCallNumber",
   "E-Resources": "colEResources",
   "Types":       "colTypes",
   "Rank":        "colRank",
@@ -434,9 +438,20 @@ export default function ReportsPage() {
   const t  = useTranslations("reports");
   const tc = useTranslations("common");
 
-  /* shared date range */
-  const [from, setFrom] = useState("");
-  const [to, setTo]     = useState("");
+  /* shared date range + branch filter */
+  const [from,     setFrom]     = useState("");
+  const [to,       setTo]       = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [branchOptions, setBranchOptions] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/branches")
+      .then((r) => r.ok ? r.json() : [])
+      .then((brs: { id: string; name: string; isActive: boolean }[]) => {
+        if (Array.isArray(brs)) setBranchOptions(brs.filter((b) => b.isActive));
+      })
+      .catch(() => {});
+  }, []);
 
   /* active tab */
   const [tab, setTab] = useState<"analytics" | "custom">("analytics");
@@ -455,12 +470,13 @@ export default function ReportsPage() {
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to)   params.set("to", to);
+    if (from)     params.set("from", from);
+    if (to)       params.set("to", to);
+    if (branchId) params.set("branchId", branchId);
     const res = await fetch(`/api/reports?${params}`);
     setData(await res.json());
     setLoading(false);
-  }, [from, to]);
+  }, [from, to, branchId]);
 
   useEffect(() => { fetchAnalytics(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -471,8 +487,9 @@ export default function ReportsPage() {
     setCustomLoading(true);
     try {
       const params = new URLSearchParams({ type });
-      if (from) params.set("from", from);
-      if (to)   params.set("to", to);
+      if (from)     params.set("from", from);
+      if (to)       params.set("to", to);
+      if (branchId) params.set("branchId", branchId);
       const res = await fetch(`/api/reports/custom?${params}`);
       if (!res.ok) throw new Error(await res.text());
       setCustomData(await res.json());
@@ -486,8 +503,9 @@ export default function ReportsPage() {
   /* ── Export custom report ── */
   function exportCustom(fmt: "csv" | "xlsx") {
     const params = new URLSearchParams({ type: reportType, format: fmt });
-    if (from) params.set("from", from);
-    if (to)   params.set("to", to);
+    if (from)     params.set("from", from);
+    if (to)       params.set("to", to);
+    if (branchId) params.set("branchId", branchId);
     window.open(`/api/reports/custom?${params}`, "_blank");
   }
 
@@ -554,6 +572,18 @@ export default function ReportsPage() {
             <input id="report-date-to" type="date" value={to} onChange={(e) => setTo(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
+          {branchOptions.length > 0 && (
+            <div>
+              <label htmlFor="report-branch" className="block text-xs text-gray-500 mb-1">{t("branchFilter")}</label>
+              <select id="report-branch" value={branchId} onChange={(e) => setBranchId(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="">{t("allBranchesOption")}</option>
+                {branchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {tab === "analytics" ? (
             <button onClick={fetchAnalytics}
               className="flex items-center gap-2 bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors">
@@ -679,21 +709,63 @@ export default function ReportsPage() {
                   {data.categoryDistribution.length === 0 ? (
                     <p className="text-gray-400 text-sm text-center py-8">{tc("noData")}</p>
                   ) : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={data.categoryDistribution} dataKey="count" nameKey="name"
-                          cx="50%" cy="50%" outerRadius={80}
-                          label={({ name, percent }: { name?: string; percent?: number }) =>
-                            (percent ?? 0) > 0.05 ? `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%` : ""
-                          } labelLine={false}>
-                          {data.categoryDistribution.map((_, i) => (
-                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="flex items-center gap-2">
+                      {/* Donut chart */}
+                      <div className="flex-shrink-0 w-[180px] h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={data.categoryDistribution}
+                              dataKey="count"
+                              nameKey="name"
+                              cx="50%" cy="50%"
+                              innerRadius={52}
+                              outerRadius={82}
+                              paddingAngle={2}
+                              startAngle={90}
+                              endAngle={-270}
+                            >
+                              {data.categoryDistribution.map((_, i) => (
+                                <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                              formatter={(v, name) => {
+                                const n = Number(v);
+                                const total = data.categoryDistribution.reduce((s, x) => s + x.count, 0);
+                                const pct = total > 0 ? ((n / total) * 100).toFixed(1) : "0";
+                                return [`${n} (${pct}%)`, name];
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {/* Right-side legend */}
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        {(() => {
+                          const total = data.categoryDistribution.reduce((s, x) => s + x.count, 0);
+                          return data.categoryDistribution.slice(0, 9).map((item, i) => {
+                            const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
+                            return (
+                              <div key={item.name} className="flex items-center gap-2 group">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                  style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                                />
+                                <span className="text-xs text-gray-700 flex-1 truncate leading-tight">{item.name}</span>
+                                <span className="text-xs font-semibold text-gray-500 flex-shrink-0 tabular-nums">{pct}%</span>
+                              </div>
+                            );
+                          });
+                        })()}
+                        {data.categoryDistribution.length > 9 && (
+                          <p className="text-[10px] text-gray-400 pt-1">
+                            +{data.categoryDistribution.length - 9} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
 const MATERIAL_TYPES = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
 
@@ -19,6 +20,7 @@ const bookUpdateSchema = z.object({
   language: z.string().optional(),
   location: z.string().optional(),
   locationId: z.string().optional().nullable(),
+  branchId: z.string().optional().nullable(),
   totalCopies: z.number().min(1).optional(),
   price: z.number().min(0).optional().nullable(),
   referenceOnly: z.boolean().optional(),
@@ -50,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   // coAuthorIds is a relation — use `set` so the full list is replaced atomically
-  const { coAuthorIds, locationId: locationIdFromForm, ...bookData } = parsed.data;
+  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, ...bookData } = parsed.data;
 
   // If locationId was sent directly from the form, use it; otherwise fall back to text-match
   let locationUpdate: { locationId: string | null } | object = {};
@@ -68,16 +70,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
   }
 
+  const before = await prisma.book.findUnique({ where: { id }, select: { title: true, totalCopies: true, availableCopies: true } });
+
   const book = await prisma.book.update({
     where: { id },
     data: {
       ...bookData,
       ...locationUpdate,
+      ...(branchIdFromForm !== undefined && { branchId: branchIdFromForm ?? null }),
       ...(coAuthorIds !== undefined && {
         coAuthors: { set: coAuthorIds.map((cid) => ({ id: cid })) },
       }),
     },
     include: { category: true, author: true, coAuthors: true },
+  });
+
+  await logActivity(actorFromSession(session), Actions.BOOK_UPDATED, {
+    entityType: "Book",
+    entityId:   id,
+    entityName: book.title,
+    detail:     { before, after: { title: book.title, totalCopies: book.totalCopies } },
   });
   return NextResponse.json(book);
 }
@@ -88,6 +100,13 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const book = await prisma.book.findUnique({ where: { id }, select: { title: true, isbn: true } });
   await prisma.book.delete({ where: { id } });
+  await logActivity(actorFromSession(session), Actions.BOOK_DELETED, {
+    entityType: "Book",
+    entityId:   id,
+    entityName: book?.title,
+    detail:     { isbn: book?.isbn },
+  });
   return NextResponse.json({ success: true });
 }

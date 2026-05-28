@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { calculateFine } from "@/lib/utils";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -13,6 +15,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json();
 
   if (body.action === "return") {
+    // returnBranchId: the branch receiving this return — copy floats to that branch (Option B).
+    const returnBranchId = (body.returnBranchId as string | undefined) || null;
+
     const loan = await prisma.loan.findUnique({ where: { id }, include: { book: true } });
     if (!loan) return NextResponse.json({ error: "Loan not found" }, { status: 404 });
     if (loan.status === "RETURNED") return NextResponse.json({ error: "Already returned" }, { status: 400 });
@@ -30,7 +35,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
       await tx.book.update({ where: { id: loan.bookId }, data: { availableCopies: { increment: 1 } } });
       if (loan.copyId) {
-        await tx.bookCopy.update({ where: { id: loan.copyId }, data: { status: "AVAILABLE" } });
+        // Floating collection: move copy to the branch that received the return.
+        // If no branch was specified the copy stays at its current branch.
+        await tx.bookCopy.update({
+          where: { id: loan.copyId },
+          data: {
+            status: "AVAILABLE",
+            ...(returnBranchId ? { branchId: returnBranchId } : {}),
+          },
+        });
       }
       if (daysLate > 0) {
         await tx.fine.upsert({
@@ -42,6 +55,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return updated;
     });
 
+    await logActivity(actorFromSession(session), Actions.LOAN_RETURNED, {
+      entityType: "Loan",
+      entityId:   id,
+      entityName: `${updatedLoan.book.title} ← ${updatedLoan.member.name}`,
+      detail: {
+        memberName: updatedLoan.member.name,
+        bookTitle:  updatedLoan.book.title,
+        daysLate,
+        fineAmount: daysLate > 0 ? amount : 0,
+      },
+    });
+    notifyMember(
+      updatedLoan.memberId,
+      tg.returned(updatedLoan.member.name, updatedLoan.book.title, daysLate > 0 ? amount : undefined),
+    ).catch(() => {});
     return NextResponse.json(updatedLoan);
   }
 
@@ -118,6 +146,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         });
       });
 
+      await logActivity(actorFromSession(session), Actions.LOAN_LOST, {
+        entityType: "Loan",
+        entityId:   id,
+        entityName: loan.book.title,
+        detail:     { replacementAmount },
+      });
+      notifyMember(loan.memberId, tg.lostBook(updatedLoan?.member?.name ?? "", loan.book.title, replacementAmount)).catch(() => {});
       return NextResponse.json(updatedLoan);
     } catch (err) {
       console.error("[mark-lost] transaction failed:", err);
@@ -148,6 +183,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       data: { dueDate: base, renewalCount: { increment: 1 }, status: "ACTIVE" },
       include: { member: true, book: { select: { title: true } } },
     });
+    await logActivity(actorFromSession(session), Actions.LOAN_RENEWED, {
+      entityType: "Loan",
+      entityId:   id,
+      entityName: `${updated.book.title} — ${updated.member.name}`,
+      detail:     { renewalCount: updated.renewalCount, newDueDate: updated.dueDate },
+    });
+    notifyMember(
+      updated.memberId,
+      tg.renewed(updated.member.name, updated.book.title, updated.dueDate, updated.renewalCount),
+    ).catch(() => {});
     return NextResponse.json(updated);
   }
 

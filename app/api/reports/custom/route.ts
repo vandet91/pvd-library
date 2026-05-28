@@ -17,13 +17,14 @@ async function buildReport(
   now: Date,
   from?: Date,
   to?: Date,
+  branchId?: string,
 ): Promise<{ columns: Col[]; rows: Row[]; count: number }> {
   switch (type) {
 
     // ── Overdue Loans ───────────────────────────────────────────────
     case "overdue": {
       const loans = await prisma.loan.findMany({
-        where: { status: "OVERDUE" },
+        where: { status: "OVERDUE", ...(branchId && { branchId }) },
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true, isbn: true } },
@@ -97,7 +98,7 @@ async function buildReport(
     // ── Active Loans (not expired) ──────────────────────────────────
     case "active-loans": {
       const loans = await prisma.loan.findMany({
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", ...(branchId && { branchId }) },
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true, isbn: true } },
@@ -134,7 +135,7 @@ async function buildReport(
     // ── All Unreturned (ACTIVE + OVERDUE) ───────────────────────────
     case "all-unreturned": {
       const loans = await prisma.loan.findMany({
-        where: { status: { in: ["ACTIVE", "OVERDUE"] } },
+        where: { status: { in: ["ACTIVE", "OVERDUE"] }, ...(branchId && { branchId }) },
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true } },
@@ -178,7 +179,7 @@ async function buildReport(
         ? { gte: from, lte: addDays(to, 1) }
         : { gte: subMonths(now, 1) };
       const loans = await prisma.loan.findMany({
-        where:   { borrowDate: dateFilter },
+        where:   { borrowDate: dateFilter, ...(branchId && { branchId }) },
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true } },
@@ -215,7 +216,7 @@ async function buildReport(
         ? { gte: from, lte: addDays(to, 1) }
         : { gte: subMonths(now, 1) };
       const loans = await prisma.loan.findMany({
-        where:   { status: "RETURNED", returnDate: dateFilter },
+        where:   { status: "RETURNED", returnDate: dateFilter, ...(branchId && { branchId }) },
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true } },
@@ -401,6 +402,7 @@ async function buildReport(
     // ── List All Books ──────────────────────────────────────────────
     case "all-books": {
       const books = await prisma.book.findMany({
+        where:   { ...(branchId && { branchId }) },
         include: { author: true, category: true, shelfLocation: true },
         orderBy: { title: "asc" },
       });
@@ -572,36 +574,6 @@ async function buildReport(
       };
     }
 
-    // ── Call Numbers by Location ────────────────────────────────────
-    case "call-numbers": {
-      const books = await prisma.book.findMany({
-        where:   { locationId: { not: null } },
-        include: { author: true, category: true, shelfLocation: true },
-        orderBy: [{ shelfLocation: { name: "asc" } }, { title: "asc" }],
-      });
-      const rows: Row[] = books.map((b) => ({
-        CallNumber:   b.shelfLocation?.name ?? "",
-        LocationDesc: b.shelfLocation?.description ?? "",
-        Title:        b.title,
-        Author:       b.author?.name ?? "",
-        Category:     b.category?.name ?? "",
-        ISBN:         b.isbn ?? "",
-        TotalCopies:  b.totalCopies,
-      }));
-      return {
-        count: rows.length,
-        columns: [
-          { key: "CallNumber",   label: "Call Number" },
-          { key: "LocationDesc", label: "Location" },
-          { key: "Title",        label: "Title" },
-          { key: "Author",       label: "Author" },
-          { key: "Category",     label: "Category" },
-          { key: "ISBN",         label: "ISBN" },
-          { key: "TotalCopies",  label: "Total" },
-        ],
-        rows,
-      };
-    }
 
     // ── New Acquisitions ────────────────────────────────────────────
     case "new-acquisitions": {
@@ -679,7 +651,7 @@ async function buildReport(
     // ── Low Stock ───────────────────────────────────────────────────
     case "low-stock": {
       const books = await prisma.book.findMany({
-        where:   { availableCopies: 0, totalCopies: { gt: 0 } },
+        where:   { availableCopies: 0, totalCopies: { gt: 0 }, ...(branchId && { branchId }) },
         include: { author: true, category: true },
         orderBy: { title: "asc" },
       });
@@ -1057,13 +1029,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type") ?? "overdue";
-  const fmt  = searchParams.get("format");
-  const from = searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined;
-  const to   = searchParams.get("to")   ? new Date(searchParams.get("to")!)   : undefined;
-  const now  = new Date();
+  const type     = searchParams.get("type") ?? "overdue";
+  const fmt      = searchParams.get("format");
+  const from     = searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined;
+  const to       = searchParams.get("to")   ? new Date(searchParams.get("to")!)   : undefined;
+  const branchId = searchParams.get("branchId") ?? undefined;
+  const now      = new Date();
 
-  const { columns, rows, count } = await buildReport(type, now, from, to);
+  const { columns, rows, count } = await buildReport(type, now, from, to, branchId);
 
   // ── JSON response ─────────────────────────────────────────────────
   if (!fmt) {

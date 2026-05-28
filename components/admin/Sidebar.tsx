@@ -7,7 +7,8 @@ import { useEffect, useState, useCallback } from "react";
 import {
   LayoutDashboard, BookOpen, BookMarked, Users, ArrowLeftRight,
   AlertCircle, BarChart3, Search, Settings, LogOut, ShoppingCart, ShieldCheck, Inbox,
-  ClipboardList, ShoppingBasket, Barcode, Shield, DatabaseBackup, Bell, Tags,
+  ClipboardList, ShoppingBasket, Barcode, Shield, DatabaseBackup, Bell, Tags, Activity,
+  Bot, Tag, Trash2, PackagePlus,
 } from "lucide-react";
 import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
@@ -48,6 +49,30 @@ interface Alerts {
   bookRequests: number;
   overdue:      number;
   fines:        number;
+  processing:   number;  // basket items needing labeling
+}
+
+/* ── Rotating daily quote ───────────────────────────────────────── */
+const QUOTES = [
+  { text: "A library is not a luxury but one of the necessities of life.", author: "Henry Ward Beecher" },
+  { text: "The only thing that you absolutely have to know is the location of the library.", author: "Albert Einstein" },
+  { text: "A great library contains the diary of the human race.", author: "George Mercer Dawson" },
+  { text: "Libraries store the energy that fuels the imagination.", author: "Sidney Sheldon" },
+  { text: "A library is the delivery room for the birth of ideas.", author: "Norman Cousins" },
+  { text: "The reading of all good books is like a conversation with the finest minds.", author: "René Descartes" },
+  { text: "Libraries are the thinking centres of the world.", author: "Walter Savage Landor" },
+];
+
+function QuoteCard() {
+  const quote = QUOTES[new Date().getDay() % QUOTES.length];
+  return (
+    <div className="mx-4 mb-3 p-3 rounded-xl bg-white/5 border border-white/10">
+      <p className="text-[11px] leading-relaxed text-white/60 italic line-clamp-3">
+        &ldquo;{quote.text}&rdquo;
+      </p>
+      <p className="text-[10px] text-white/35 mt-1.5 font-medium">— {quote.author}</p>
+    </div>
+  );
 }
 
 export default function Sidebar({ role }: { role: string }) {
@@ -58,8 +83,10 @@ export default function Sidebar({ role }: { role: string }) {
   const libraryLogo = useLibraryLogo();
 
   const [alerts, setAlerts] = useState<Alerts>({
-    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0,
+    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0, processing: 0,
   });
+
+  const [aiAdminEnabled, setAiAdminEnabled] = useState(true);
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -79,6 +106,15 @@ export default function Sidebar({ role }: { role: string }) {
       window.removeEventListener("alertsChanged", fetchAlerts);
     };
   }, [fetchAlerts]);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.ok ? r.json() : {})
+      .then((d: Record<string, string>) => {
+        setAiAdminEnabled(d.AI_SEARCH_ADMIN !== "false");
+      })
+      .catch(() => {});
+  }, []);
 
   /* Each link: href, label, icon, minRole, badge (optional) */
   type NavLink = {
@@ -190,9 +226,42 @@ export default function Sidebar({ role }: { role: string }) {
       minRole: "LIBRARIAN",
     },
     {
+      href: `/${locale}/admin/books/processing`,
+      label: t("processing"),
+      icon: Tag,
+      minRole: "STAFF",
+      badge: alerts.processing > 0
+        ? <Badge count={alerts.processing} color="yellow" />
+        : null,
+    },
+    {
+      href: `/${locale}/admin/books/weeding`,
+      label: t("weeding"),
+      icon: Trash2,
+      minRole: "LIBRARIAN",
+    },
+    {
+      href: `/${locale}/admin/books/acquisition`,
+      label: t("acquisition"),
+      icon: PackagePlus,
+      minRole: "LIBRARIAN",
+    },
+    ...(aiAdminEnabled ? [{
+      href: `/${locale}/admin/ai-assistant`,
+      label: t("aiAssistant"),
+      icon: Bot,
+      minRole: "STAFF",
+    }] : []),
+    {
       href: `/${locale}/admin/notifications`,
       label: t("notifications"),
       icon: Bell,
+      minRole: "ADMIN",
+    },
+    {
+      href: `/${locale}/admin/logs`,
+      label: t("activityLogs"),
+      icon: Activity,
       minRole: "ADMIN",
     },
     {
@@ -213,7 +282,7 @@ export default function Sidebar({ role }: { role: string }) {
   const chip  = ROLE_CHIP[role] ?? ROLE_CHIP.MEMBER;
 
   /* Total urgent count for the page <title> */
-  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests + alerts.overdue + alerts.fines;
+  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests + alerts.overdue + alerts.fines + alerts.processing;
 
   return (
     <aside className="w-64 min-h-screen flex flex-col" style={{ background: "var(--sidebar)", color: "var(--sidebar-foreground)" }}>
@@ -275,6 +344,9 @@ export default function Sidebar({ role }: { role: string }) {
           );
         })}
       </nav>
+
+      {/* ── Daily quote ── */}
+      <QuoteCard />
 
       {/* ── Bottom links ── */}
       <div className="p-4 border-t border-white/10 space-y-0.5">

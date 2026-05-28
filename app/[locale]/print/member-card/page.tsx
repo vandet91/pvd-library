@@ -109,7 +109,8 @@ export default function MemberCardPage() {
 }
 
 function CardPreview({ member }: { member: MemberCard }) {
-  const barcodeRef = useRef<SVGSVGElement>(null);
+  const barcodeRef  = useRef<SVGSVGElement>(null);
+  const libraryName = useLibraryName();
   const color = TYPE_COLOR[member.memberType] ?? "#1d4ed8";
 
   useEffect(() => {

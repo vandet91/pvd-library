@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 const prefSchema = z.object({
-  theme:     z.enum(["ocean", "midnight", "emerald"]).optional(),
+  theme:     z.enum(["ocean", "midnight", "emerald", "academic"]).optional(),
   authStyle: z.enum(["split", "glass", "minimal"]).optional(),
 });
 

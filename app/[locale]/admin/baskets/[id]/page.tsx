@@ -60,6 +60,7 @@ interface BookSearch {
   id: string; title: string; isbn: string | null; barcode: string | null;
   location: string | null; materialType: string;
   author: { name: string } | null;
+  shelfLocation?: { name: string } | null;
 }
 
 /* ── Material type badge ────────────────────────────────────────── */

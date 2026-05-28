@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 // GET — list reservations
 //   Staff (ADMIN/LIBRARIAN/STAFF): all reservations, filterable by status
@@ -102,8 +104,24 @@ export async function POST(request: NextRequest) {
     const userId = session.user?.id;
     if (!userId) return NextResponse.json({ error: "No user ID in session" }, { status: 401 });
 
-    const member = await prisma.member.findUnique({ where: { userId } });
+    const member = await prisma.member.findUnique({
+      where:  { userId },
+      select: { id: true, name: true, isActive: true, pendingApproval: true, restrictionStatus: true, restrictionReason: true },
+    });
     if (!member) return NextResponse.json({ error: "Member record not found" }, { status: 404 });
+    if (member.pendingApproval)
+      return NextResponse.json({ error: "Your account is pending staff approval", code: "PENDING_APPROVAL" }, { status: 403 });
+    if (!member.isActive)
+      return NextResponse.json({ error: "Your account is inactive. Please contact the library.", code: "ACCOUNT_INACTIVE" }, { status: 403 });
+    // Restriction guard — any level other than NONE blocks reservations
+    if (member.restrictionStatus !== "NONE") {
+      const label = member.restrictionStatus.toLowerCase().replace("_", " ");
+      return NextResponse.json({
+        error: `Your account is ${label}. Reservations are not permitted at this time. Please contact the library.`,
+        code:  "ACCOUNT_RESTRICTED",
+        restrictionStatus: member.restrictionStatus,
+      }, { status: 403 });
+    }
 
     const existing = await prisma.reservation.findFirst({
       where: { memberId: member.id, bookId, status: { in: ["PENDING", "APPROVED", "READY"] } },
@@ -193,6 +211,14 @@ export async function POST(request: NextRequest) {
       },
       include: { book: { select: { title: true } } },
     });
+
+    await logActivity(actorFromSession(session), Actions.RESERVATION_CREATED, {
+      entityType: "Member",
+      entityId:   member.id,
+      entityName: member.name,
+      detail:     { bookId, bookTitle: targetBook.title, queuePosition: availability.nextPosition },
+    });
+    notifyMember(member.id, tg.reservationCreated(member.name, targetBook.title, availability.nextPosition)).catch(() => {});
 
     // Tell the member their position so they know how long they'll likely wait.
     // `availability.nextPosition` was computed BEFORE this insert, so it's correct

@@ -5,6 +5,7 @@ import Nodemailer  from "next-auth/providers/nodemailer";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { logActivity, Actions } from "@/lib/activity-log";
 
 const STAFF_ROLES = ["ADMIN", "LIBRARIAN", "STAFF"] as const;
 
@@ -42,9 +43,24 @@ const credentialsProvider = Credentials({
         if (member?.user) user = member.user;
       }
 
-      if (!user || !user.password) return null;
+      if (!user || !user.password) {
+        await logActivity(null, Actions.AUTH_LOGIN_FAILED, {
+          entityType: "User",
+          entityName: identifier,
+          detail: { reason: "User not found" },
+        });
+        return null;
+      }
       const valid = await bcrypt.compare(password, user.password);
-      if (!valid) return null;
+      if (!valid) {
+        await logActivity(null, Actions.AUTH_LOGIN_FAILED, {
+          entityType: "User",
+          entityId:   user.id,
+          entityName: user.email ?? identifier,
+          detail: { reason: "Invalid password" },
+        });
+        return null;
+      }
 
       return { id: user.id, email: user.email, name: user.name, role: user.role };
     } catch (err) {
@@ -137,7 +153,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const dbUser = await prisma.user.findUnique({
         where:  { email: user.email },
-        select: { role: true, authMethods: true },
+        select: { id: true, role: true, authMethods: true },
       });
 
       const methods = parseAuthMethods(dbUser?.authMethods);
@@ -146,6 +162,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // All roles allowed via credentials, but "password" must be enabled
         if (!methods.includes("password")) {
           return "/en/auth/login?error=MethodNotAllowed";
+        }
+        // Block member accounts that are pending approval or deactivated
+        if (dbUser?.role === "MEMBER") {
+          const member = await prisma.member.findUnique({
+            where:  { userId: dbUser.id },
+            select: { isActive: true, pendingApproval: true, restrictionStatus: true, restrictionExpiry: true },
+          });
+          if (member?.pendingApproval) {
+            return "/en/member/login?error=PendingApproval";
+          }
+          if (member && !member.isActive) {
+            return "/en/member/login?error=AccountInactive";
+          }
+          // Check if a timed block has expired and should be auto-lifted
+          const status = member?.restrictionStatus;
+          const expiry = member?.restrictionExpiry;
+          if ((status === "BLOCKED" || status === "BLACKLISTED") && expiry && expiry < new Date()) {
+            // Timed block expired — auto-lift so member can log in
+            await prisma.member.update({
+              where: { userId: dbUser.id },
+              data:  { restrictionStatus: "NONE", restrictionReason: null, restrictedAt: null, restrictedBy: null, restrictionExpiry: null },
+            });
+          } else if (status === "BLOCKED" || status === "BLACKLISTED") {
+            return "/en/member/login?error=AccountBlocked";
+          }
         }
         return true;
       }
@@ -163,7 +204,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
 
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user?.id) {
         // Always load fresh from DB on sign-in to pick up latest prefs
         const dbUser = await prisma.user.findUnique({
@@ -176,6 +217,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.authStyle   = dbUser?.authStyle   ?? null;
         token.authMethods = dbUser?.authMethods ?? '["password","google","magic"]';
       }
+
+      // When the client calls update({ theme, authStyle }), patch the JWT in-place
+      // so the next SSR render picks up the new value without requiring a re-login.
+      if (trigger === "update" && session) {
+        if (session.theme     !== undefined) token.theme     = session.theme     ?? null;
+        if (session.authStyle !== undefined) token.authStyle = session.authStyle ?? null;
+      }
+
       return token;
     },
 
@@ -188,6 +237,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.authMethods = token.authMethods as string;
       }
       return session;
+    },
+  },
+
+  events: {
+    async signIn({ user, account }) {
+      await logActivity(
+        { id: user.id ?? null, name: user.name ?? null, role: null },
+        Actions.AUTH_LOGIN,
+        {
+          entityType: "User",
+          entityId:   user.id ?? undefined,
+          entityName: user.name ?? user.email ?? undefined,
+          detail:     { provider: account?.provider ?? "credentials" },
+        }
+      );
+    },
+    async signOut(message) {
+      const token = "token" in message ? message.token : null;
+      await logActivity(
+        { id: (token?.sub ?? null) as string | null, name: (token?.name ?? null) as string | null, role: null },
+        Actions.AUTH_LOGOUT,
+        {
+          entityType: "User",
+          entityId:   token?.sub ?? undefined,
+          entityName: (token?.name ?? undefined) as string | undefined,
+        }
+      );
     },
   },
 });

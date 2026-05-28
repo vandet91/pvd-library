@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
 import {
-  Plus, Search, Edit, Trash2, BookOpen, Upload, Download,
+  Plus, Search, Edit, Trash2, BookOpen, BookMarked, Upload, Download,
   CheckSquare, X, FileText, ShoppingBasket, Loader2, ChevronRight,
-  Printer, Barcode,
+  Printer, Barcode, Image,
 } from "lucide-react";
 
 /* ── Material type badge ────────────────────────────────────────── */
@@ -23,6 +23,8 @@ const MAT: Record<string, { label: string; cls: string }> = {
 };
 
 
+interface BranchOption { id: string; name: string; isActive: boolean }
+
 interface Book {
   id:              string;
   title:           string;
@@ -38,6 +40,8 @@ interface Book {
   author:          { name: string } | null;
   coAuthors:       { id: string; name: string }[];
   category:        { name: string } | null;
+  coverImage:      string | null;
+  _count?:         { loans: number; ebooks: number };
 }
 
 /** Format all author names: "Primary, Co-1, Co-2" */
@@ -298,8 +302,18 @@ export default function BooksPage() {
   const [books,        setBooks]        = useState<Book[]>([]);
   const [query,        setQuery]        = useState("");
   const [materialType, setMaterialType] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
+
+  // Load branch list for the filter dropdown
+  useEffect(() => {
+    fetch("/api/branches")
+      .then((r) => r.ok ? r.json() : [])
+      .then((brs: BranchOption[]) => { if (Array.isArray(brs)) setBranchOptions(brs.filter((b) => b.isActive)); })
+      .catch(() => {});
+  }, []);
 
   /* Basket picker */
   const [basketTargetIds, setBasketTargetIds] = useState<string[] | null>(null);
@@ -316,6 +330,7 @@ export default function BooksPage() {
       const params = new URLSearchParams();
       if (query)        params.set("q", query);
       if (materialType) params.set("materialType", materialType);
+      if (branchFilter) params.set("branchId", branchFilter);
       const res  = await fetch(`/api/books?${params}`);
       if (!res.ok) { setBooks([]); return; }
       const data = await res.json().catch(() => []);
@@ -325,7 +340,7 @@ export default function BooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, materialType]);
+  }, [query, materialType, branchFilter]);
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
 
@@ -451,6 +466,18 @@ export default function BooksPage() {
           <option value="MAP">{t("materialMap")}</option>
           <option value="OTHER">{t("materialOther")}</option>
         </select>
+        {branchOptions.length > 0 && (
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="">{t("allBranches")}</option>
+            {branchOptions.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Bulk action bar */}
@@ -534,24 +561,44 @@ export default function BooksPage() {
 
                       {/* title + type + location */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-gray-900 text-sm">
-                            {book.title}
-                            {book.subtitle && <span className="text-gray-400 font-normal">: {book.subtitle}</span>}
-                            {book.edition  && <span className="ml-1 text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">{book.edition}</span>}
-                          </p>
-                          {book.materialType && book.materialType !== "BOOK" && (() => {
-                            const mat = MAT[book.materialType] ?? { label: book.materialType, cls: "bg-gray-100 text-gray-600" };
-                            return (
-                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${mat.cls}`}>
-                                {mat.label}
-                              </span>
-                            );
-                          })()}
+                        <div className="flex items-start gap-2.5">
+                          {/* Mini cover */}
+                          <div className="flex-shrink-0 w-8 h-10 rounded overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
+                            {book.coverImage
+                              // eslint-disable-next-line @next/next/no-img-element
+                              ? <img src={book.coverImage} alt="" className="w-full h-full object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center">
+                                  <Image className="w-3.5 h-3.5 text-gray-300" />
+                                </div>
+                            }
+                          </div>
+                          {/* Text */}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-medium text-gray-900 text-sm">
+                                {book.title}
+                                {book.subtitle && <span className="text-gray-400 font-normal">: {book.subtitle}</span>}
+                                {book.edition  && <span className="ml-1 text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">{book.edition}</span>}
+                              </p>
+                              {book.materialType && book.materialType !== "BOOK" && (() => {
+                                const mat = MAT[book.materialType] ?? { label: book.materialType, cls: "bg-gray-100 text-gray-600" };
+                                return (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${mat.cls}`}>
+                                    {mat.label}
+                                  </span>
+                                );
+                              })()}
+                              {(book._count?.ebooks ?? 0) > 0 && (
+                                <span title="Linked to e-resource" className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded font-medium border border-teal-100">
+                                  <BookMarked className="w-2.5 h-2.5" /> E-Link
+                                </span>
+                              )}
+                            </div>
+                            {(book.shelfLocation?.name ?? book.location) && (
+                              <p className="text-xs text-gray-400 mt-0.5">{book.shelfLocation?.name ?? book.location}</p>
+                            )}
+                          </div>
                         </div>
-                        {(book.shelfLocation?.name ?? book.location) && (
-                          <p className="text-xs text-gray-400 mt-0.5">{book.shelfLocation?.name ?? book.location}</p>
-                        )}
                       </td>
 
                       <td className="px-4 py-3 text-sm text-gray-600">{authorList(book)}</td>

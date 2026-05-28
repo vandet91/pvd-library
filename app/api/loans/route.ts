@@ -4,12 +4,14 @@ import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { addDays } from "date-fns";
 import { can } from "@/lib/rbac";
+import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 const loanSchema = z.object({
   memberId: z.string().min(1),
   bookId: z.string().min(1),
   copyId: z.string().optional(),   // explicit copy via scan, else auto-pick
-  loanDays: z.number().min(1).max(90).default(14),
+  loanDays: z.number().min(1).max(90).optional(), // falls back to DEFAULT_LOAN_DAYS setting
 });
 
 export async function GET(request: NextRequest) {
@@ -119,7 +121,14 @@ export async function POST(request: NextRequest) {
   const parsed = loanSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { memberId, bookId, copyId, loanDays } = parsed.data;
+  const { memberId, bookId, copyId } = parsed.data;
+
+  // Resolve loan duration: explicit body value → DB setting → hard fallback
+  let loanDays = parsed.data.loanDays;
+  if (!loanDays) {
+    const setting = await prisma.settings.findUnique({ where: { key: "DEFAULT_LOAN_DAYS" } });
+    loanDays = parseInt(setting?.value ?? "14", 10);
+  }
 
   const book = await prisma.book.findUnique({ where: { id: bookId } });
   if (!book) return NextResponse.json({ error: "Book not found" }, { status: 404 });
@@ -154,6 +163,28 @@ export async function POST(request: NextRequest) {
 
   const member = await prisma.member.findUnique({ where: { id: memberId } });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+
+  // ── Restriction guard ───────────────────────────────────────────────────────
+  const blocked = ["BLOCKED", "BLACKLISTED", "SUSPENDED"];
+  if (blocked.includes(member.restrictionStatus)) {
+    return NextResponse.json({
+      error: `Member account is ${member.restrictionStatus.toLowerCase().replace("_", " ")} — borrowing is not permitted. Reason: ${member.restrictionReason ?? "Contact the librarian."}`,
+      code:  "ACCOUNT_RESTRICTED",
+      restrictionStatus: member.restrictionStatus,
+    }, { status: 403 });
+  }
+  if (member.restrictionStatus === "IN_LIBRARY_ONLY") {
+    const loanType          = (body as { loanType?: string }).loanType ?? "HOME";
+    const overrideRestriction = (body as { overrideRestriction?: boolean }).overrideRestriction;
+    const canOverride       = overrideRestriction === true && can(session.user?.role, "LIBRARIAN");
+    if (loanType === "HOME" && !canOverride) {
+      return NextResponse.json({
+        error: `Member is restricted to in-library borrowing only. Reason: ${member.restrictionReason ?? "Contact the librarian."}`,
+        code:  "IN_LIBRARY_ONLY",
+        restrictionStatus: member.restrictionStatus,
+      }, { status: 403 });
+    }
+  }
 
   const existing = await prisma.loan.findFirst({
     where:   { bookId, memberId, status: { in: ["ACTIVE", "OVERDUE"] } },
@@ -212,6 +243,21 @@ export async function POST(request: NextRequest) {
     }
     return created;
   });
+
+  await logActivity(actorFromSession(session), Actions.LOAN_CHECKOUT, {
+    entityType: "Loan",
+    entityId:   loan.id,
+    entityName: `${loan.book.title} → ${loan.member.name}`,
+    detail: {
+      memberId:   loan.memberId,
+      memberName: loan.member.name,
+      bookId:     loan.bookId,
+      bookTitle:  loan.book.title,
+      dueDate:    loan.dueDate,
+    },
+  });
+
+  notifyMember(loan.memberId, tg.checkout(loan.member.name, loan.book.title, loan.dueDate)).catch(() => {});
 
   return NextResponse.json(loan, { status: 201 });
 }

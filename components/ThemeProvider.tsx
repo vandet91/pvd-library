@@ -3,10 +3,10 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 
-export type ThemeName     = "ocean" | "midnight" | "emerald";
+export type ThemeName     = "ocean" | "midnight" | "emerald" | "academic";
 export type AuthStyleName = "split" | "glass" | "minimal";
 
-const VALID_THEMES:      ThemeName[]     = ["ocean", "midnight", "emerald"];
+const VALID_THEMES:      ThemeName[]     = ["ocean", "midnight", "emerald", "academic"];
 const VALID_AUTH_STYLES: AuthStyleName[] = ["split", "glass", "minimal"];
 
 interface ThemeCtx {
@@ -56,7 +56,7 @@ export default function ThemeProvider({
   serverTheme?:     ThemeName | null;
   serverAuthStyle?: AuthStyleName | null;
 }) {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
 
   // Initialise from server-rendered value (no flash)
   const [theme,     setThemeState]     = useState<ThemeName>    (serverTheme     ?? "ocean");
@@ -118,14 +118,19 @@ export default function ThemeProvider({
   const setTheme = useCallback((t: ThemeName) => {
     setThemeState(t);
     persistThemeCookie(t);
-    if (session?.user?.id) saveToServer({ theme: t });
-  }, [session?.user?.id]);
+    if (session?.user?.id) {
+      // Save to DB then refresh the JWT so SSR picks it up on next page load
+      saveToServer({ theme: t }).then(() => update({ theme: t }));
+    }
+  }, [session?.user?.id, update]);
 
   const setAuthStyle = useCallback((s: AuthStyleName) => {
     setAuthStyleState(s);
     localStorage.setItem("pvd-auth-style", s);
-    if (session?.user?.id) saveToServer({ authStyle: s });
-  }, [session?.user?.id]);
+    if (session?.user?.id) {
+      saveToServer({ authStyle: s }).then(() => update({ authStyle: s }));
+    }
+  }, [session?.user?.id, update]);
 
   return (
     <Ctx.Provider value={{ theme, setTheme, authStyle, setAuthStyle }}>

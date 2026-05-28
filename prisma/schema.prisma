@@ -71,14 +71,29 @@ model Member {
   memberType   MemberType    @default(STUDENT)
   joinDate     DateTime      @default(now())
   expireDate   DateTime?
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  user         User?         @relation(fields: [userId], references: [id])
-  loans        Loan[]
-  fines        Fine[]
-  reservations Reservation[]
-  bookRequests BookRequest[]
+  isActive            Boolean            @default(true)
+  pendingApproval     Boolean            @default(false)
+  // Restriction / discipline
+  restrictionStatus   MemberRestriction  @default(NONE)
+  restrictionReason   String?            @db.Text
+  restrictedAt        DateTime?
+  restrictedBy        String?            // staff name who applied it
+  restrictionExpiry   DateTime?          // null = permanent; set for timed suspensions
+  telegramChatId      String?       @unique
+  telegramLinkedAt    DateTime?
+  telegramLinkCode    String?       @unique
+  telegramLinkExpiry  DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  user                User?         @relation(fields: [userId], references: [id])
+  loans               Loan[]
+  fines               Fine[]
+  reservations        Reservation[]
+  bookRequests        BookRequest[]
+  ratings             Rating[]
+  incidents           MemberIncident[]
+
+  @@index([restrictionStatus])
 }
 
 model Category {
@@ -114,6 +129,21 @@ model Location {
   books       Book[]
 }
 
+model Branch {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  nameKm    String?
+  address   String?
+  phone     String?
+  email     String?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  books     Book[]
+  copies    BookCopy[]
+  loans     Loan[]
+}
+
 model Book {
   id              String        @id @default(cuid())
   title           String
@@ -141,6 +171,7 @@ model Book {
   authorId        String?
   publisherId     String?
   locationId      String?
+  branchId        String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   category        Category?     @relation(fields: [categoryId], references: [id])
@@ -148,12 +179,14 @@ model Book {
   coAuthors       Author[]      @relation("BookCoAuthors")
   publisher       Publisher?    @relation(fields: [publisherId], references: [id])
   shelfLocation   Location?     @relation(fields: [locationId], references: [id])
+  branch          Branch?       @relation(fields: [branchId], references: [id])
   loans           Loan[]
   reservations    Reservation[]
   ebooks          Ebook[]
   inventoryItems  InventoryItem[]
   basketItems     BasketItem[]
   copies          BookCopy[]
+  ratings         Rating[]
 
   @@index([title])
   @@index([categoryId])
@@ -174,11 +207,13 @@ model Loan {
   returnDate   DateTime?
   status       LoanStatus @default(ACTIVE)
   renewalCount Int        @default(0)
+  branchId     String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   member       Member     @relation(fields: [memberId], references: [id])
   book         Book       @relation(fields: [bookId], references: [id])
   copy         BookCopy?  @relation(fields: [copyId], references: [id])
+  branch       Branch?    @relation(fields: [branchId], references: [id])
   fine         Fine?
 
   @@index([status])
@@ -193,17 +228,20 @@ model BookCopy {
   id          String        @id @default(cuid())
   bookId      String
   copyNumber  Int           // 1, 2, 3, ... unique per book
-  barcode     String?       @unique
-  rfid        String?       @unique
-  condition   BookCondition @default(GOOD)
-  status      CopyStatus    @default(AVAILABLE)
-  loanable    Boolean       @default(true)   // false = in-library only (reference, rare, etc.)
-  acquiredAt  DateTime      @default(now())
+  barcode      String?       @unique
+  rfid         String?       @unique
+  condition    BookCondition @default(GOOD)
+  status       CopyStatus    @default(AVAILABLE)
+  loanable     Boolean       @default(true)   // false = in-library only (reference, rare, etc.)
+  labelPrinted Boolean       @default(false)  // true once spine label has been printed
+  acquiredAt   DateTime      @default(now())
   price       Float?
   notes       String?       @db.Text
+  branchId    String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation(fields: [branchId], references: [id])
   loans        Loan[]
   basketItems  BasketItem[]
   reservations Reservation[]
@@ -224,18 +262,20 @@ enum CopyStatus {
 }
 
 model Fine {
-  id        String     @id @default(cuid())
-  loanId    String     @unique
-  memberId  String
-  amount    Float
-  daysLate  Int        @default(0)
-  type      FineType   @default(LATE_FEE)
-  status    FineStatus @default(UNPAID)
-  paidAt    DateTime?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  loan      Loan       @relation(fields: [loanId], references: [id])
-  member    Member     @relation(fields: [memberId], references: [id])
+  id            String     @id @default(cuid())
+  loanId        String     @unique
+  memberId      String
+  amount        Float
+  daysLate      Int        @default(0)
+  type          FineType   @default(LATE_FEE)
+  status        FineStatus @default(UNPAID)
+  paidAt        DateTime?
+  paymentMethod String?    // "cash" | "bank_transfer" | "online" | "waived" | "other"
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  loan          Loan       @relation(fields: [loanId], references: [id])
+  member        Member     @relation(fields: [memberId], references: [id])
 
   @@index([status])
   @@index([memberId])
@@ -262,11 +302,33 @@ model Ebook {
   category    Category? @relation(fields: [categoryId], references: [id])
   author      Author?   @relation(fields: [authorId], references: [id])
   book        Book?     @relation(fields: [bookId], references: [id])
+  ratings     Rating[]
 
   @@index([categoryId])
   @@index([authorId])
   @@index([ebookType])
   @@index([views])
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  memberId  String
+  bookId    String?
+  ebookId   String?
+  score     Int      // 1–5
+  review    String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  member Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  book   Book?   @relation(fields: [bookId],  references: [id], onDelete: Cascade)
+  ebook  Ebook?  @relation(fields: [ebookId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, bookId])
+  @@unique([memberId, ebookId])
+  @@index([bookId])
+  @@index([ebookId])
+  @@index([memberId])
 }
 
 model Reservation {
@@ -350,6 +412,41 @@ enum FineStatus {
 enum FineType {
   LATE_FEE
   REPLACEMENT
+  DAMAGED
+}
+
+enum MemberRestriction {
+  NONE
+  IN_LIBRARY_ONLY  // home loans blocked; can borrow in-library
+  SUSPENDED        // all borrowing blocked; can still log in
+  BLOCKED          // login blocked (temporary — has expiry)
+  BLACKLISTED      // login blocked permanently; admin override required
+}
+
+model MemberIncident {
+  id          String       @id @default(cuid())
+  memberId    String
+  type        IncidentType
+  description String       @db.Text
+  severity    Int          @default(1)   // 1 = minor, 2 = moderate, 3 = serious
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?      @db.Text
+  actorName   String?      // staff who logged it
+  createdAt   DateTime     @default(now())
+  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([type])
+}
+
+enum IncidentType {
+  BOOK_DAMAGE
+  BOOK_LOST
+  REPEATED_LATE
+  BEHAVIORAL
+  POLICY_VIOLATION
+  OTHER
 }
 
 enum ReservationStatus {
@@ -460,6 +557,25 @@ enum NotificationStatus {
   SENT
   FAILED
   SKIPPED
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  action     String   // e.g. "member.approved", "loan.checkout", "book.deleted"
+  entityType String   // "Member" | "Book" | "Loan" | "Fine" | "Reservation" | "Settings"
+  entityId   String?
+  entityName String?  // denormalized — readable even after the record is deleted
+  actorId    String?  // User.id (null = system / cron / self-registration)
+  actorName  String?
+  actorRole  String?
+  detail     Json?    // { before: {...}, after: {...} }  or free-form extra context
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
 }
 
 model Basket {

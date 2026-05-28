@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   description: "Library Management System",
 };
 
-const VALID_THEMES = ["ocean", "midnight", "emerald"] as const;
+const VALID_THEMES = ["ocean", "midnight", "emerald", "academic"] as const;
 type ThemeName = typeof VALID_THEMES[number];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

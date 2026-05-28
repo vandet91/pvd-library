@@ -6,7 +6,21 @@ import {
   reservationReadyTemplate,
 } from "@/lib/email-templates";
 import { calculateFine } from "@/lib/utils";
+import { sendTelegram, tg, TELEGRAM_ENABLED } from "@/lib/telegram";
 import type { NotificationType } from "@prisma/client";
+
+/* ── Telegram helper ─────────────────────────────────────────── */
+async function tryTelegram(
+  chatId: string | null | undefined,
+  text:   string,
+  result: SendResult,
+): Promise<boolean> {
+  if (!TELEGRAM_ENABLED || !chatId) return false;
+  const r = await sendTelegram(chatId, text);
+  if (r.ok) { result.sent++; return true; }
+  // Don't count as failed — fall through to email
+  return false;
+}
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
@@ -94,18 +108,26 @@ export async function notifyDueSoon(daysBefore = 3): Promise<SendResult> {
   });
 
   for (const loan of loans) {
-    const recipient = loan.member.email;
-    if (!recipient) { result.skipped++; continue; }
     if (await alreadyNotifiedToday({ type: "DUE_SOON", memberId: loan.memberId, loanId: loan.id })) {
       result.skipped++; continue;
     }
-    const { subject, html } = dueSoonTemplate({
-      memberName: loan.member.name,
-      bookTitle:  loan.book.title,
-      dueDate:    loan.dueDate,
-      daysLeft:   daysBefore,
-    });
-    await recordAndSend({ type: "DUE_SOON", memberId: loan.memberId, loanId: loan.id, recipient, subject, html }, result);
+    // Try Telegram first, fall back to email
+    const tgSent = await tryTelegram(
+      loan.member.telegramChatId,
+      tg.dueSoon(loan.member.name, loan.book.title, loan.dueDate, daysBefore),
+      result,
+    );
+    if (!tgSent) {
+      const recipient = loan.member.email;
+      if (!recipient) { result.skipped++; continue; }
+      const { subject, html } = dueSoonTemplate({
+        memberName: loan.member.name,
+        bookTitle:  loan.book.title,
+        dueDate:    loan.dueDate,
+        daysLeft:   daysBefore,
+      });
+      await recordAndSend({ type: "DUE_SOON", memberId: loan.memberId, loanId: loan.id, recipient, subject, html }, result);
+    }
   }
   return result;
 }
@@ -124,20 +146,28 @@ export async function notifyOverdue(finePerDay = 0.25): Promise<SendResult> {
   });
 
   for (const loan of loans) {
-    const recipient = loan.member.email;
-    if (!recipient) { result.skipped++; continue; }
     if (await alreadyNotifiedToday({ type: "OVERDUE", memberId: loan.memberId, loanId: loan.id })) {
       result.skipped++; continue;
     }
     const { daysLate, amount } = calculateFine(loan.dueDate, now, finePerDay);
-    const { subject, html } = overdueTemplate({
-      memberName: loan.member.name,
-      bookTitle:  loan.book.title,
-      dueDate:    loan.dueDate,
-      daysLate,
-      fineAmount: amount,
-    });
-    await recordAndSend({ type: "OVERDUE", memberId: loan.memberId, loanId: loan.id, recipient, subject, html }, result);
+    // Try Telegram first, fall back to email
+    const tgSent = await tryTelegram(
+      loan.member.telegramChatId,
+      tg.overdue(loan.member.name, loan.book.title, daysLate, amount),
+      result,
+    );
+    if (!tgSent) {
+      const recipient = loan.member.email;
+      if (!recipient) { result.skipped++; continue; }
+      const { subject, html } = overdueTemplate({
+        memberName: loan.member.name,
+        bookTitle:  loan.book.title,
+        dueDate:    loan.dueDate,
+        daysLate,
+        fineAmount: amount,
+      });
+      await recordAndSend({ type: "OVERDUE", memberId: loan.memberId, loanId: loan.id, recipient, subject, html }, result);
+    }
   }
   return result;
 }
@@ -152,8 +182,6 @@ export async function notifyReservationReady(): Promise<SendResult> {
   });
 
   for (const r of reservations) {
-    const recipient = r.member.email;
-    if (!recipient) { result.skipped++; continue; }
     // For reservation-ready, only send ONCE total (not once per day)
     const alreadySent = await prisma.notification.findFirst({
       where:  { type: "RESERVATION_READY", reservationId: r.id, status: "SENT" },
@@ -161,39 +189,81 @@ export async function notifyReservationReady(): Promise<SendResult> {
     });
     if (alreadySent) { result.skipped++; continue; }
 
-    const { subject, html } = reservationReadyTemplate({
-      memberName: r.member.name,
-      bookTitle:  r.book.title,
-      holdShelf:  r.holdShelf,
-      expiresAt:  r.expiresAt,
-    });
-    await recordAndSend({
-      type: "RESERVATION_READY", memberId: r.memberId, reservationId: r.id, recipient, subject, html,
-    }, result);
+    // Try Telegram first, fall back to email
+    const tgSent = await tryTelegram(
+      r.member.telegramChatId,
+      tg.reservationReady(r.member.name, r.book.title, r.expiresAt),
+      result,
+    );
+    if (!tgSent) {
+      const recipient = r.member.email;
+      if (!recipient) { result.skipped++; continue; }
+      const { subject, html } = reservationReadyTemplate({
+        memberName: r.member.name,
+        bookTitle:  r.book.title,
+        holdShelf:  r.holdShelf,
+        expiresAt:  r.expiresAt,
+      });
+      await recordAndSend({
+        type: "RESERVATION_READY", memberId: r.memberId, reservationId: r.id, recipient, subject, html,
+      }, result);
+    }
   }
   return result;
 }
 
-/* ── Run all three ───────────────────────────────────────────── */
+/* ── 4. Membership expiring soon (Telegram only) ──────────────── */
+export async function notifyMembershipExpiring(daysBefore = 7): Promise<SendResult> {
+  const result: SendResult = { sent: 0, skipped: 0, failed: 0, errors: [] };
+  if (!TELEGRAM_ENABLED) return result;
+
+  const target = new Date();
+  target.setDate(target.getDate() + daysBefore);
+
+  const members = await prisma.member.findMany({
+    where: {
+      isActive:          true,
+      telegramChatId:    { not: null },
+      expireDate:        { gte: startOfDay(target), lte: endOfDay(target) },
+    },
+  });
+
+  for (const member of members) {
+    if (!member.expireDate) continue;
+    await tryTelegram(
+      member.telegramChatId,
+      tg.membershipExpiring(member.name, member.expireDate, daysBefore),
+      result,
+    );
+  }
+  return result;
+}
+
+/* ── Run all ─────────────────────────────────────────────────── */
 export async function runAllNotifications() {
   // Resolve settings once so each pass uses the same values
-  const [enabled, daysBeforeRow, fineRow] = await Promise.all([
+  const [enabled, daysBeforeRow, fineRow, tgEnabledRow, tgExpiryDaysRow] = await Promise.all([
     prisma.settings.findUnique({ where: { key: "NOTIFICATIONS_ENABLED" } }),
     prisma.settings.findUnique({ where: { key: "DUE_SOON_DAYS" } }),
     prisma.settings.findUnique({ where: { key: "FINE_PER_DAY" } }),
+    prisma.settings.findUnique({ where: { key: "TELEGRAM_NOTIFICATIONS_ENABLED" } }),
+    prisma.settings.findUnique({ where: { key: "TELEGRAM_MEMBERSHIP_EXPIRY_DAYS" } }),
   ]);
 
   if (enabled?.value === "false") {
-    return { disabled: true as const, dueSoon: null, overdue: null, reservationReady: null };
+    return { disabled: true as const, dueSoon: null, overdue: null, reservationReady: null, membershipExpiring: null };
   }
 
-  const daysBefore = Number(daysBeforeRow?.value ?? 3);
-  const finePerDay = Number(fineRow?.value ?? process.env.FINE_PER_DAY ?? 0.25);
+  const daysBefore       = Number(daysBeforeRow?.value ?? 3);
+  const finePerDay       = Number(fineRow?.value ?? process.env.FINE_PER_DAY ?? 0.25);
+  const tgEnabled        = tgEnabledRow?.value !== "false";
+  const tgExpiryDays     = Number(tgExpiryDaysRow?.value ?? 7);
 
-  const [dueSoon, overdue, reservationReady] = await Promise.all([
+  const [dueSoon, overdue, reservationReady, membershipExpiring] = await Promise.all([
     notifyDueSoon(daysBefore),
     notifyOverdue(finePerDay),
     notifyReservationReady(),
+    tgEnabled ? notifyMembershipExpiring(tgExpiryDays) : Promise.resolve({ sent: 0, skipped: 0, failed: 0, errors: [] }),
   ]);
-  return { disabled: false as const, dueSoon, overdue, reservationReady };
+  return { disabled: false as const, dueSoon, overdue, reservationReady, membershipExpiring };
 }

@@ -201,6 +201,68 @@
 [data-theme="emerald"] .text-indigo-700 { color: #065f46 !important; }
 
 /* ══════════════════════════════════════════════════════════════
+   THEME 4 — Academic (Navy · Teal · Gold)
+   Sidebar: deep navy  |  Accent: deep teal  |  Highlight: soft gold
+══════════════════════════════════════════════════════════════ */
+[data-theme="academic"] {
+  --sidebar:            #1e3a5f;   /* Navy Blue  */
+  --sidebar-foreground: #ffffff;
+  --header-bg:          #ffffff;
+  --header-border:      #e2e8f0;
+  --page-bg:            #f8fafc;
+  --accent:             #0f766e;   /* Deep Teal  */
+  --accent-hover:       #0d6460;
+  --accent-fg:          #ffffff;
+  --gold:               #d4a017;   /* Soft Gold  */
+  --gold-hover:         #b8891a;
+  --login-from:         #1e3a5f;
+  --login-to:           #0f766e;
+  --login-mid:          #27496d;
+}
+
+/* ── Primary buttons (bg-blue-900, bg-indigo-600) → teal ──── */
+[data-theme="academic"] .bg-blue-900,
+[data-theme="academic"] .bg-indigo-600    { background-color: var(--accent) !important; }
+[data-theme="academic"] .hover\:bg-blue-800:hover,
+[data-theme="academic"] .hover\:bg-indigo-700:hover { background-color: var(--accent-hover) !important; }
+[data-theme="academic"] .focus\:ring-blue-500:focus,
+[data-theme="academic"] .focus\:ring-indigo-500:focus { --tw-ring-color: var(--accent) !important; }
+
+/* ── Indigo / blue accent recolour → teal ─────────────────── */
+[data-theme="academic"] .text-blue-900   { color: #0f766e !important; }
+[data-theme="academic"] .text-indigo-600 { color: #0f766e !important; }
+[data-theme="academic"] .text-indigo-700 { color: #0d6460 !important; }
+[data-theme="academic"] .bg-indigo-50    { background-color: #f0fdfa !important; }
+[data-theme="academic"] .bg-indigo-100   { background-color: #ccfbf1 !important; }
+[data-theme="academic"] .border-indigo-200 { border-color: #99f6e4 !important; }
+[data-theme="academic"] .hover\:bg-indigo-50:hover  { background-color: #f0fdfa !important; }
+[data-theme="academic"] .hover\:bg-indigo-100:hover { background-color: #ccfbf1 !important; }
+[data-theme="academic"] .text-indigo-500 { color: #14b8a6 !important; }
+[data-theme="academic"] .bg-indigo-500\/30 { background-color: rgba(15,118,110,.30) !important; }
+[data-theme="academic"] .text-indigo-100   { color: #ccfbf1 !important; }
+
+/* ── Blue accents → teal ──────────────────────────────────── */
+[data-theme="academic"] .text-blue-600  { color: #0f766e !important; }
+[data-theme="academic"] .text-blue-700  { color: #0d6460 !important; }
+[data-theme="academic"] .bg-blue-50     { background-color: #f0fdfa !important; }
+[data-theme="academic"] .bg-blue-100    { background-color: #ccfbf1 !important; }
+[data-theme="academic"] .border-blue-200 { border-color: #99f6e4 !important; }
+[data-theme="academic"] .hover\:bg-blue-50:hover  { background-color: #f0fdfa !important; }
+[data-theme="academic"] .hover\:bg-blue-100:hover { background-color: #ccfbf1 !important; }
+[data-theme="academic"] .hover\:text-blue-600:hover { color: #0f766e !important; }
+[data-theme="academic"] .focus\:ring-2.focus\:ring-blue-500 { --tw-ring-color: var(--accent) !important; }
+
+/* ── User avatar: navy→teal gradient (replaces indigo→blue) ── */
+[data-theme="academic"] .from-indigo-500 { --tw-gradient-from: #0f766e !important; }
+[data-theme="academic"] .to-blue-600     { --tw-gradient-to:   #d4a017 !important; }
+
+/* ── Gold highlight: stat accent & active sidebar stripe ───── */
+[data-theme="academic"] aside a.bg-white\/20 {
+  background-color: rgba(212,160,23,.25) !important;
+  border-left: 3px solid #d4a017;
+}
+
+/* ══════════════════════════════════════════════════════════════
    GLOBAL
 ══════════════════════════════════════════════════════════════ */
 

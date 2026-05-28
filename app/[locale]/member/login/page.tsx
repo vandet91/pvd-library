@@ -1,14 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useLocale } from "next-intl";
-import { BookOpen, Eye, EyeOff, Loader2, LogIn, Search } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
+import { BookOpen, Eye, EyeOff, Loader2, LogIn, Search, UserPlus } from "lucide-react";
 import { useMemberLoginForm } from "./useMemberLoginForm";
 import { useLibraryName } from "@/context/library-name";
+import LanguageToggle from "@/components/shared/LanguageToggle";
 
 export default function MemberLoginPage() {
-  const locale = useLocale();
+  const locale      = useLocale();
   const libraryName = useLibraryName();
+  const t           = useTranslations("memberPortal");
+
+  const [canRegister, setCanRegister] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => setCanRegister(d.MEMBER_SELF_REGISTER === "true"))
+      .catch(() => {});
+  }, []);
+
   const {
     identifier, setIdentifier,
     password,   setPassword,
@@ -29,14 +42,16 @@ export default function MemberLoginPage() {
           <span className="text-white font-semibold text-sm">{libraryName}</span>
         </div>
 
-        {/* Browse without login */}
-        <Link
-          href={`/${locale}/discover`}
-          className="flex items-center gap-1.5 text-blue-200 hover:text-white text-xs font-medium transition-colors"
-        >
-          <Search className="w-3.5 h-3.5" />
-          Browse catalogue
-        </Link>
+        <div className="flex items-center gap-3">
+          <LanguageToggle variant="dark" />
+          <Link
+            href={`/${locale}/discover`}
+            className="flex items-center gap-1.5 text-blue-200 hover:text-white text-xs font-medium transition-colors"
+          >
+            <Search className="w-3.5 h-3.5" />
+            {t("browseCatalogue")}
+          </Link>
+        </div>
       </div>
 
       {/* Center card */}
@@ -48,10 +63,8 @@ export default function MemberLoginPage() {
             <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-5 ring-1 ring-white/20">
               <BookOpen className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Member Portal</h1>
-            <p className="text-blue-300 text-sm mt-1.5">
-              Sign in to reserve books, track loans &amp; more
-            </p>
+            <h1 className="text-2xl font-bold text-white tracking-tight">{t("loginTitle")}</h1>
+            <p className="text-blue-300 text-sm mt-1.5">{t("loginSubtitle")}</p>
           </div>
 
           {/* Form */}
@@ -59,7 +72,7 @@ export default function MemberLoginPage() {
 
             <div className="space-y-1.5">
               <label htmlFor="member-identifier" className="block text-xs font-semibold text-blue-300 uppercase tracking-wider">
-                Email or Member ID
+                {t("emailOrMemberId")}
               </label>
               <input
                 id="member-identifier"
@@ -68,14 +81,14 @@ export default function MemberLoginPage() {
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
                 autoComplete="username"
-                placeholder="e.g. MBR-2024-001 or you@email.com"
+                placeholder={t("emailOrMemberIdPlaceholder")}
                 className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-blue-400 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
               />
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor="member-password" className="block text-xs font-semibold text-blue-300 uppercase tracking-wider">
-                Password
+                {t("password")}
               </label>
               <div className="relative">
                 <input
@@ -113,20 +126,29 @@ export default function MemberLoginPage() {
                 {loading
                   ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <LogIn className="w-4 h-4" />}
-                {loading ? "Signing in…" : "Sign in"}
+                {loading ? t("signingIn") : t("signIn")}
               </button>
             </div>
           </form>
 
           {/* Divider + links */}
           <div className="mt-8 pt-6 border-t border-white/10 text-center space-y-3">
+            {canRegister && (
+              <Link
+                href={`/${locale}/member/register`}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-white/20 text-white text-sm font-medium hover:bg-white/10 transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                {t("createNewAccount")}
+              </Link>
+            )}
             <p className="text-blue-400 text-xs">
-              Library staff?{" "}
+              {t("libraryStaff")}{" "}
               <Link
                 href={`/${locale}/auth/login`}
                 className="text-white font-semibold hover:underline"
               >
-                Staff portal →
+                {t("staffPortalLink")}
               </Link>
             </p>
             <p className="text-blue-500 text-xs">
@@ -134,7 +156,7 @@ export default function MemberLoginPage() {
                 href={`/${locale}/discover`}
                 className="hover:text-blue-300 transition-colors"
               >
-                ← Browse catalogue without signing in
+                {t("browseCatalogueLink")}
               </Link>
             </p>
           </div>

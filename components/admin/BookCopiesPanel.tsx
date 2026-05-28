@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Loader2, Package, CheckCircle, AlertTriangle, PackageX, Archive, Edit2, X, Save, Printer, User, ExternalLink, ShoppingBasket, CheckSquare, Square } from "lucide-react";
+import { Plus, Trash2, Loader2, Package, CheckCircle, AlertTriangle, PackageX, Archive, Edit2, X, Save, Printer, User, ExternalLink, ShoppingBasket, CheckSquare, Square, Tag } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 
+interface Branch { id: string; name: string }
+
 interface Copy {
-  id:         string;
-  copyNumber: number;
-  barcode:    string | null;
-  rfid:       string | null;
-  condition:  string;
-  status:     string;
-  loanable:   boolean;
-  price:      number | null;
-  acquiredAt: string;
-  notes:      string | null;
+  id:           string;
+  copyNumber:   number;
+  barcode:      string | null;
+  rfid:         string | null;
+  condition:    string;
+  status:       string;
+  loanable:     boolean;
+  price:        number | null;
+  acquiredAt:   string;
+  notes:        string | null;
+  branchId:     string | null;
+  labelPrinted: boolean;
+  branch:       { id: string; name: string } | null;
   currentLoan?: {
     id:      string;
     dueDate: string;
@@ -40,6 +45,9 @@ const CONDITION_LABEL_KEYS: Record<string, string> = {
   FAIR:      "conditionFair",
   POOR:      "conditionPoor",
   DAMAGED:   "conditionDamaged",
+  LOST:      "conditionLost",
+  WITHDRAWN: "conditionWithdrawn",
+  ARCHIVED:  "conditionArchived",
 };
 
 const CONDITIONS = ["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED"] as const;
@@ -50,11 +58,22 @@ interface BasketSummary { id: string; name: string }
 export default function BookCopiesPanel({ bookId }: { bookId: string }) {
   const locale = useLocale();
   const t      = useTranslations("copies");
-  const [copies,  setCopies]  = useState<Copy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy,    setBusy]    = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [error,   setError]   = useState<string | null>(null);
+  const tb     = useTranslations("books");
+  const [copies,     setCopies]     = useState<Copy[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [busy,       setBusy]       = useState(false);
+  const [editing,    setEditing]    = useState<string | null>(null);
+  const [error,      setError]      = useState<string | null>(null);
+  const [labelBusy,  setLabelBusy]  = useState<Set<string>>(new Set());
+
+  // Branch list for the copy editor
+  const [branches, setBranches] = useState<Branch[]>([]);
+  useEffect(() => {
+    fetch("/api/branches")
+      .then((r) => r.ok ? r.json() : [])
+      .then((brs: Branch[]) => { if (Array.isArray(brs)) setBranches(brs); })
+      .catch(() => {});
+  }, []);
 
   // Baskets dropdown state
   const [baskets,    setBaskets]    = useState<BasketSummary[]>([]);
@@ -105,6 +124,19 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
   }
 
   useEffect(() => { fetchCopies(); }, [bookId]); // eslint-disable-line
+
+  async function toggleLabel(copy: Copy) {
+    setLabelBusy((s) => new Set(s).add(copy.id));
+    const res = await fetch(`/api/copies/${copy.id}`, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ labelPrinted: !copy.labelPrinted }),
+    });
+    if (res.ok) {
+      setCopies((prev) => prev.map((c) => c.id === copy.id ? { ...c, labelPrinted: !copy.labelPrinted } : c));
+    }
+    setLabelBusy((s) => { const ns = new Set(s); ns.delete(copy.id); return ns; });
+  }
 
   async function addCopy() {
     setBusy(true); setError(null);
@@ -205,6 +237,8 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
               copy={c}
               locale={locale}
               t={t}
+              tb={tb}
+              branches={branches}
               isEditing={editing === c.id}
               onEdit={() => setEditing(c.id)}
               onCancel={() => setEditing(null)}
@@ -219,6 +253,8 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
               onOpenBasketPicker={() => { ensureBaskets(); setBasketOpen(basketOpen === c.id ? null : c.id); setBasketMsg(null); }}
               onCloseBasketPicker={() => setBasketOpen(null)}
               onAddToBasket={(basketId, tagged) => addCopyToBasket(c.id, basketId, tagged)}
+              onToggleLabel={() => toggleLabel(c)}
+              isLabelBusy={labelBusy.has(c.id)}
             />
           ))}
         </div>
@@ -228,13 +264,17 @@ export default function BookCopiesPanel({ bookId }: { bookId: string }) {
 }
 
 function CopyRow({
-  copy, locale, t, isEditing, onEdit, onCancel, onSave, onDelete, onPrint, busy,
+  copy, locale, t, tb, branches, isEditing, onEdit, onCancel, onSave, onDelete, onPrint, busy,
   baskets, basketOpen, basketBusy, basketMsg, onOpenBasketPicker, onCloseBasketPicker, onAddToBasket,
+  onToggleLabel, isLabelBusy,
 }: {
   copy: Copy;
   locale: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  t: (key: string, values?: Record<string, unknown>) => string;
+  t: (...args: any[]) => string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tb: (...args: any[]) => string;
+  branches: Branch[];
   isEditing: boolean;
   onEdit: () => void;
   onCancel: () => void;
@@ -249,6 +289,8 @@ function CopyRow({
   onOpenBasketPicker: () => void;
   onCloseBasketPicker: () => void;
   onAddToBasket: (basketId: string, tagged: boolean) => void;
+  onToggleLabel: () => void;
+  isLabelBusy: boolean;
 }) {
   const [form, setForm] = useState({
     barcode:   copy.barcode   ?? "",
@@ -258,6 +300,7 @@ function CopyRow({
     loanable:  copy.loanable,
     price:     copy.price?.toString() ?? "",
     notes:     copy.notes ?? "",
+    branchId:  copy.branchId  ?? "",
   });
 
   // Reset form when entering edit mode
@@ -271,6 +314,7 @@ function CopyRow({
         loanable:  copy.loanable,
         price:     copy.price?.toString() ?? "",
         notes:     copy.notes ?? "",
+        branchId:  copy.branchId  ?? "",
       });
     }
   }, [isEditing, copy]);
@@ -287,7 +331,7 @@ function CopyRow({
           <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0">
             #{copy.copyNumber}
           </div>
-          <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-2 items-center">
+          <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-5 gap-2 items-center">
             <span className="text-xs font-mono text-gray-700 truncate flex items-center gap-1.5" title={copy.barcode ?? ""}>
               {copy.barcode ?? "—"}
               {!copy.loanable && (
@@ -301,6 +345,13 @@ function CopyRow({
               <StatusIcon className="w-3 h-3" /> {t(meta.labelKey)}
             </span>
             <span className="text-xs text-gray-500">{copy.price != null ? `$${copy.price.toFixed(2)}` : "—"}</span>
+            {copy.branch ? (
+              <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-medium truncate" title={copy.branch.name}>
+                {copy.branch.name}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
           </div>
           {/* Add to basket — only for copies that are on the shelf */}
           <div className="relative">
@@ -364,6 +415,22 @@ function CopyRow({
               </div>
             )}
           </div>
+          {/* Label applied toggle */}
+          <button
+            type="button"
+            onClick={onToggleLabel}
+            disabled={isLabelBusy}
+            title={copy.labelPrinted ? "Spine label applied — click to unmark" : "Mark spine label as applied"}
+            className={`p-1.5 rounded transition-colors disabled:opacity-50 ${
+              copy.labelPrinted
+                ? "text-green-500 hover:text-green-700 hover:bg-green-50"
+                : "text-amber-400 hover:text-amber-600 hover:bg-amber-50"
+            }`}
+          >
+            {isLabelBusy
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Tag className="w-3.5 h-3.5" />}
+          </button>
           <button type="button" onClick={onPrint} disabled={!copy.barcode} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-30" title={copy.barcode ? "Print barcode label" : "No barcode to print"}>
             <Printer className="w-3.5 h-3.5" />
           </button>
@@ -427,7 +494,10 @@ function CopyRow({
   }
 
   return (
-    <div className="bg-blue-50/50 border border-blue-200 rounded-lg px-3 py-3 space-y-2">
+    <div
+      className="bg-blue-50/50 border border-blue-200 rounded-lg px-3 py-3 space-y-2"
+      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+    >
       <div className="flex items-center gap-2 mb-1">
         <div className="w-7 h-7 bg-indigo-100 text-indigo-700 rounded-lg flex items-center justify-center text-xs font-bold">#{copy.copyNumber}</div>
         <span className="text-xs font-semibold text-gray-700">{t("editCopy")}</span>
@@ -448,8 +518,17 @@ function CopyRow({
           className="px-2 py-1.5 text-xs border border-gray-200 rounded">
           {STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_META[s]?.labelKey ?? s)}</option>)}
         </select>
+        {branches.length > 0 ? (
+          <select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}
+            className="px-2 py-1.5 text-xs border border-gray-200 rounded">
+            <option value="">{tb("noBranch")}</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        ) : (
+          <input value="" readOnly placeholder={tb("noBranch")} className="px-2 py-1.5 text-xs border border-gray-200 rounded text-gray-400" />
+        )}
         <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          placeholder={t("notes")} className="px-2 py-1.5 text-xs border border-gray-200 rounded col-span-2 md:col-span-1" />
+          placeholder={t("notes")} className="px-2 py-1.5 text-xs border border-gray-200 rounded col-span-2 md:col-span-3" />
       </div>
       <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer pt-1">
         <input
@@ -473,6 +552,7 @@ function CopyRow({
           loanable:  form.loanable,
           price:     form.price ? Number(form.price) : null,
           notes:     form.notes || null,
+          branchId:  form.branchId  || null,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any)} disabled={busy}
           className="flex items-center gap-1 text-xs bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded font-medium transition-colors disabled:opacity-50">

@@ -52,6 +52,7 @@ export default async function EditBookPage({ params }: { params: Promise<{ id: s
           pages:       book.pages       ?? undefined,
           language:    book.language    ?? undefined,
           locationId:   book.locationId  ?? undefined,
+          branchId:     book.branchId    ?? undefined,
           totalCopies:  book.totalCopies,
           price:        book.price ?? undefined,
           referenceOnly: book.referenceOnly,

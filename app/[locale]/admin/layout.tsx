@@ -1,5 +1,6 @@
 import Sidebar from "@/components/admin/Sidebar";
 import Header from "@/components/admin/Header";
+import AdminBookSearchChat from "@/components/admin/AdminBookSearchChat";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -19,8 +20,12 @@ export default async function AdminLayout({
     redirect(`/${locale}/auth/login`);
   }
 
-  const libNameRow = await prisma.settings.findUnique({ where: { key: "LIBRARY_NAME" } });
-  const libraryName = libNameRow?.value ?? "PVD Library";
+  const [libNameRow, aiAdminRow] = await Promise.all([
+    prisma.settings.findUnique({ where: { key: "LIBRARY_NAME" } }),
+    prisma.settings.findUnique({ where: { key: "AI_SEARCH_ADMIN" } }),
+  ]);
+  const libraryName   = libNameRow?.value ?? "PVD Library";
+  const aiAdminEnabled = aiAdminRow?.value !== "false"; // default true
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--page-bg)" }}>
@@ -34,6 +39,7 @@ export default async function AdminLayout({
         />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      {aiAdminEnabled && <AdminBookSearchChat />}
     </div>
   );
 }
