@@ -38,7 +38,9 @@ interface Book {
 interface Category { id: string; name: string }
 
 interface ForSaleBook {
-  copyId: string; title: string; price: number | null;
+  copyId: string;
+  id:     string;          // book ID — used for deduplication
+  title: string; price: number | null;
   coverImage: string | null; condition: string;
   author: { name: string } | null;
 }
@@ -164,7 +166,21 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
           setSaleCurrency(s.STOCK_CURRENCY ?? "USD");
           fetch("/api/shop/books")
             .then((r) => r.ok ? r.json() : [])
-            .then((data: ForSaleBook[]) => setForSaleBooks(Array.isArray(data) ? data.slice(0, 8) : []))
+            .then((data: ForSaleBook[]) => {
+              if (!Array.isArray(data)) { setForSaleBooks([]); return; }
+              // One card per unique book — keep the copy with the lowest price
+              const seen = new Map<string, ForSaleBook>();
+              for (const copy of data) {
+                const existing = seen.get(copy.id);
+                if (
+                  !existing ||
+                  (copy.price != null && (existing.price == null || copy.price < existing.price))
+                ) {
+                  seen.set(copy.id, copy);
+                }
+              }
+              setForSaleBooks(Array.from(seen.values()).slice(0, 8));
+            })
             .catch(() => {});
         }
       }).catch(() => {});
@@ -559,22 +575,22 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
                   href={`/${locale}/shop`}
                   className="group bg-white rounded-xl border border-violet-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all overflow-hidden"
                 >
-                  {/* Cover */}
-                  <div className="relative h-32 bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
+                  {/* Cover — same aspect ratio as New Arrivals / Most Borrowed */}
+                  <div className="relative aspect-[2/3] bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
                     {book.coverImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover" />
+                      <img src={book.coverImage} alt={book.title} className="w-full h-full object-contain" />
                     ) : (
                       <BookOpen className="w-10 h-10 text-violet-300" />
                     )}
-                    {/* Price badge */}
-                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-2 pt-4">
-                      <span className="text-white text-xs font-bold">
-                        {book.price != null
-                          ? `${saleCurrency === "USD" ? "$" : saleCurrency + " "}${book.price.toFixed(2)}`
-                          : "TBD"}
-                      </span>
-                    </div>
+                    {/* Price badge — only when price is set */}
+                    {book.price != null && (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-2 pt-4">
+                        <span className="text-white text-xs font-bold">
+                          {saleCurrency === "USD" ? "$" : `${saleCurrency} `}{book.price.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                     {/* Condition badge */}
                     <span className="absolute top-1.5 right-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 text-violet-700">
                       {book.condition}
