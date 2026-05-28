@@ -567,59 +567,50 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
               </Link>
             </div>
 
-            {/* Cards row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
-              {forSaleBooks.slice(0, 4).map((book) => (
+            {/* Cards — same compact horizontal-scroll row as Most Borrowed */}
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              {forSaleBooks.map((book) => (
                 <Link
                   key={book.copyId}
                   href={`/${locale}/shop`}
-                  className="group bg-white rounded-xl border border-violet-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all overflow-hidden"
+                  className="flex-shrink-0 w-28 group"
                 >
-                  {/* Cover — same aspect ratio as New Arrivals / Most Borrowed */}
-                  <div className="relative aspect-[2/3] bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
+                  <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow bg-gradient-to-br from-violet-100 to-purple-100 mb-2 relative">
                     {book.coverImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={book.coverImage} alt={book.title} className="w-full h-full object-contain" />
                     ) : (
-                      <BookOpen className="w-10 h-10 text-violet-300" />
+                      <div className="w-full h-full flex items-center justify-center">
+                        <BookOpen className="w-8 h-8 text-violet-300" />
+                      </div>
                     )}
                     {/* Price badge — only when price is set */}
                     {book.price != null && (
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-2 pt-4">
-                        <span className="text-white text-xs font-bold">
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1.5 pt-4">
+                        <span className="text-white text-[11px] font-bold">
                           {saleCurrency === "USD" ? "$" : `${saleCurrency} `}{book.price.toFixed(2)}
                         </span>
                       </div>
                     )}
-                    {/* Condition badge */}
-                    <span className="absolute top-1.5 right-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 text-violet-700">
-                      {book.condition}
-                    </span>
                   </div>
-
-                  {/* Info */}
-                  <div className="p-2.5">
-                    <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug group-hover:text-violet-800 transition-colors">
-                      {book.title}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">
-                      {book.author?.name ?? "Unknown"}
-                    </p>
-                  </div>
+                  <p className="text-[11px] font-semibold text-gray-900 line-clamp-2 leading-snug group-hover:text-violet-700 transition-colors">
+                    {book.title}
+                  </p>
+                  {book.author?.name && (
+                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{book.author.name}</p>
+                  )}
                 </Link>
               ))}
-            </div>
 
-            {/* CTA banner when more than 4 */}
-            {forSaleBooks.length > 4 && (
+              {/* "See all" card at the end */}
               <Link
                 href={`/${locale}/shop`}
-                className="mt-3 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-violet-200 text-violet-600 hover:border-violet-400 hover:bg-violet-50 transition-colors text-sm font-medium"
+                className="flex-shrink-0 w-28 flex flex-col items-center justify-center gap-2 aspect-[2/3] rounded-xl border-2 border-dashed border-violet-200 text-violet-500 hover:border-violet-400 hover:bg-violet-50 transition-colors mb-2"
               >
-                <Tag className="w-4 h-4" />
-                +{forSaleBooks.length - 4} more books for sale — Browse all
+                <ShoppingBag className="w-6 h-6" />
+                <span className="text-[10px] font-medium text-center leading-tight px-2">Browse all</span>
               </Link>
-            )}
+            </div>
           </section>
         )}
 

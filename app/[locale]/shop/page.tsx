@@ -1,30 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import Image from "next/image";
 import {
   ShoppingCart, BookOpen, Search, Tag, Check,
-  AlertCircle, ShoppingBag, Loader2,
+  AlertCircle, ShoppingBag, Loader2, ChevronDown,
 } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
 import { useLibraryName } from "@/context/library-name";
 
-interface ForSaleBook {
-  id: string;
-  title: string;
-  isbn: string | null;
-  coverImage: string | null;
-  price: number | null;
-  condition: string;
-  barcode: string | null;
+/* ── Types ─────────────────────────────────────────────────────────────────── */
+
+interface CopyItem {
+  copyId:     string;
   copyNumber: number;
-  copyId: string;
-  inCart: boolean;
-  author: { name: string } | null;
-  category: { name: string } | null;
+  condition:  string;
+  price:      number | null;
+  barcode:    string | null;
+}
+
+interface ForSaleBook {
+  id:         string;          // book ID
+  title:      string;
+  isbn:       string | null;
+  coverImage: string | null;
+  author:     { name: string } | null;
+  category:   { name: string } | null;
+  copies:     CopyItem[];
+  lowestPrice: number | null;  // for display / sorting
 }
 
 const CONDITION_COLOR: Record<string, string> = {
@@ -35,19 +41,65 @@ const CONDITION_COLOR: Record<string, string> = {
   DAMAGED:   "text-red-600 bg-red-50",
 };
 
+const CONDITION_ORDER: Record<string, number> = {
+  EXCELLENT: 0, GOOD: 1, FAIR: 2, POOR: 3, DAMAGED: 4,
+};
+
+/* ── Raw API copy type (before grouping) ───────────────────────────────────── */
+interface RawCopy {
+  id: string; copyId: string; copyNumber: number; barcode: string | null;
+  condition: string; price: number | null;
+  title: string; isbn: string | null; coverImage: string | null;
+  author: { name: string } | null; category: { name: string } | null;
+}
+
+/* ── Group flat copy list into one card per book ───────────────────────────── */
+function groupBooks(raw: RawCopy[]): ForSaleBook[] {
+  const map = new Map<string, ForSaleBook>();
+  for (const c of raw) {
+    let entry = map.get(c.id);
+    if (!entry) {
+      entry = {
+        id: c.id, title: c.title, isbn: c.isbn, coverImage: c.coverImage,
+        author: c.author, category: c.category,
+        copies: [], lowestPrice: null,
+      };
+      map.set(c.id, entry);
+    }
+    entry.copies.push({
+      copyId: c.copyId, copyNumber: c.copyNumber,
+      condition: c.condition, price: c.price, barcode: c.barcode,
+    });
+    if (c.price != null && (entry.lowestPrice == null || c.price < entry.lowestPrice)) {
+      entry.lowestPrice = c.price;
+    }
+  }
+  // Sort copies within each book: best condition first
+  for (const book of map.values()) {
+    book.copies.sort((a, b) =>
+      (CONDITION_ORDER[a.condition] ?? 9) - (CONDITION_ORDER[b.condition] ?? 9),
+    );
+  }
+  return Array.from(map.values());
+}
+
+/* ── Main Component ─────────────────────────────────────────────────────────── */
+
 export default function ShopPage() {
   const { data: session } = useSession();
   const locale            = useLocale();
   const libraryName       = useLibraryName();
 
-  const [books,    setBooks]    = useState<ForSaleBook[]>([]);
-  const [query,    setQuery]    = useState("");
-  const [loading,  setLoading]  = useState(true);
-  const [cartIds,  setCartIds]  = useState<Set<string>>(new Set());
-  const [adding,   setAdding]   = useState<string | null>(null);
-  const [enabled,  setEnabled]  = useState(true);
-  const [currency, setCurrency] = useState("USD");
-  const [cartCount, setCartCount] = useState(0);
+  const [rawBooks,   setRawBooks]   = useState<RawCopy[]>([]);
+  const [query,      setQuery]      = useState("");
+  const [loading,    setLoading]    = useState(true);
+  const [cartIds,    setCartIds]    = useState<Set<string>>(new Set());
+  const [adding,     setAdding]     = useState<string | null>(null);
+  const [enabled,    setEnabled]    = useState(true);
+  const [currency,   setCurrency]   = useState("USD");
+  const [cartCount,  setCartCount]  = useState(0);
+  // selectedCopy: bookId → copyId the user has picked
+  const [selectedCopy, setSelectedCopy] = useState<Record<string, string>>({});
 
   // Load FOR_SALE books + current cart
   useEffect(() => {
@@ -62,7 +114,7 @@ export default function ShopPage() {
       setCurrency(settings.STOCK_CURRENCY ?? "USD");
 
       const data = await booksRes.json();
-      setBooks(Array.isArray(data) ? data : []);
+      setRawBooks(Array.isArray(data) ? data : []);
 
       if (session) {
         const cartRes  = await fetch("/api/sale/cart");
@@ -75,6 +127,25 @@ export default function ShopPage() {
     }
     load();
   }, [session]);
+
+  // Group + filter
+  const books = useMemo(() => groupBooks(rawBooks), [rawBooks]);
+
+  const filtered = useMemo(() => {
+    if (!query) return books;
+    const q = query.toLowerCase();
+    return books.filter((b) =>
+      b.title.toLowerCase().includes(q) ||
+      b.author?.name?.toLowerCase().includes(q) ||
+      b.isbn?.includes(q),
+    );
+  }, [books, query]);
+
+  // Get the currently-selected copy for a book (default: best condition)
+  function getSelectedCopy(book: ForSaleBook): CopyItem {
+    const override = selectedCopy[book.id];
+    return book.copies.find((c) => c.copyId === override) ?? book.copies[0];
+  }
 
   async function addToCart(copyId: string) {
     if (!session) return;
@@ -104,13 +175,10 @@ export default function ShopPage() {
     setAdding(null);
   }
 
-  const filtered = books.filter((b) =>
-    !query || b.title.toLowerCase().includes(query.toLowerCase()) ||
-    b.author?.name?.toLowerCase().includes(query.toLowerCase()) ||
-    b.isbn?.includes(query),
-  );
+  const priceLabel = (price: number | null) =>
+    price != null ? `${currency === "USD" ? "$" : currency + " "}${price.toFixed(2)}` : null;
 
-  // ── Not enabled state ──────────────────────────────────────────────────
+  // ── Not enabled ──────────────────────────────────────────────────────────
   if (!loading && !enabled) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -193,63 +261,109 @@ export default function ShopPage() {
           </div>
         ) : (
           <>
-            <p className="text-sm text-gray-500 mb-4">{filtered.length} book{filtered.length !== 1 ? "s" : ""} available</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <p className="text-sm text-gray-500 mb-4">
+              {filtered.length} title{filtered.length !== 1 ? "s" : ""} available
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filtered.map((book) => {
-                const inCart = cartIds.has(book.copyId);
-                const busy   = adding === book.copyId;
-                const condColor = CONDITION_COLOR[book.condition] ?? "text-gray-600 bg-gray-50";
+                const sel        = getSelectedCopy(book);
+                const inCart     = cartIds.has(sel.copyId);
+                const busy       = adding === sel.copyId;
+                const condColor  = CONDITION_COLOR[sel.condition] ?? "text-gray-600 bg-gray-50";
+                const hasMultiple = book.copies.length > 1;
+
                 return (
-                  <div key={book.copyId} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                    {/* Cover */}
-                    <div className="relative h-44 bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center">
+                  <div key={book.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                    {/* Cover — portrait ratio, same as rest of the app */}
+                    <div className="relative aspect-[2/3] bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center overflow-hidden">
                       {book.coverImage ? (
-                        <Image src={book.coverImage} alt={book.title} fill className="object-cover" />
+                        <Image src={book.coverImage} alt={book.title} fill className="object-contain" />
                       ) : (
-                        <BookOpen className="w-12 h-12 text-violet-300" />
+                        <BookOpen className="w-10 h-10 text-violet-300" />
                       )}
                       {/* Condition badge */}
-                      <span className={`absolute top-2 right-2 text-[10px] font-semibold px-2 py-0.5 rounded-full ${condColor}`}>
-                        {book.condition}
+                      <span className={`absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${condColor}`}>
+                        {sel.condition}
                       </span>
+                      {/* Multiple copies badge */}
+                      {hasMultiple && (
+                        <span className="absolute top-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-600 text-white">
+                          {book.copies.length} copies
+                        </span>
+                      )}
                     </div>
 
                     {/* Info */}
-                    <div className="p-3.5">
-                      <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 mb-0.5">{book.title}</p>
-                      <p className="text-xs text-gray-500 mb-2">{book.author?.name ?? "Unknown author"}</p>
+                    <div className="p-3 flex flex-col flex-1">
+                      <p className="font-semibold text-gray-900 text-xs leading-snug line-clamp-2 mb-0.5">
+                        {book.title}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mb-2 truncate">
+                        {book.author?.name ?? "Unknown author"}
+                      </p>
+
                       {book.category && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full mb-2">
-                          <Tag className="w-2.5 h-2.5" />{book.category.name}
+                        <span className="inline-flex items-center gap-1 text-[10px] text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-full mb-2 w-fit">
+                          <Tag className="w-2 h-2" />{book.category.name}
                         </span>
                       )}
 
-                      <div className="flex items-center justify-between mt-2">
+                      {/* Copy selector — shown when there are multiple */}
+                      {hasMultiple && (
+                        <div className="relative mb-2">
+                          <select
+                            value={sel.copyId}
+                            onChange={(e) =>
+                              setSelectedCopy((prev) => ({ ...prev, [book.id]: e.target.value }))
+                            }
+                            className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1 pr-6 bg-white text-gray-700 appearance-none focus:outline-none focus:ring-1 focus:ring-violet-400"
+                          >
+                            {book.copies.map((c) => (
+                              <option key={c.copyId} value={c.copyId}>
+                                #{c.copyNumber} — {c.condition}{c.price != null ? ` · ${priceLabel(c.price)}` : ""}
+                                {cartIds.has(c.copyId) ? " ✓ In cart" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+                        </div>
+                      )}
+
+                      {/* Price + button */}
+                      <div className="flex items-center justify-between mt-auto pt-1">
                         <div>
-                          <p className="text-base font-bold text-gray-900">
-                            {book.price != null ? `${currency === "USD" ? "$" : ""}${book.price.toFixed(2)}` : "Price TBD"}
-                          </p>
-                          <p className="text-[10px] text-gray-400">Copy #{book.copyNumber}</p>
+                          {sel.price != null ? (
+                            <p className="text-sm font-bold text-gray-900">{priceLabel(sel.price)}</p>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">No price set</p>
+                          )}
+                          {!hasMultiple && (
+                            <p className="text-[10px] text-gray-400">Copy #{sel.copyNumber}</p>
+                          )}
                         </div>
                         {session ? (
                           <button
-                            onClick={() => inCart ? removeFromCart(book.copyId) : addToCart(book.copyId)}
+                            onClick={() => inCart ? removeFromCart(sel.copyId) : addToCart(sel.copyId)}
                             disabled={busy}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                               inCart
                                 ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
                                 : "bg-violet-600 text-white hover:bg-violet-700"
                             } disabled:opacity-50`}
                           >
-                            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : inCart ? <Check className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
+                            {busy
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : inCart
+                                ? <Check className="w-3 h-3" />
+                                : <ShoppingCart className="w-3 h-3" />}
                             {inCart ? "In Cart" : "Add"}
                           </button>
                         ) : (
                           <Link
                             href={`/${locale}/member/login`}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
                           >
-                            Sign In to Buy
+                            Sign In
                           </Link>
                         )}
                       </div>
