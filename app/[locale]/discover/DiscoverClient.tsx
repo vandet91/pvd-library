@@ -8,7 +8,7 @@ import { useSession } from "next-auth/react";
 import {
   Search, BookOpen, BookMarked, ChevronLeft, ChevronRight,
   ShoppingCart, CheckCircle, X, Star, PlusCircle, Send, Loader2,
-  Flame,
+  Flame, ShoppingBag, Tag,
 } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
 import BookSearchChat from "@/components/BookSearchChat";
@@ -36,6 +36,12 @@ interface Book {
 }
 
 interface Category { id: string; name: string }
+
+interface ForSaleBook {
+  copyId: string; title: string; price: number | null;
+  coverImage: string | null; condition: string;
+  author: { name: string } | null;
+}
 
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -127,6 +133,9 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
   const [reqLoading,        setReqLoading]         = useState(false);
   const [aiEnabled,         setAiEnabled]          = useState(false);
   const [theme,             setTheme]              = useState(getOpacTheme(opacTheme));
+  const [saleEnabled,       setSaleEnabled]        = useState(false);
+  const [forSaleBooks,      setForSaleBooks]       = useState<ForSaleBook[]>([]);
+  const [saleCurrency,      setSaleCurrency]       = useState("USD");
 
   /* Rating state */
   const [ratingData,    setRatingData]    = useState<{
@@ -150,6 +159,14 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
       .then((s: Record<string, string>) => {
         setAiEnabled(s.AI_SEARCH_MEMBER !== "false");
         setTheme(getOpacTheme(s.OPAC_THEME));
+        if (s.BOOK_SALE_ENABLED === "true") {
+          setSaleEnabled(true);
+          setSaleCurrency(s.STOCK_CURRENCY ?? "USD");
+          fetch("/api/shop/books")
+            .then((r) => r.ok ? r.json() : [])
+            .then((data: ForSaleBook[]) => setForSaleBooks(Array.isArray(data) ? data.slice(0, 8) : []))
+            .catch(() => {});
+        }
       }).catch(() => {});
   }, []);
 
@@ -329,6 +346,14 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
               <BookMarked className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{t("eLibrary")}</span>
             </Link>
+
+            {saleEnabled && (
+              <Link href={`/${locale}/shop`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors">
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{t("shop")}</span>
+              </Link>
+            )}
           </div>
 
           <MemberHeader basketCount={basket.size} theme="dark" />
@@ -503,6 +528,82 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
                 </button>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* ── Books for Sale ── */}
+        {showSections && saleEnabled && forSaleBooks.length > 0 && (
+          <section className="max-w-6xl mx-auto px-4 pt-6 pb-2 w-full">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-violet-600" />
+                Books for Sale
+                <span className="text-xs font-normal text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
+                  {forSaleBooks.length} available
+                </span>
+              </h2>
+              <Link
+                href={`/${locale}/shop`}
+                className="text-xs text-violet-600 hover:text-violet-800 font-medium hover:underline flex items-center gap-1"
+              >
+                Browse Shop →
+              </Link>
+            </div>
+
+            {/* Cards row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+              {forSaleBooks.slice(0, 4).map((book) => (
+                <Link
+                  key={book.copyId}
+                  href={`/${locale}/shop`}
+                  className="group bg-white rounded-xl border border-violet-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all overflow-hidden"
+                >
+                  {/* Cover */}
+                  <div className="relative h-32 bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
+                    {book.coverImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <BookOpen className="w-10 h-10 text-violet-300" />
+                    )}
+                    {/* Price badge */}
+                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-2 pt-4">
+                      <span className="text-white text-xs font-bold">
+                        {book.price != null
+                          ? `${saleCurrency === "USD" ? "$" : saleCurrency + " "}${book.price.toFixed(2)}`
+                          : "TBD"}
+                      </span>
+                    </div>
+                    {/* Condition badge */}
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 text-violet-700">
+                      {book.condition}
+                    </span>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-2.5">
+                    <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug group-hover:text-violet-800 transition-colors">
+                      {book.title}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                      {book.author?.name ?? "Unknown"}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            {/* CTA banner when more than 4 */}
+            {forSaleBooks.length > 4 && (
+              <Link
+                href={`/${locale}/shop`}
+                className="mt-3 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-violet-200 text-violet-600 hover:border-violet-400 hover:bg-violet-50 transition-colors text-sm font-medium"
+              >
+                <Tag className="w-4 h-4" />
+                +{forSaleBooks.length - 4} more books for sale — Browse all
+              </Link>
+            )}
           </section>
         )}
 
