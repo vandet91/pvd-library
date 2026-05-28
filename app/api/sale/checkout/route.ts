@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 const schema = z.object({
   deliveryType:    z.enum(["PICKUP", "DELIVERY"]),
@@ -123,6 +124,9 @@ export async function POST(request: NextRequest) {
     entityName: order.orderNumber,
     detail:     { total, currency, itemCount: order.items.length, deliveryType },
   });
+
+  // Fire-and-forget Telegram notification
+  notifyMember(member.id, tg.saleOrderPlaced(member.name, order.orderNumber, order.total, order.currency)).catch(() => {});
 
   return NextResponse.json(order, { status: 201 });
 }

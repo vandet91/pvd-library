@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { notifyMember, tg } from "@/lib/telegram";
 
 const schema = z.object({
   paymentProof: z.string().url("Must be a valid image URL"),
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const member = await prisma.member.findFirst({
     where: { userId: session.user?.id ?? "" },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
@@ -48,6 +49,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       paymentRef:   parsed.data.paymentRef ?? null,
     },
   });
+
+  // Notify member that proof was received
+  notifyMember(member.id, tg.salePaymentSubmitted(member.name, order.orderNumber)).catch(() => {});
 
   return NextResponse.json(updated);
 }

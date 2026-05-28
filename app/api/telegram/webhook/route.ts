@@ -156,6 +156,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  /* ── /myorders — list recent sale orders ── */
+  if (text === "/myorders") {
+    const member = await prisma.member.findUnique({
+      where: { telegramChatId: String(chatId) },
+    });
+    if (!member) {
+      await sendTelegram(chatId, `❌ Your Telegram is not linked to a library account.\n\nVisit your profile page and click <b>"Link Telegram"</b>.`);
+      return NextResponse.json({ ok: true });
+    }
+
+    const orders = await prisma.saleOrder.findMany({
+      where:   { memberId: member.id },
+      orderBy: { createdAt: "desc" },
+      take:    5,
+      include: { items: { select: { id: true } } },
+    });
+
+    if (orders.length === 0) {
+      await sendTelegram(chatId, `🛒 You have no book orders yet.\n\nVisit the library shop on the website to browse books for sale.`);
+      return NextResponse.json({ ok: true });
+    }
+
+    const statusEmoji: Record<string, string> = {
+      PENDING_PAYMENT:   "⏳",
+      PAYMENT_SUBMITTED: "📤",
+      PAYMENT_CONFIRMED: "✅",
+      PREPARING:         "📦",
+      READY_FOR_PICKUP:  "🎉",
+      SHIPPED:           "🚚",
+      DELIVERED:         "📬",
+      COMPLETED:         "🎊",
+      CANCELLED:         "❌",
+      RETURN_REQUESTED:  "↩️",
+      RETURNED:          "📮",
+      REFUNDED:          "💰",
+    };
+
+    const lines = orders.map((o) => {
+      const emoji  = statusEmoji[o.status] ?? "📋";
+      const date   = o.createdAt.toLocaleDateString();
+      const status = o.status.replace(/_/g, " ");
+      return `${emoji} <code>${o.orderNumber}</code>\n   <i>${status}</i> · ${o.items.length} item${o.items.length !== 1 ? "s" : ""} · ${o.currency} ${o.total.toFixed(2)}\n   Ordered: ${date}`;
+    });
+
+    await sendTelegram(chatId, `🛒 <b>Your Recent Orders</b>\n\n${lines.join("\n\n")}\n\nVisit the library website to view full details or take action.`);
+    return NextResponse.json({ ok: true });
+  }
+
   /* ── /help ── */
   if (text === "/help") {
     await sendTelegram(chatId, tg.help());

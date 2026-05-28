@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { z } from "zod";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
+import { notifyMember, tg } from "@/lib/telegram";
 
 const schema = z.object({
   action:          z.enum(["confirm_payment", "prepare", "ready_for_pickup", "ship", "complete", "cancel", "approve_return", "refund"]),
@@ -44,7 +45,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const order = await prisma.saleOrder.findUnique({
     where:   { id },
-    include: { items: { select: { copyId: true } } },
+    include: {
+      items:     { select: { copyId: true } },
+      memberRel: { select: { id: true, name: true } },
+      branch:    { select: { name: true } },
+    },
   });
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
@@ -134,6 +139,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       entityName: order.orderNumber,
     });
   }
+
+  // ── Telegram notification (fire-and-forget) ──────────────────────────────
+  const memberName  = order.memberRel.name;
+  const memberId    = order.memberRel.id;
+  const branchName  = order.branch?.name ?? null;
+
+  const notifyMap: Record<string, string> = {
+    confirm_payment:  tg.saleOrderConfirmed(memberName, order.orderNumber),
+    prepare:          tg.saleOrderPreparing(memberName, order.orderNumber),
+    ready_for_pickup: tg.saleOrderReadyForPickup(memberName, order.orderNumber, branchName),
+    complete:         tg.saleOrderCompleted(memberName, order.orderNumber),
+    approve_return:   tg.saleReturnApproved(memberName, order.orderNumber),
+    cancel:           tg.saleOrderCancelled(memberName, order.orderNumber, cancelReason),
+    ship:             tg.saleOrderShipped(
+      memberName,
+      order.orderNumber,
+      logisticsCompany ?? "",
+      trackingNumber,
+      expectedDelivery ? new Date(expectedDelivery) : null,
+    ),
+    refund: tg.saleRefunded(memberName, order.orderNumber, order.total, order.currency),
+  };
+
+  if (notifyMap[action]) {
+    notifyMember(memberId, notifyMap[action]).catch(() => {});
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const updated = await prisma.saleOrder.findUnique({
     where:   { id },

@@ -114,8 +114,50 @@ export const tg = {
 
   // ── Account ───────────────────────────────────────────────────────────
   linked: (memberName: string) =>
-    `🎉 <b>Telegram Linked!</b>\n\nHi ${memberName}! Your Telegram account is now linked to your PVD Library membership.\n\nYou'll receive reminders for:\n• Loan due dates\n• Overdue notices\n• Reservation alerts\n• Membership renewal\n\nType /help to see available commands.`,
+    `🎉 <b>Telegram Linked!</b>\n\nHi ${memberName}! Your Telegram account is now linked to your PVD Library membership.\n\nYou'll receive reminders for:\n• Loan due dates\n• Overdue notices\n• Reservation alerts\n• Membership renewal\n• Book order updates\n\nType /help to see available commands.`,
 
   help: () =>
-    `📖 <b>PVD Library Bot</b>\n\nAvailable commands:\n/myloans — View your active loans\n/status — Check membership status\n/help — Show this message\n\nFor support, visit the library or contact staff.`,
+    `📖 <b>PVD Library Bot</b>\n\nAvailable commands:\n/myloans — View your active loans\n/myorders — View your recent book orders\n/status — Check membership status\n/help — Show this message\n\nFor support, visit the library or contact staff.`,
+
+  // ── Sale order notifications ───────────────────────────────────────────
+  saleOrderPlaced: (memberName: string, orderNumber: string, total: number, currency: string) =>
+    `🛒 <b>Order Placed</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> has been placed.\n\nTotal: <b>${currency} ${total.toFixed(2)}</b>\n\nPlease submit your payment proof via the library website to confirm your order.\nType /myorders to track it.`,
+
+  salePaymentSubmitted: (memberName: string, orderNumber: string) =>
+    `📤 <b>Payment Proof Received</b>\n\nHi ${memberName}! We've received your payment proof for order <code>${orderNumber}</code>.\n\nOur staff will verify it shortly. We'll notify you once it's confirmed.`,
+
+  saleOrderConfirmed: (memberName: string, orderNumber: string) =>
+    `✅ <b>Payment Confirmed</b>\n\nHi ${memberName}! Your payment for order <code>${orderNumber}</code> has been confirmed.\n\nWe're now preparing your order — stay tuned!`,
+
+  saleOrderPreparing: (memberName: string, orderNumber: string) =>
+    `📦 <b>Order Being Prepared</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> is now being packed and prepared.\n\nWe'll notify you as soon as it's ready.`,
+
+  saleOrderReadyForPickup: (memberName: string, orderNumber: string, branchName?: string | null) =>
+    `🎉 <b>Ready for Pickup!</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> is ready for pickup${branchName ? ` at <b>${branchName}</b>` : " at the library"}.\n\nPlease bring your member ID when you come to collect it.`,
+
+  saleOrderShipped: (
+    memberName: string,
+    orderNumber: string,
+    logisticsCompany: string,
+    trackingNumber?: string | null,
+    expectedDelivery?: Date | null,
+  ) =>
+    `🚚 <b>Order Shipped!</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> is on its way.\n\n` +
+    `Logistics: <b>${logisticsCompany}</b>` +
+    (trackingNumber ? `\nTracking: <code>${trackingNumber}</code>` : "") +
+    (expectedDelivery ? `\nExpected delivery: <b>${expectedDelivery.toLocaleDateString()}</b>` : ""),
+
+  saleOrderCompleted: (memberName: string, orderNumber: string) =>
+    `🎊 <b>Order Completed!</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> has been completed.\n\nThank you for shopping at PVD Library — enjoy your books! 📚`,
+
+  saleOrderCancelled: (memberName: string, orderNumber: string, reason?: string | null) =>
+    `❌ <b>Order Cancelled</b>\n\nHi ${memberName}! Your order <code>${orderNumber}</code> has been cancelled.` +
+    (reason ? `\n\nReason: <i>${reason}</i>` : "") +
+    `\n\nFor questions, please contact library staff.`,
+
+  saleReturnApproved: (memberName: string, orderNumber: string) =>
+    `✅ <b>Return Approved</b>\n\nHi ${memberName}! Your return request for order <code>${orderNumber}</code> has been approved.\n\nPlease bring the books to the library at your earliest convenience.`,
+
+  saleRefunded: (memberName: string, orderNumber: string, total: number, currency: string) =>
+    `💰 <b>Refund Processed</b>\n\nHi ${memberName}! Your refund for order <code>${orderNumber}</code> has been processed.\n\nRefund amount: <b>${currency} ${total.toFixed(2)}</b>\n\nContact library staff if you have any questions.`,
 };
