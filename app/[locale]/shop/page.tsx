@@ -285,12 +285,10 @@ export default function ShopPage() {
                       <span className={`absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${condColor}`}>
                         {sel.condition}
                       </span>
-                      {/* Multiple copies badge */}
-                      {hasMultiple && (
-                        <span className="absolute top-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-600 text-white">
-                          {book.copies.length} copies
-                        </span>
-                      )}
+                      {/* Available count badge — always shown */}
+                      <span className="absolute top-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-600 text-white">
+                        {book.copies.length} {book.copies.length === 1 ? "copy" : "copies"}
+                      </span>
                     </div>
 
                     {/* Info */}
@@ -320,8 +318,8 @@ export default function ShopPage() {
                           >
                             {book.copies.map((c) => (
                               <option key={c.copyId} value={c.copyId}>
-                                #{c.copyNumber} — {c.condition}{c.price != null ? ` · ${priceLabel(c.price)}` : ""}
-                                {cartIds.has(c.copyId) ? " ✓ In cart" : ""}
+                                {c.condition}{c.price != null ? ` · ${priceLabel(c.price)}` : ""}
+                                {cartIds.has(c.copyId) ? " ✓" : ""}
                               </option>
                             ))}
                           </select>
@@ -336,9 +334,6 @@ export default function ShopPage() {
                             <p className="text-sm font-bold text-gray-900">{priceLabel(sel.price)}</p>
                           ) : (
                             <p className="text-xs text-gray-400 italic">No price set</p>
-                          )}
-                          {!hasMultiple && (
-                            <p className="text-[10px] text-gray-400">Copy #{sel.copyNumber}</p>
                           )}
                         </div>
                         {session ? (

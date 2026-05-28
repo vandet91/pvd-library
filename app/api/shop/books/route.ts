@@ -15,6 +15,7 @@ export async function GET() {
       book: {
         select: {
           id: true, title: true, isbn: true, coverImage: true,
+          price:    true,                     // fallback when copy has no price
           author:   { select: { name: true } },
           category: { select: { name: true } },
         },
@@ -25,17 +26,18 @@ export async function GET() {
 
   return NextResponse.json(
     copies.map((c) => ({
-      copyId:      c.id,
-      copyNumber:  c.copyNumber,
-      barcode:     c.barcode,
-      condition:   c.condition,
-      price:       c.price,
-      id:          c.book.id,
-      title:       c.book.title,
-      isbn:        c.book.isbn,
-      coverImage:  c.book.coverImage,
-      author:      c.book.author,
-      category:    c.book.category,
+      copyId:     c.id,
+      copyNumber: c.copyNumber,
+      barcode:    c.barcode,
+      condition:  c.condition,
+      // Copy price takes priority; fall back to book-level default price
+      price:      c.price ?? c.book.price,
+      id:         c.book.id,
+      title:      c.book.title,
+      isbn:       c.book.isbn,
+      coverImage: c.book.coverImage,
+      author:     c.book.author,
+      category:   c.book.category,
     })),
   );
 }
