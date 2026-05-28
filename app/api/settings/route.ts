@@ -34,6 +34,10 @@ const DEFAULTS: Record<string, string> = {
   TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:   "7",
   TELEGRAM_LINK_MEMBER:              "true",
   PHONE_CLICK_ACTION:                "both",
+  // Stock & sales
+  STOCK_CURRENCY:                    "USD",   // primary currency (USD / KHR / THB …)
+  STOCK_SECONDARY_CURRENCY:          "",      // optional second currency (e.g. KHR); empty = off
+  STOCK_SECONDARY_RATE:              "4100",  // 1 USD = X secondary units
   // Member self-registration
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",

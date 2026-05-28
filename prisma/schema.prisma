@@ -139,9 +139,11 @@ model Branch {
   isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  books     Book[]
-  copies    BookCopy[]
-  loans     Loan[]
+  books          Book[]
+  copies         BookCopy[]
+  loans          Loan[]
+  movementsFrom  StockMovement[] @relation("MovementFrom")
+  movementsTo    StockMovement[] @relation("MovementTo")
 }
 
 model Book {
@@ -187,6 +189,7 @@ model Book {
   basketItems     BasketItem[]
   copies          BookCopy[]
   ratings         Rating[]
+  stockMovements  StockMovement[]
 
   @@index([title])
   @@index([categoryId])
@@ -240,11 +243,12 @@ model BookCopy {
   branchId    String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-  book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  branch       Branch?       @relation(fields: [branchId], references: [id])
-  loans        Loan[]
-  basketItems  BasketItem[]
-  reservations Reservation[]
+  book           Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  branch         Branch?         @relation(fields: [branchId], references: [id])
+  loans          Loan[]
+  basketItems    BasketItem[]
+  reservations   Reservation[]
+  stockMovements StockMovement[]
 
   @@unique([bookId, copyNumber])
   @@index([bookId])
@@ -253,12 +257,56 @@ model BookCopy {
 }
 
 enum CopyStatus {
+  STOCK         // received but not yet deployed to a branch / shelf
   AVAILABLE
+  FOR_SALE      // pulled from stock and listed for purchase by members
   BORROWED
   RESERVED
   LOST
   DAMAGED
   WITHDRAWN
+}
+
+// ─── Stock Movement (audit trail for every copy state change) ──────────────
+model StockMovement {
+  id           String            @id @default(cuid())
+  copyId       String
+  bookId       String            // denormalised — survives copy deletion
+  type         StockMovementType
+  fromStatus   CopyStatus?
+  toStatus     CopyStatus
+  fromBranchId String?
+  toBranchId   String?
+  source       String?           // PURCHASE | DONATION | TRANSFER | RETURN | MANUAL
+  reference    String?           // PO / invoice / donation reference number
+  unitCost     Float?            // purchase cost per copy (for accounting)
+  currency     String?           @default("USD")
+  notes        String?           @db.Text
+  actorId      String?
+  actorName    String?
+  createdAt    DateTime          @default(now())
+
+  copy       BookCopy @relation(fields: [copyId],       references: [id], onDelete: Cascade)
+  book       Book     @relation(fields: [bookId],       references: [id], onDelete: Cascade)
+  fromBranch Branch?  @relation("MovementFrom",         fields: [fromBranchId], references: [id])
+  toBranch   Branch?  @relation("MovementTo",           fields: [toBranchId],   references: [id])
+
+  @@index([copyId])
+  @@index([bookId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+enum StockMovementType {
+  RECEIVED           // new copy added to stock (purchase / donation)
+  DEPLOYED           // stock → available at branch for lending
+  DEPLOYED_FOR_SALE  // stock → for sale
+  TRANSFERRED        // branch → branch (no status change)
+  RETURNED_TO_STOCK  // branch → back to central stock
+  WITHDRAWN          // permanently removed from circulation
+  STATUS_CHANGE      // manual status correction by staff
+  SOLD               // copy sold to member  (populated in Phase 2)
+  SALE_RETURNED      // returned from sale   (populated in Phase 4)
 }
 
 model Fine {

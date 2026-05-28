@@ -98,20 +98,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         barcode:    body.barcode || autoBarcode,
         rfid:       body.rfid    || null,
         condition:  body.condition || "GOOD",
-        status:     "AVAILABLE",
-        // New copies inherit reference-only from the title (loanable=false if book is reference-only)
+        // New copies always land in STOCK first — staff deploys them to a branch/shelf
+        status:     "STOCK",
         loanable:   body.loanable !== undefined ? !!body.loanable : !book.referenceOnly,
         price:      body.price ? Number(body.price) : null,
         notes:      body.notes || null,
-        // Inherit the book's home branch so copy location starts in sync
-        ...(book.branchId && { branchId: book.branchId }),
+        // No branch yet — assigned when deployed
+        branchId:   null,
       },
     });
-    // Keep denormalized counters in sync
+
+    // Keep totalCopies in sync; availableCopies NOT incremented — copy is in stock, not on shelf
     await tx.book.update({
       where: { id: bookId },
-      data:  { totalCopies: { increment: 1 }, availableCopies: { increment: 1 } },
+      data:  { totalCopies: { increment: 1 } },
     });
+
+    // Create the first stock movement — RECEIVED
+    await tx.stockMovement.create({
+      data: {
+        copyId:    created.id,
+        bookId,
+        type:      "RECEIVED",
+        toStatus:  "STOCK",
+        source:    body.source    || "PURCHASE",
+        reference: body.reference || null,
+        unitCost:  body.price  ? Number(body.price) : null,
+        currency:  body.currency  || "USD",
+        notes:     body.notes     || null,
+        actorId:   session.user?.id   ?? null,
+        actorName: session.user?.name ?? null,
+      },
+    });
+
     return created;
   });
 

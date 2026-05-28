@@ -56,6 +56,7 @@
     "processing": "ជួរដំណើរការ",
     "weeding": "ការដកចេញ",
     "acquisition": "ការទិញទំនិញ",
+    "stock": "ស្តុក",
     "aiAssistant": "AI ជំនួយការ"
   },
   "auth": {
@@ -1074,7 +1075,9 @@
     "inBasket": "ក្នុងកន្រ្តក",
     "confirmDelete": "លុបច្បាប់ចម្លងនេះ? ពុំអាចប្ដូរត្រឡប់វិញ។",
     "eachCopyHint": "ច្បាប់ចម្លងនីមួយៗមានបាកូដផ្ទាល់ខ្លួន។ ច្បាប់ #1 ប្រើបាកូដសៀវភៅ; ច្បាប់ #2 ឡើងទៅ auto (ឧ. PVD-000001-C002)។",
+    "statusStock": "នៅស្តុក",
     "statusAvailable": "នៅទំនេរ",
+    "statusForSale": "លក់",
     "statusBorrowed": "បានខ្ចី",
     "statusReserved": "បានកក់",
     "statusLost": "បាត់",

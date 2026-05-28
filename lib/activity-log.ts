@@ -75,6 +75,12 @@ export const Actions = {
   BOOK_COPY_ADDED:      "book.copy_added",
   BOOK_COPY_UPDATED:    "book.copy_updated",
   BOOK_COPY_DELETED:    "book.copy_deleted",
+  // Stock
+  STOCK_RECEIVED:       "stock.received",
+  STOCK_DEPLOYED:       "stock.deployed",
+  STOCK_TRANSFERRED:    "stock.transferred",
+  STOCK_RETURNED:       "stock.returned_to_stock",
+  STOCK_WITHDRAWN:      "stock.withdrawn",
   // Loans
   LOAN_CHECKOUT:        "loan.checkout",
   LOAN_RETURNED:        "loan.returned",

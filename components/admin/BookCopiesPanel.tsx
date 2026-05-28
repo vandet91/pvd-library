@@ -31,7 +31,9 @@ interface Copy {
 }
 
 const STATUS_META: Record<string, { labelKey: string; cls: string; icon: typeof Package }> = {
+  STOCK:     { labelKey: "statusStock",     cls: "bg-amber-50  text-amber-700",  icon: Package      },
   AVAILABLE: { labelKey: "statusAvailable", cls: "bg-green-50  text-green-700",  icon: CheckCircle  },
+  FOR_SALE:  { labelKey: "statusForSale",   cls: "bg-violet-50 text-violet-700", icon: Package      },
   BORROWED:  { labelKey: "statusBorrowed",  cls: "bg-blue-50   text-blue-700",   icon: Package      },
   RESERVED:  { labelKey: "statusReserved",  cls: "bg-purple-50 text-purple-700", icon: Package      },
   LOST:      { labelKey: "statusLost",      cls: "bg-red-50    text-red-700",    icon: PackageX     },
@@ -51,7 +53,7 @@ const CONDITION_LABEL_KEYS: Record<string, string> = {
 };
 
 const CONDITIONS = ["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED"] as const;
-const STATUSES   = ["AVAILABLE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"] as const;
+const STATUSES   = ["STOCK", "AVAILABLE", "FOR_SALE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"] as const;
 
 interface BasketSummary { id: string; name: string }
 

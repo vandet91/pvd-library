@@ -9,7 +9,7 @@ const updateSchema = z.object({
   barcode:      z.string().optional(),
   rfid:         z.string().optional().nullable(),
   condition:    z.enum(["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED", "LOST", "WITHDRAWN", "ARCHIVED"]).optional(),
-  status:       z.enum(["AVAILABLE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
+  status:       z.enum(["STOCK", "AVAILABLE", "FOR_SALE", "BORROWED", "RESERVED", "LOST", "DAMAGED", "WITHDRAWN"]).optional(),
   loanable:     z.boolean().optional(),
   price:        z.number().nullable().optional(),
   notes:        z.string().optional().nullable(),
@@ -64,6 +64,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updated = await tx.bookCopy.update({ where: { id }, data: parsed.data });
 
     // Keep Book.availableCopies in sync if status moved in/out of AVAILABLE
+    // STOCK and FOR_SALE are not available for lending
     const wasAvailable = before.status === "AVAILABLE";
     const isAvailable  = updated.status === "AVAILABLE";
     if (wasAvailable && !isAvailable) {
