@@ -8,7 +8,7 @@ import {
   ArrowLeft, User, BookOpen, DollarSign, Calendar,
   CheckCircle2, AlertTriangle, Clock, RefreshCw, Loader2,
   ShieldAlert, ShieldCheck, ShieldX, ShieldOff, Shield,
-  AlertCircle, CheckCircle, Plus, FileText, X, Send, Phone,
+  AlertCircle, CheckCircle, Plus, FileText, X, Send, Phone, Wand2,
 } from "lucide-react";
 import MemberForm from "@/components/admin/MemberForm";
 
@@ -129,6 +129,27 @@ export default function MemberDetailPage() {
   const [loading,   setLoading]   = useState(true);
   const [phoneClickAction, setPhoneClickAction] = useState("both");
 
+  // AI Recommendations
+  const [recLoading, setRecLoading] = useState(false);
+  const [recError,   setRecError]   = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<{ book: { id: string; title: string; coverImage?: string | null; author?: { name: string } | null }; reason: string }[] | null>(null);
+  const [basedOn,    setBasedOn]    = useState<string[]>([]);
+
+  async function loadRecommendations() {
+    setRecLoading(true); setRecError(null);
+    let res: Response | undefined;
+    try {
+      res = await fetch(`/api/members/${id}/recommendations`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setRecommendations(data.recommendations ?? []);
+      setBasedOn(data.basedOn ?? []);
+    } catch (e) {
+      const { friendlyAiError } = await import("@/lib/ai-error");
+      setRecError(friendlyAiError(e, res));
+    } finally { setRecLoading(false); }
+  }
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     const [mRes, lRes, fRes, iRes] = await Promise.all([
@@ -139,7 +160,7 @@ export default function MemberDetailPage() {
     ]);
     if (mRes.ok) setMember(await mRes.json());
     if (lRes.ok) setLoans(await lRes.json());
-    if (fRes.ok) setFines(await fRes.json());
+    if (fRes.ok) { const fd = await fRes.json(); setFines(Array.isArray(fd) ? fd : (fd.fines ?? [])); }
     if (iRes.ok) setIncidents(await iRes.json());
     setLoading(false);
   }, [id]);
@@ -315,8 +336,12 @@ export default function MemberDetailPage() {
               phone:      member.phone ?? undefined,
               address:    member.address ?? undefined,
               memberType: member.memberType as never,
+              gender:     (member as any).gender ?? "UNSPECIFIED",
               isActive:   member.isActive,
               expireDate: member.expireDate ?? undefined,
+              studentId:  (member as any).studentId ?? undefined,
+              school:     (member as any).school ?? undefined,
+              className:  (member as any).className ?? undefined,
             }} />
           )}
 
@@ -386,6 +411,68 @@ export default function MemberDetailPage() {
               memberId={id}
               onRefresh={loadAll}
             />
+          )}
+        </div>
+      </div>
+
+      {/* ── AI Recommendations ── */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Wand2 className="w-4 h-4 text-violet-500" />
+            <h3 className="font-semibold text-sm text-gray-700">Recommended Books</h3>
+          </div>
+          <button
+            onClick={loadRecommendations}
+            disabled={recLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50 transition-colors"
+          >
+            {recLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+            {recLoading ? "Generating…" : "Generate Recommendations"}
+          </button>
+        </div>
+
+        <div className="p-6">
+          {recError && (
+            <p className="text-sm text-red-600 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {recError}
+            </p>
+          )}
+          {!recommendations && !recLoading && !recError && (
+            <p className="text-sm text-gray-400 text-center py-4">
+              Click "Generate Recommendations" to get AI-powered book suggestions based on this member&apos;s reading history.
+            </p>
+          )}
+          {recommendations && recommendations.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">No recommendations — member may not have enough loan history.</p>
+          )}
+          {recommendations && recommendations.length > 0 && (
+            <div className="space-y-3">
+              {basedOn.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-3 border-b border-gray-100">
+                  <span className="text-xs text-gray-400 font-medium">Based on themes:</span>
+                  {basedOn.map((theme) => (
+                    <span key={theme} className="text-xs bg-violet-50 text-violet-600 border border-violet-100 px-2 py-0.5 rounded-full">{theme}</span>
+                  ))}
+                </div>
+              )}
+              {recommendations.map(({ book, reason }) => (
+                <div key={book.id} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                  <div className="w-8 h-10 rounded bg-violet-100 flex items-center justify-center shrink-0 overflow-hidden">
+                    {book.coverImage
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={book.coverImage} alt="" className="w-full h-full object-cover" />
+                      : <BookOpen className="w-4 h-4 text-violet-400" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{book.title}</p>
+                    {book.author && <p className="text-xs text-gray-500 truncate">{book.author.name}</p>}
+                    <p className="text-xs text-violet-600 mt-0.5 italic">{reason}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

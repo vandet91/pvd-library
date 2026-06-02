@@ -6,22 +6,33 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   ShoppingBasket, Plus, Pencil, Trash2, ChevronRight,
   Tag, Loader2, X, AlertTriangle, BookOpen,
+  BookMarked, UserRound, Users,
 } from "lucide-react";
 
 async function safeJson<T>(res: Response, fallback: T): Promise<T> {
   try { return (await res.json()) as T; } catch { return fallback; }
 }
 
+type BasketType = "ITEM" | "EBOOK" | "AUTHOR" | "MEMBER";
+
 interface BasketSummary {
-  id:        string;
-  name:      string;
-  notes:     string | null;
-  createdAt: string;
-  updatedAt: string;
-  total:     number;
-  tagged:    number;
-  untagged:  number;
+  id:         string;
+  name:       string;
+  basketType: BasketType;
+  notes:      string | null;
+  createdAt:  string;
+  updatedAt:  string;
+  total:      number;
+  tagged:     number;
+  untagged:   number;
 }
+
+const BASKET_TYPES: { value: BasketType; label: string; icon: React.ElementType; color: string; bg: string; desc: string }[] = [
+  { value: "ITEM",   label: "Item Basket",     icon: BookOpen,   color: "text-indigo-700", bg: "bg-indigo-50",  desc: "Physical book copies" },
+  { value: "EBOOK",  label: "E-Resource",      icon: BookMarked, color: "text-teal-700",   bg: "bg-teal-50",    desc: "Digital e-books" },
+  { value: "AUTHOR", label: "Author Basket",   icon: UserRound,  color: "text-violet-700", bg: "bg-violet-50",  desc: "Author records" },
+  { value: "MEMBER", label: "Member Basket",   icon: Users,      color: "text-blue-700",   bg: "bg-blue-50",    desc: "Member records" },
+];
 
 export default function BasketsPage() {
   const locale = useLocale();
@@ -35,6 +46,7 @@ export default function BasketsPage() {
   const [creating,    setCreating]    = useState(false);
   const [newName,     setNewName]     = useState("");
   const [newNotes,    setNewNotes]    = useState("");
+  const [newType,     setNewType]     = useState<BasketType>("ITEM");
   const [createBusy,  setCreateBusy]  = useState(false);
   const [createErr,   setCreateErr]   = useState("");
 
@@ -73,11 +85,11 @@ export default function BasketsPage() {
       const res  = await fetch("/api/baskets", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ name: newName.trim(), notes: newNotes.trim() || null }),
+        body:    JSON.stringify({ name: newName.trim(), notes: newNotes.trim() || null, basketType: newType }),
       });
       const data = await safeJson<{ error?: string; id?: string }>(res, {});
       if (res.ok) {
-        setCreating(false); setNewName(""); setNewNotes("");
+        setCreating(false); setNewName(""); setNewNotes(""); setNewType("ITEM");
         fetchBaskets();
       } else {
         setCreateErr(data.error ?? t("toastCreateFail"));
@@ -135,7 +147,7 @@ export default function BasketsPage() {
           </p>
         </div>
         <button
-          onClick={() => { setCreating(true); setCreateErr(""); setNewName(""); setNewNotes(""); }}
+          onClick={() => { setCreating(true); setCreateErr(""); setNewName(""); setNewNotes(""); setNewType("ITEM"); }}
           className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -157,7 +169,7 @@ export default function BasketsPage() {
               {t("noBasketsDesc")}
             </p>
             <button
-              onClick={() => { setCreating(true); setNewName(""); setNewNotes(""); }}
+              onClick={() => { setCreating(true); setNewName(""); setNewNotes(""); setNewType("ITEM"); }}
               className="mt-4 inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
               <Plus className="w-4 h-4" /> {t("createFirst")}
@@ -175,11 +187,20 @@ export default function BasketsPage() {
             </div>
 
             <div className="divide-y divide-gray-50">
-              {baskets.map((basket) => (
+              {baskets.map((basket) => {
+                const typeMeta = BASKET_TYPES.find((t) => t.value === basket.basketType) ?? BASKET_TYPES[0];
+                const TypeIcon = typeMeta.icon;
+                return (
                 <div key={basket.id} className="px-5 py-3.5 grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center hover:bg-gray-50 transition-colors">
-                  {/* Name + notes */}
+                  {/* Name + type + notes */}
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-800 truncate">{basket.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-800 truncate">{basket.name}</p>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${typeMeta.bg} ${typeMeta.color}`}>
+                        <TypeIcon className="w-2.5 h-2.5" />
+                        {typeMeta.label}
+                      </span>
+                    </div>
                     {basket.notes && (
                       <p className="text-xs text-gray-400 truncate mt-0.5">{basket.notes}</p>
                     )}
@@ -191,7 +212,7 @@ export default function BasketsPage() {
                   {/* Total */}
                   <div className="w-20 text-center">
                     <span className="inline-flex items-center gap-1 text-sm font-semibold text-gray-700">
-                      <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                      <TypeIcon className="w-3.5 h-3.5 text-gray-400" />
                       {basket.total}
                     </span>
                   </div>
@@ -240,7 +261,8 @@ export default function BasketsPage() {
                     </Link>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -259,6 +281,31 @@ export default function BasketsPage() {
               </button>
             </div>
             <div className="space-y-4">
+              {/* Basket type selector */}
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Basket Type</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {BASKET_TYPES.map(({ value, label, icon: Icon, color, bg, desc }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setNewType(value)}
+                      className={`flex items-start gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
+                        newType === value
+                          ? `border-indigo-400 ${bg}`
+                          : "border-gray-200 hover:border-gray-300 bg-gray-50"
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${newType === value ? color : "text-gray-400"}`} />
+                      <div>
+                        <p className={`text-xs font-semibold ${newType === value ? color : "text-gray-700"}`}>{label}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label htmlFor="basket-new-name" className="block text-sm font-medium text-gray-700 mb-1">
                   {t("basketName")} <span className="text-red-500">*</span>

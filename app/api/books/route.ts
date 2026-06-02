@@ -7,7 +7,8 @@ import { generateBarcode } from "@/lib/barcode";
 import { can } from "@/lib/rbac";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
-const MATERIAL_TYPES = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
+const MATERIAL_TYPES  = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
+const AUDIENCE_LEVELS = ["CHILDREN", "YOUTH", "ADULTS", "UNSPECIFIED"] as const;
 
 const bookSchema = z.object({
   title: z.string().min(1),
@@ -20,13 +21,15 @@ const bookSchema = z.object({
   publishYear: z.number().optional(),
   pages: z.number().optional(),
   language: z.string().optional(),
+  callNumber: z.string().optional(),
   location: z.string().optional(),
   locationId: z.string().optional().nullable(),
   branchId: z.string().optional().nullable(),
   totalCopies: z.number().min(1).default(1),
   price: z.number().min(0).optional().nullable(),
   referenceOnly: z.boolean().optional(),
-  materialType: z.enum(MATERIAL_TYPES).default("BOOK"),
+  materialType:  z.enum(MATERIAL_TYPES).default("BOOK"),
+  audienceLevel: z.enum(AUDIENCE_LEVELS).default("UNSPECIFIED"),
   categoryId: z.string().optional(),
   authorId: z.string().optional(),
   coAuthorIds: z.array(z.string()).optional(),
@@ -51,16 +54,31 @@ export async function GET(request: NextRequest) {
   const available     = searchParams.get("available") === "true";
   const condition     = searchParams.get("condition") || undefined;
   const materialType  = searchParams.get("materialType") || undefined;
+  const audienceLevel = searchParams.get("audienceLevel") || undefined;
   const branchIdFilter = searchParams.get("branchId") || undefined;
   const sort          = searchParams.get("sort") || "newest";
-  const limit         = parseInt(searchParams.get("limit") || "500", 10);
+  const language      = searchParams.get("language") || undefined;
+  const availableOnly = searchParams.get("available") === "true";
+  // Pagination — admin page sends page= explicitly; other callers (Discover etc.) do not.
+  const paginate   = searchParams.has("page");
+  const pageParam  = parseInt(searchParams.get("page") || "1", 10) || 1;
+  // When paginating: default 50/page, max 100.
+  // When NOT paginating (e.g. Discover): honour explicit limit= or fall back to 2000.
+  const limitParam = parseInt(searchParams.get("limit") || (paginate ? "50" : "2000"), 10);
+  const limit      = paginate ? Math.min(limitParam, 100) : limitParam;
+  const skip       = paginate ? (pageParam - 1) * limit : 0;
   const includeCopies = searchParams.get("copies") === "true";
 
-  // For popular sort, fall back to join ordering via sub-query isn't straightforward
-  // We return all and let the client sort, or just use createdAt/title
-  const orderBy = sort === "title"
-    ? { title: "asc" as const }
-    : { createdAt: "desc" as const };
+  const orderBy: Record<string, unknown> =
+    sort === "title"    ? { title:           "asc"  } :
+    sort === "title_z"  ? { title:           "desc" } :
+    sort === "oldest"   ? { createdAt:       "asc"  } :
+    sort === "year"     ? { publishYear:     "desc" } :
+    sort === "year_asc" ? { publishYear:     "asc"  } :
+    sort === "avail"    ? { availableCopies: "desc" } :
+    sort === "barcode"  ? { barcode:         "asc"  } :
+    sort === "isbn"     ? { isbn:            "asc"  } :
+                          { createdAt:       "desc" }; // default: newest
 
   // First, see if the query matches a SPECIFIC copy barcode (or RFID).
   // If so, surface that copy's book first and flag which copy matched.
@@ -84,11 +102,13 @@ export async function GET(request: NextRequest) {
           ...(scannedCopy ? [{ id: scannedCopy.bookId }] : []),
         ],
       }),
-      ...(categoryId && { categoryId }),
-      ...(available     && { availableCopies: { gt: 0 } }),
+      ...(categoryId    && { categoryId }),
+      ...(availableOnly && { availableCopies: { gt: 0 } }),
       ...(condition     && condition in BookCondition && { condition: condition as BookCondition }),
-      ...(materialType  && { materialType: materialType as typeof MATERIAL_TYPES[number] }),
+      ...(materialType  && { materialType:  materialType  as typeof MATERIAL_TYPES[number]  }),
+      ...(audienceLevel && { audienceLevel: audienceLevel as typeof AUDIENCE_LEVELS[number] }),
       ...(branchIdFilter && { branchId: branchIdFilter }),
+      ...(language      && { language }),
     },
     include: {
       category: true, author: true, coAuthors: true, publisher: true, shelfLocation: true,
@@ -102,8 +122,31 @@ export async function GET(request: NextRequest) {
       }),
     },
     orderBy,
-    take: limit,
+    take:  limit,
+    skip,
   });
+
+  // Total count for pagination (only when paginating)
+  const total = paginate ? await prisma.book.count({
+    where: {
+      ...(query && {
+        OR: [
+          { title:   { contains: query, mode: "insensitive" } },
+          { isbn:    { contains: query, mode: "insensitive" } },
+          { barcode: { contains: query, mode: "insensitive" } },
+          { author:  { name: { contains: query, mode: "insensitive" } } },
+          ...(scannedCopy ? [{ id: scannedCopy.bookId }] : []),
+        ],
+      }),
+      ...(categoryId    && { categoryId }),
+      ...(availableOnly && { availableCopies: { gt: 0 } }),
+      ...(condition     && condition in BookCondition && { condition: condition as BookCondition }),
+      ...(materialType  && { materialType:  materialType  as typeof MATERIAL_TYPES[number]  }),
+      ...(audienceLevel && { audienceLevel: audienceLevel as typeof AUDIENCE_LEVELS[number] }),
+      ...(branchIdFilter && { branchId: branchIdFilter }),
+      ...(language      && { language }),
+    },
+  }) : null;
 
   // ── Attach avg rating for each book (one groupBy query) ──────────────
   const bookIds = books.map((b) => b.id);
@@ -142,6 +185,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Return paginated envelope when page= was in the request, plain array otherwise
+  if (paginate && total !== null) {
+    return NextResponse.json({
+      books: payload,
+      total,
+      page:  pageParam,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      limit,
+    });
+  }
   return NextResponse.json(payload);
 }
 
@@ -154,14 +207,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const parsed = bookSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
   }
 
   /* Auto-generate system barcode if not provided */
   const barcode = await generateBarcode();
 
   // coAuthorIds is a relation, not a column — pull it out and handle via connect
-  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, ...bookData } = parsed.data;
+  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, callNumber, ...bookData } = parsed.data;
 
   // Prefer explicit locationId from form; fall back to resolving free-text location string
   const locationId = locationIdFromForm !== undefined
@@ -202,6 +255,10 @@ export async function POST(request: NextRequest) {
     }
     return created;
   });
+
+  if (callNumber) {
+    await prisma.$executeRawUnsafe(`UPDATE "Book" SET "callNumber" = $1 WHERE id = $2`, callNumber, book.id);
+  }
 
   await logActivity(actorFromSession(session), Actions.BOOK_CREATED, {
     entityType: "Book",

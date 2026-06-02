@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useAudienceLabels, AUDIENCE_VALUES } from "@/hooks/useAudienceLabels";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
-import { ScanLine, X, Upload, ImageIcon, BookMarked, ExternalLink, Plus, Printer, RefreshCw, Loader2, Wand2, CheckCircle2 } from "lucide-react";
+import { ScanLine, X, Upload, ImageIcon, BookMarked, ExternalLink, Plus, Printer, RefreshCw, Loader2, Wand2, CheckCircle2, Search, Globe } from "lucide-react";
 import LanguageSelect from "@/components/shared/LanguageSelect";
 import BarcodeDisplay from "@/components/admin/BarcodeDisplay";
 import BookCopiesPanel from "@/components/admin/BookCopiesPanel";
@@ -27,11 +28,13 @@ interface BookFormProps {
     isbn?: string; barcode?: string | null;
     description?: string; coverImage?: string;
     publishYear?: number; pages?: number; language?: string;
+    callNumber?: string | null;
     locationId?: string | null;
     branchId?: string | null;
     totalCopies: number; price?: number | null;
     referenceOnly?: boolean;
     materialType?: string;
+    audienceLevel?: string;
     categoryId?: string; authorId?: string; coAuthorIds?: string[]; publisherId?: string;
     ebooks?: LinkedEbook[];
   };
@@ -53,6 +56,7 @@ export default function BookForm({ initial }: BookFormProps) {
   const tc = useTranslations("common");
   const locale = useLocale();
   const router = useRouter();
+  const audienceLabels = useAudienceLabels();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [authors,    setAuthors]    = useState<Author[]>([]);
@@ -73,12 +77,14 @@ export default function BookForm({ initial }: BookFormProps) {
     publishYear: initial?.publishYear ?? ("" as number | ""),
     pages:       initial?.pages       ?? ("" as number | ""),
     language:     initial?.language     ?? "en",
+    callNumber:   initial?.callNumber   ?? "",
     locationId:   initial?.locationId   ?? "",
     branchId:     initial?.branchId     ?? "",
     totalCopies:  initial?.totalCopies  ?? 1,
-    price:        initial?.price        ?? ("" as number | ""),
-    referenceOnly: initial?.referenceOnly ?? false,
-    materialType: initial?.materialType ?? "BOOK",
+    price:               initial?.price               ?? ("" as number | ""),
+    referenceOnly:       initial?.referenceOnly       ?? false,
+    materialType:  initial?.materialType  ?? "BOOK",
+    audienceLevel: initial?.audienceLevel ?? "UNSPECIFIED",
     categoryId:  initial?.categoryId  ?? "",
     authorId:    initial?.authorId    ?? "",
     publisherId: initial?.publisherId ?? "",
@@ -89,12 +95,28 @@ export default function BookForm({ initial }: BookFormProps) {
   const [error,           setError]           = useState("");
   const [coverUploading,  setCoverUploading]  = useState(false);
   const [coverPreview,    setCoverPreview]    = useState(initial?.coverImage ?? "");
+  const [elibQuery,       setElibQuery]       = useState(initial?.titleKm ?? initial?.title ?? "");
+  const [elibLoading,     setElibLoading]     = useState(false);
+  const [elibResults,     setElibResults]     = useState<{ title: string; coverUrl: string; pageUrl: string }[]>([]);
+  const [elibError,       setElibError]       = useState<string | null>(null);
+  const [elibOpen,        setElibOpen]        = useState(false);
   const [barcode,         setBarcode]         = useState<string | null>(initial?.barcode ?? null);
   const [genBusy,         setGenBusy]         = useState(false);
   const [genError,        setGenError]        = useState<string | null>(null);
   const [isbnLooking,     setIsbnLooking]     = useState(false);
   const [isbnFilled,      setIsbnFilled]      = useState<string[] | null>(null);
   const [isbnError,       setIsbnError]       = useState<string | null>(null);
+
+  // AI suggest state
+  const [aiSuggesting,    setAiSuggesting]    = useState(false);
+  const [aiSuggestError,  setAiSuggestError]  = useState<string | null>(null);
+  const [aiSuggestedCat,  setAiSuggestedCat]  = useState<string | null>(null);
+  const [aiSuggestedBadge, setAiSuggestedBadge] = useState(false);
+
+  // Translate state
+  const [translatingTitleKm,  setTranslatingTitleKm]  = useState(false);
+  const [translatingDesc,     setTranslatingDesc]     = useState(false);
+  const [translateError,      setTranslateError]      = useState<string | null>(null);
 
   const linkedEbooks = initial?.ebooks ?? [];
 
@@ -113,6 +135,29 @@ export default function BookForm({ initial }: BookFormProps) {
       setBranches(Array.isArray(brs) ? brs.filter((b: Branch) => b.isActive) : []);
     });
   }, []);
+
+  async function searchElibrary() {
+    if (!elibQuery.trim()) return;
+    setElibLoading(true); setElibError(null); setElibResults([]); setElibOpen(true);
+    try {
+      const res = await fetch(`/api/books/covers/elibrary-search?q=${encodeURIComponent(elibQuery.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Search failed");
+      setElibResults(data.results ?? []);
+      if ((data.results ?? []).length === 0) setElibError("No covers found — try a different title");
+    } catch (e) {
+      setElibError(e instanceof Error ? e.message : "Search failed");
+    } finally {
+      setElibLoading(false);
+    }
+  }
+
+  function applyElibraryCover(url: string) {
+    setForm((f) => ({ ...f, coverImage: url }));
+    setCoverPreview(url);
+    setElibOpen(false);
+    setElibResults([]);
+  }
 
   async function handleCoverUpload(file: File) {
     setCoverUploading(true);
@@ -350,8 +395,8 @@ export default function BookForm({ initial }: BookFormProps) {
       ...form,
       publishYear: form.publishYear !== "" ? Number(form.publishYear) : undefined,
       pages:       form.pages       !== "" ? Number(form.pages)       : undefined,
-      price:       form.price       !== "" ? Number(form.price)       : undefined,
-      referenceOnly: !!form.referenceOnly,
+      price:               form.price       !== "" ? Number(form.price)       : undefined,
+      referenceOnly:       !!form.referenceOnly,
       locationId:  form.locationId  || null,
       branchId:    form.branchId    || null,
       categoryId:  form.categoryId  || undefined,
@@ -386,6 +431,58 @@ export default function BookForm({ initial }: BookFormProps) {
     }
   }
 
+  async function handleAiSuggest() {
+    setAiSuggesting(true); setAiSuggestError(null); setAiSuggestedCat(null); setAiSuggestedBadge(false);
+    try {
+      const author = authors.find((a) => a.id === form.authorId);
+      const res = await fetch("/api/books/ai-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title:       form.title,
+          subtitle:    form.subtitle || undefined,
+          description: form.description || undefined,
+          isbn:        form.isbn || undefined,
+          authorName:  author?.name,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "AI error");
+      if (data.audienceLevel && data.audienceLevel !== "UNSPECIFIED") {
+        setForm((f) => ({ ...f, audienceLevel: data.audienceLevel }));
+        setAiSuggestedBadge(true);
+      }
+      if (data.categoryName) setAiSuggestedCat(data.categoryName);
+    } catch (e) {
+      setAiSuggestError(e instanceof Error ? e.message : "AI error");
+    } finally {
+      setAiSuggesting(false);
+    }
+  }
+
+  async function handleTranslate(field: "title" | "description", locale: "km" | "fr") {
+    if (!initial?.id) return;
+    if (field === "title") setTranslatingTitleKm(true);
+    else setTranslatingDesc(true);
+    setTranslateError(null);
+    try {
+      const res = await fetch(`/api/books/${initial.id}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field, targetLocale: locale }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Translation failed");
+      if (field === "title") setForm((f) => ({ ...f, titleKm: data.translated }));
+      else setForm((f) => ({ ...f, description: data.translated }));
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : "Translation failed");
+    } finally {
+      if (field === "title") setTranslatingTitleKm(false);
+      else setTranslatingDesc(false);
+    }
+  }
+
   const set = (key: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -394,7 +491,7 @@ export default function BookForm({ initial }: BookFormProps) {
   const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
+    <form onSubmit={handleSubmit} className={`space-y-6 ${initial ? "max-w-5xl" : "max-w-2xl"}`}>
 
       {/* Titles */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -404,7 +501,21 @@ export default function BookForm({ initial }: BookFormProps) {
         </div>
         <div>
           <label htmlFor="book-title-km" className={labelCls}>ចំណងជើង (ខ្មែរ)</label>
-          <input id="book-title-km" type="text" value={form.titleKm} onChange={set("titleKm")} className={inputCls} />
+          <div className="flex gap-2 items-stretch">
+            <input id="book-title-km" type="text" value={form.titleKm} onChange={set("titleKm")} className={inputCls + " flex-1"} />
+            {initial?.id && (
+              <button
+                type="button"
+                title="Translate title to Khmer"
+                onClick={() => handleTranslate("title", "km")}
+                disabled={translatingTitleKm || !form.title}
+                className="flex items-center gap-1 px-2.5 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors shrink-0"
+              >
+                {translatingTitleKm ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+              </button>
+            )}
+          </div>
+          {translateError && <p className="text-xs text-red-500 mt-1">{translateError}</p>}
         </div>
       </div>
 
@@ -583,13 +694,80 @@ export default function BookForm({ initial }: BookFormProps) {
             <p className="text-xs text-gray-400 flex items-center gap-1">
               <Upload className="w-3 h-3" /> {t("uploadHint")}
             </p>
+
+            {/* ── eLibrary Cambodia search ── */}
+            <div className="pt-1 border-t border-gray-100">
+              <p className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1">
+                <Globe className="w-3 h-3" /> Search eLibrary of Cambodia
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={elibQuery}
+                  onChange={(e) => setElibQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && searchElibrary()}
+                  placeholder="Khmer or English title…"
+                  className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button type="button" onClick={searchElibrary} disabled={elibLoading || !elibQuery.trim()}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                  {elibLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                  {elibLoading ? "Searching…" : "Search"}
+                </button>
+              </div>
+
+              {elibError && (
+                <p className="mt-1.5 text-xs text-amber-600">{elibError}</p>
+              )}
+
+              {elibOpen && elibResults.length > 0 && (
+                <div className="mt-2 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+                    <span className="text-xs font-medium text-gray-600">{elibResults.length} cover{elibResults.length !== 1 ? "s" : ""} found</span>
+                    <button type="button" onClick={() => { setElibOpen(false); setElibResults([]); }}
+                      className="text-gray-400 hover:text-gray-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 p-2 max-h-52 overflow-y-auto">
+                    {elibResults.map((r) => (
+                      <button key={r.coverUrl} type="button" onClick={() => applyElibraryCover(r.coverUrl)}
+                        title={r.title}
+                        className="group relative aspect-[3/4] rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 hover:shadow-md transition-all">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={r.coverUrl} alt={r.title} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Description */}
       <div>
-        <label htmlFor="book-desc" className={labelCls}>{t("description")}</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label htmlFor="book-desc" className="block text-sm font-medium text-gray-700">{t("description")}</label>
+          {initial?.id && (
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                title="Translate description to Khmer"
+                onClick={() => handleTranslate("description", "km")}
+                disabled={translatingDesc || !form.description}
+                className="flex items-center gap-1 px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                {translatingDesc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Globe className="w-3 h-3" />}
+                km
+              </button>
+            </div>
+          )}
+        </div>
         <textarea id="book-desc" value={form.description} onChange={set("description")} rows={3}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
       </div>
@@ -605,10 +783,23 @@ export default function BookForm({ initial }: BookFormProps) {
         </div>
         <div>
           <label htmlFor="book-category" className={labelCls}>{t("category")}</label>
-          <select id="book-category" value={form.categoryId} onChange={set("categoryId")} className={inputCls}>
+          <select
+            id="book-category"
+            value={form.categoryId}
+            onChange={(e) => {
+              set("categoryId")(e);
+              setAiSuggestedCat(null);
+            }}
+            className={inputCls}
+          >
             <option value="">— {t("category")} —</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          {aiSuggestedCat && (
+            <p className="text-xs text-violet-600 mt-1 flex items-center gap-1">
+              <Wand2 className="w-3 h-3" /> AI suggests category: <span className="font-semibold">{aiSuggestedCat}</span>
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="book-publisher" className={labelCls}>{t("publisher")}</label>
@@ -714,8 +905,8 @@ export default function BookForm({ initial }: BookFormProps) {
         </label>
       </div>
 
-      {/* Material Type + Location + Branch */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Material Type + Audience Level + Location + Branch */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label htmlFor="book-material" className={labelCls}>{t("materialType")}</label>
           <select id="book-material" value={form.materialType} onChange={set("materialType")} className={inputCls}>
@@ -729,6 +920,53 @@ export default function BookForm({ initial }: BookFormProps) {
             <option value="MAP">{t("materialMap")}</option>
             <option value="OTHER">{t("materialOther")}</option>
           </select>
+        </div>
+        <div>
+          <label htmlFor="book-audience" className={labelCls}>Audience Level</label>
+          <div className="flex gap-2 items-center">
+            <select
+              id="book-audience"
+              value={form.audienceLevel}
+              onChange={(e) => {
+                set("audienceLevel")(e);
+                setAiSuggestedBadge(false);
+              }}
+              className={inputCls + " flex-1"}
+            >
+              {AUDIENCE_VALUES.map((v) => (
+                <option key={v} value={v}>{audienceLabels[v]}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleAiSuggest}
+              disabled={aiSuggesting || !form.title}
+              title="AI suggest audience level and category"
+              className="flex items-center gap-1 px-2.5 py-2 border border-violet-200 bg-violet-50 text-violet-700 rounded-lg text-xs font-medium hover:bg-violet-100 disabled:opacity-50 transition-colors shrink-0"
+            >
+              {aiSuggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+              {aiSuggesting ? "…" : "Suggest"}
+            </button>
+          </div>
+          {aiSuggestedBadge && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 mt-1 bg-violet-100 text-violet-700 rounded-full font-medium">
+              <Wand2 className="w-2.5 h-2.5" /> AI suggested
+            </span>
+          )}
+          {aiSuggestError && (
+            <p className="text-xs text-red-500 mt-1">{aiSuggestError}</p>
+          )}
+        </div>
+        <div>
+          <label htmlFor="book-call-number" className={labelCls}>Call Number</label>
+          <input
+            id="book-call-number"
+            type="text"
+            value={form.callNumber}
+            onChange={(e) => setForm((f) => ({ ...f, callNumber: e.target.value }))}
+            placeholder="e.g. 360 ប៉ាន"
+            className={inputCls}
+          />
         </div>
         <div>
           <label htmlFor="book-location" className={labelCls}>{t("location")}</label>
@@ -785,8 +1023,12 @@ export default function BookForm({ initial }: BookFormProps) {
         </div>
       </div>
 
-      {/* Physical copies (edit mode only) */}
-      {initial && <BookCopiesPanel bookId={initial.id} />}
+      {/* Physical copies — full width below form in edit mode */}
+      {initial && (
+        <div className="border-t border-gray-100 pt-6">
+          <BookCopiesPanel bookId={initial.id} />
+        </div>
+      )}
 
       {/* Linked ebooks (edit mode only) */}
       {initial && (

@@ -68,6 +68,23 @@ export async function notifyMember(memberId: string, text: string): Promise<void
   }
 }
 
+/* ── Notify admin/staff via configured chat ID (fire-and-forget safe) ─────── */
+export async function notifyAdmin(text: string): Promise<void> {
+  if (!BOT_TOKEN) return;
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const [enabledSetting, chatIdSetting] = await Promise.all([
+      prisma.settings.findUnique({ where: { key: "TELEGRAM_NOTIFICATIONS_ENABLED" } }),
+      prisma.settings.findUnique({ where: { key: "TELEGRAM_ADMIN_CHAT_ID" } }),
+    ]);
+    if (enabledSetting?.value === "false") return;
+    if (!chatIdSetting?.value?.trim()) return;
+    await sendTelegram(chatIdSetting.value.trim(), text);
+  } catch {
+    // Never let notification errors bubble up to the caller
+  }
+}
+
 /* ── Message templates ──────────────────────────────────────────────────── */
 export const tg = {
   // ── Scheduled reminders ───────────────────────────────────────────────
@@ -160,4 +177,17 @@ export const tg = {
 
   saleRefunded: (memberName: string, orderNumber: string, total: number, currency: string) =>
     `💰 <b>Refund Processed</b>\n\nHi ${memberName}! Your refund for order <code>${orderNumber}</code> has been processed.\n\nRefund amount: <b>${currency} ${total.toFixed(2)}</b>\n\nContact library staff if you have any questions.`,
+
+  // ── Admin / staff alerts (sent to TELEGRAM_ADMIN_CHAT_ID) ─────────────────
+  adminNewOrder: (memberName: string, orderNumber: string, total: number, currency: string, deliveryType: string, paymentMethod: string) =>
+    `🛒 <b>New Sale Order</b>\n\nOrder <code>${orderNumber}</code> placed by <b>${memberName}</b>.\n\nTotal: <b>${currency} ${total.toFixed(2)}</b>\nDelivery: ${deliveryType === "PICKUP" ? "Branch pickup" : "Home delivery"}\nPayment: ${paymentMethod === "qr" ? "QR / Bank transfer" : "Cash on pickup"}\n\nGo to the Admin → Orders page to review.`,
+
+  adminPaymentProof: (memberName: string, orderNumber: string) =>
+    `💳 <b>Payment Proof Submitted</b>\n\nMember <b>${memberName}</b> has uploaded their payment screenshot for order <code>${orderNumber}</code>.\n\n⚠️ Please verify and confirm the payment in Admin → Orders.`,
+
+  adminReturnRequest: (memberName: string, orderNumber: string, note?: string | null) =>
+    `↩️ <b>Return Requested</b>\n\nMember <b>${memberName}</b> has requested a return for order <code>${orderNumber}</code>.` +
+    (note ? `\n\nReason: <i>${note}</i>` : "") +
+    `\n\nReview in Admin → Orders.`,
+
 };

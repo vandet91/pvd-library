@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import PublicFooter from "@/components/shared/PublicFooter";
+import FontLoader from "@/components/shared/FontLoader";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,9 +10,10 @@ import { useSession } from "next-auth/react";
 import {
   Search, BookOpen, BookMarked, ChevronLeft, ChevronRight,
   ShoppingCart, CheckCircle, X, Star, PlusCircle, Send, Loader2,
-  Flame, ShoppingBag, Tag,
+  Flame, ShoppingBag, ArrowRight,
 } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
+import Pagination from "@/components/shared/Pagination";
 import BookSearchChat from "@/components/BookSearchChat";
 import { StarDisplay, StarInput } from "@/components/shared/StarRating";
 import { getOpacTheme } from "@/lib/opac-theme";
@@ -36,14 +39,6 @@ interface Book {
 }
 
 interface Category { id: string; name: string }
-
-interface ForSaleBook {
-  copyId: string;
-  id:     string;          // book ID — used for deduplication
-  title: string; price: number | null;
-  coverImage: string | null; condition: string;
-  author: { name: string } | null;
-}
 
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -72,13 +67,14 @@ function BookCover({ coverImage, title, className = "" }: {
 }) {
   if (coverImage) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={coverImage} alt={title} className={`w-full h-full object-contain ${className}`} />;
+    return <img src={coverImage} alt={title} className={`w-full h-full object-cover ${className}`} />;
   }
   const initials = title.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
   return (
-    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(title)} flex flex-col items-center justify-center gap-1 ${className}`}>
-      <BookOpen className="w-8 h-8 text-white/40" />
-      <span className="text-white/80 text-xs font-bold px-2 text-center leading-tight">{initials}</span>
+    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(title)} flex flex-col items-center justify-center gap-2 ${className}`}>
+      <BookOpen className="w-10 h-10 text-white/50" />
+      <span className="text-white/90 text-sm font-bold px-3 text-center leading-tight line-clamp-3">{title}</span>
+      <span className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">{initials}</span>
     </div>
   );
 }
@@ -99,7 +95,40 @@ const MAT_KEY: Record<string, string> = {
 
 /* ── Main Component ─────────────────────────────────────────────────────────── */
 
-export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
+export default function DiscoverClient({
+  opacTheme,
+  initialSaleEnabled,
+  initialAiEnabled,
+  paginationMode = "loadmore",
+  paginationLimit = 20,
+  initialCategories = [],
+  footerEnabled = false,
+  footerShow = [],
+  footerPhone = "", footerEmail = "", footerAddress = "",
+  footerTelegram = "", footerHours = "", footerWhatsapp = "", footerWebsite = "",
+  footerDescription = "",
+  pageBg = "light" as "light" | "white" | "dark",
+  pageFont = "default",
+  pageCustomFonts = [] as {name:string;url:string}[],
+  fullWidth = false,
+}: {
+  opacTheme: string;
+  initialSaleEnabled: boolean;
+  initialAiEnabled: boolean;
+  paginationMode?: "loadmore" | "numbers";
+  paginationLimit?: number;
+  initialCategories?: Category[];
+  footerEnabled?: boolean;
+  footerShow?: string[];
+  footerPhone?: string; footerEmail?: string; footerAddress?: string;
+  footerTelegram?: string; footerHours?: string; footerWhatsapp?: string; footerWebsite?: string;
+  footerDescription?: string;
+  pageBg?: "light" | "white" | "dark";
+  pageFont?: string;
+  pageCustomFonts?: {name:string;url:string}[];
+  fullWidth?: boolean;
+}) {
+  const cx = fullWidth ? "w-full px-4" : "max-w-6xl mx-auto px-4";
   const t   = useTranslations("opac");
   const tb  = useTranslations("books");
   const tc  = useTranslations("common");
@@ -115,11 +144,15 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
   const [books,             setBooks]             = useState<Book[]>([]);
   const [newArrivals,       setNewArrivals]        = useState<Book[]>([]);
   const [mostBorrowed,      setMostBorrowed]       = useState<Book[]>([]);
-  const [categories,        setCategories]         = useState<Category[]>([]);
+  const [sectionsLoading,   setSectionsLoading]    = useState(true);
+  const [categories,        setCategories]         = useState<Category[]>(initialCategories);
   const [query,             setQuery]              = useState("");
   const [categoryId,        setCategoryId]         = useState("");
   const [materialType,      setMaterialType]       = useState("");
+  const [audienceLevel,     setAudienceLevel]      = useState("");
+  const [audienceLabels,    setAudienceLabels]     = useState<Record<string, string>>({});
   const [availableOnly,     setAvailableOnly]      = useState(false);
+  const [sortBy,            setSortBy]             = useState("title");
   const [loading,           setLoading]            = useState(true);
   const [selected,          setSelected]           = useState<Book | null>(null);
   const [availability,      setAvailability]       = useState<{
@@ -133,11 +166,15 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
   const [reqOpen,           setReqOpen]            = useState(false);
   const [reqForm,           setReqForm]            = useState({ title: "", author: "", isbn: "", notes: "" });
   const [reqLoading,        setReqLoading]         = useState(false);
-  const [aiEnabled,         setAiEnabled]          = useState(false);
+  const [aiEnabled,         setAiEnabled]          = useState(initialAiEnabled);
   const [theme,             setTheme]              = useState(getOpacTheme(opacTheme));
-  const [saleEnabled,       setSaleEnabled]        = useState(false);
-  const [forSaleBooks,      setForSaleBooks]       = useState<ForSaleBook[]>([]);
-  const [saleCurrency,      setSaleCurrency]       = useState("USD");
+  const [saleEnabled,       setSaleEnabled]        = useState(initialSaleEnabled);
+  const [debouncedQuery,    setDebouncedQuery]     = useState("");
+  const [page,              setPage]               = useState(1);
+  const [pages,             setPages]              = useState(1);
+  const [hasMore,           setHasMore]            = useState(false);
+  const [loadingMore,       setLoadingMore]        = useState(false);
+  const [total,             setTotal]              = useState(0);
 
   /* Rating state */
   const [ratingData,    setRatingData]    = useState<{
@@ -154,34 +191,23 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
 
   /* ── Effects ── */
   useEffect(() => {
-    fetch("/api/categories").then((r) => r.json()).then(setCategories);
-    fetch("/api/books?limit=8&sort=newest").then((r) => r.json()).then((d: Book[]) => setNewArrivals(d.slice(0, 8)));
-    fetch("/api/books?sort=popular&limit=8").then((r) => r.json()).then((d: Book[]) => setMostBorrowed(d.slice(0, 8)));
+    // categories already loaded server-side via initialCategories prop
+    Promise.all([
+      fetch("/api/books?limit=8&sort=newest").then((r) => r.json()),
+      fetch("/api/books?sort=popular&limit=8").then((r) => r.json()),
+    ]).then(([newest, popular]: [Book[], Book[]]) => {
+      setNewArrivals(newest.slice(0, 8));
+      setMostBorrowed(popular.slice(0, 8));
+      setSectionsLoading(false);
+    }).catch(() => setSectionsLoading(false));
     fetch("/api/settings").then((r) => r.ok ? r.json() : {})
       .then((s: Record<string, string>) => {
-        setAiEnabled(s.AI_SEARCH_MEMBER !== "false");
-        setTheme(getOpacTheme(s.OPAC_THEME));
-        if (s.BOOK_SALE_ENABLED === "true") {
-          setSaleEnabled(true);
-          setSaleCurrency(s.STOCK_CURRENCY ?? "USD");
-          fetch("/api/shop/books")
-            .then((r) => r.ok ? r.json() : [])
-            .then((data: ForSaleBook[]) => {
-              if (!Array.isArray(data)) { setForSaleBooks([]); return; }
-              // One card per unique book — keep the copy with the lowest price
-              const seen = new Map<string, ForSaleBook>();
-              for (const copy of data) {
-                const existing = seen.get(copy.id);
-                if (
-                  !existing ||
-                  (copy.price != null && (existing.price == null || copy.price < existing.price))
-                ) {
-                  seen.set(copy.id, copy);
-                }
-              }
-              setForSaleBooks(Array.from(seen.values()).slice(0, 8));
-            })
-            .catch(() => {});
+        // Keep in sync if settings changed since the page was SSR'd
+        if ("AI_SEARCH_MEMBER"  in s) setAiEnabled(s.AI_SEARCH_MEMBER !== "false");
+        if ("BOOK_SALE_ENABLED" in s) setSaleEnabled(s.BOOK_SALE_ENABLED === "true");
+        if ("OPAC_THEME"        in s) setTheme(getOpacTheme(s.OPAC_THEME));
+        if ("AUDIENCE_LEVEL_LABELS" in s) {
+          try { setAudienceLabels(JSON.parse(s.AUDIENCE_LEVEL_LABELS)); } catch { /* ignore */ }
         }
       }).catch(() => {});
   }, []);
@@ -195,19 +221,36 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
       }).catch(() => {});
   }, [status]);
 
-  const fetchBooks = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (query)         params.set("q", query);
-    if (categoryId)    params.set("categoryId", categoryId);
-    if (materialType)  params.set("materialType", materialType);
-    if (availableOnly) params.set("available", "true");
-    const data = await fetch(`/api/books?${params}`).then((r) => r.json());
-    setBooks(data);
-    setLoading(false);
-  }, [query, categoryId, materialType, availableOnly]);
+  // Debounce the text query — filter/sort changes stay instant
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(id);
+  }, [query]);
 
-  useEffect(() => { fetchBooks(); }, [fetchBooks]);
+  // Reset to page 1 when any filter/sort/mode changes
+  useEffect(() => { setPage(1); setBooks([]); }, [debouncedQuery, categoryId, materialType, audienceLevel, availableOnly, sortBy, paginationMode]);
+
+  const fetchBooks = useCallback(async (pageToLoad: number, append: boolean) => {
+    if (append) setLoadingMore(true); else setLoading(true);
+    const params = new URLSearchParams();
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    if (categoryId)     params.set("categoryId", categoryId);
+    if (materialType)   params.set("materialType", materialType);
+    if (audienceLevel)  params.set("audienceLevel", audienceLevel);
+    if (availableOnly)  params.set("available", "true");
+    if (sortBy)         params.set("sort", sortBy);
+    params.set("page",  String(pageToLoad));
+    params.set("limit", String(paginationLimit));
+    const data = await fetch(`/api/books?${params}`).then((r) => r.json());
+    const newBooks: Book[] = Array.isArray(data) ? data : (data.books ?? []);
+    setBooks((prev) => append ? [...prev, ...newBooks] : newBooks);
+    setPages(data.pages ?? 1);
+    setHasMore(pageToLoad < (data.pages ?? 1));
+    setTotal(data.total ?? 0);
+    if (append) setLoadingMore(false); else setLoading(false);
+  }, [debouncedQuery, categoryId, materialType, audienceLevel, availableOnly, sortBy, paginationLimit]);
+
+  useEffect(() => { fetchBooks(1, false); }, [fetchBooks]);
 
   useEffect(() => {
     if (!selected) { setAvailability(null); return; }
@@ -321,13 +364,15 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
   }
 
   /* ── Computed ── */
-  const heroBooks    = newArrivals.length > 0 ? newArrivals : books.slice(0, 8);
-  const showSections = !query && !categoryId && !materialType && !availableOnly;
+  const heroBooks    = newArrivals.length > 0 ? newArrivals : (sectionsLoading ? [] : books.slice(0, 8));
+  const showSections = !query && !categoryId && !materialType && !audienceLevel && !availableOnly;
   const isStaff      = (session?.user as { role?: string })?.role && (session?.user as { role?: string })?.role !== "MEMBER";
 
   /* ── Render ── */
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
+    <div className={`min-h-screen opac-font-root ${pageBg === "white" ? "bg-white" : pageBg === "dark" ? "bg-slate-950 page-dark" : "bg-gray-200"}`}>
+      <FontLoader font={pageFont} customFonts={pageCustomFonts} />
 
       {/* Toast */}
       {toast && (
@@ -339,8 +384,8 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
       )}
 
       {/* Top Nav */}
-      <nav className={`sticky top-0 z-30 ${theme.navBg} backdrop-blur border-b border-white/10`}>
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+      <nav className="sticky top-0 z-30 backdrop-blur border-b border-white/10" style={{ background: 'var(--m-nav-bg)' }}>
+        <div className={`${cx} h-14 flex items-center justify-between gap-4`}>
           <div className="flex items-center gap-1">
             <Link href={`/${locale}/discover`} className="flex items-center gap-2 pr-3 mr-2 border-r border-white/20">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden ${theme.navBrandBg}`}>
@@ -377,129 +422,220 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
       </nav>
 
         {/* ── Hero ── */}
-        <header className={`${theme.heroBg} text-white px-4 py-8 overflow-hidden relative`}>
+        <header className="text-white px-4 py-8 overflow-hidden relative" style={{ background: 'var(--m-hero-bg)' }}>
           <div className="absolute inset-0 pointer-events-none"
             style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
           <div className={`absolute -top-10 right-1/3 w-80 h-80 ${theme.heroGlow1} rounded-full blur-3xl pointer-events-none`} />
           <div className={`absolute bottom-0 right-0 w-64 h-64 ${theme.heroGlow2} rounded-full blur-3xl pointer-events-none`} />
 
-          <div className="max-w-6xl mx-auto relative">
+          <div className={`${fullWidth ? "w-full" : "max-w-6xl mx-auto"} relative`}>
             <div className="flex items-center gap-6">
               <div className="flex-1 min-w-0">
-                <h1 className="text-2xl md:text-3xl font-bold leading-tight mb-1">Discover Your Next Great Read</h1>
-                <p className="text-white/60 text-sm mb-5">Search, explore and borrow from our vast collection.</p>
+                <h1 className="text-2xl sm:text-3xl font-bold leading-tight mb-1">{t("heroTitle")}</h1>
+                <p className="text-white/60 text-sm mb-5">{t("heroSubtitle")}</p>
 
-                {/* Search bar with integrated category filter */}
-                <div className="flex gap-2 max-w-2xl">
-                  <div className="flex-1 flex bg-white rounded-xl overflow-hidden shadow-lg ring-1 ring-white/20">
-                    <div className="relative flex-1 flex items-center">
-                      <Search className="absolute left-4 w-4 h-4 text-gray-400 pointer-events-none" />
+                {/* Auto-search bar */}
+                <div className="max-w-2xl">
+                  <div className="flex items-stretch bg-white rounded-2xl shadow-xl ring-2 ring-white/15 focus-within:ring-white/35 transition-all duration-200 overflow-hidden">
+                    {/* Input section */}
+                    <div className="relative flex-1 min-w-0 flex items-center">
+                      <div className="absolute left-4 pointer-events-none text-gray-400">
+                        {loading
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <Search className="w-4 h-4" />
+                        }
+                      </div>
                       <input
                         id="search-input"
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && fetchBooks()}
+                        onKeyDown={(e) => { if (e.key === "Enter") setDebouncedQuery(query); }}
                         placeholder={t("searchPlaceholder")}
-                        className="w-full pl-11 pr-4 py-3 text-gray-900 text-sm focus:outline-none bg-transparent"
+                        className="w-full pl-11 pr-8 py-3.5 text-gray-900 text-sm focus:outline-none bg-transparent"
                       />
+                      {query && (
+                        <button
+                          onClick={() => { setQuery(""); setDebouncedQuery(""); }}
+                          className="absolute right-2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
-                    <select
-                      value={categoryId}
-                      onChange={(e) => setCategoryId(e.target.value)}
-                      className="border-l border-gray-100 px-3 py-2.5 text-sm text-gray-600 bg-white focus:outline-none cursor-pointer min-w-[120px] max-w-[150px]"
-                    >
-                      <option value="">{t("allCategories")}</option>
-                      {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    {/* Category select */}
+                    <div className="border-l border-gray-200 flex-shrink-0 flex items-center">
+                      <select
+                        value={categoryId}
+                        onChange={(e) => setCategoryId(e.target.value)}
+                        className="h-full px-3 text-sm text-gray-600 bg-white focus:outline-none cursor-pointer min-w-[130px] max-w-[160px] sm:max-w-[200px]"
+                      >
+                        <option value="">{t("allCategories")}</option>
+                        {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <button
-                    onClick={fetchBooks}
-                    className={`px-5 py-3 ${theme.btnPrimary} text-white rounded-xl font-semibold text-sm flex-shrink-0 flex items-center gap-2 hover:opacity-90 transition-opacity shadow-lg`}
-                  >
-                    <Search className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">{tc("search")}</span>
-                  </button>
                 </div>
 
               </div>
 
-              {/* SVG illustration */}
-              <div className="hidden xl:block flex-shrink-0 select-none pointer-events-none" aria-hidden>
-                <svg width="300" height="140" viewBox="0 0 420 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="210" cy="130" r="100" fill="white" fillOpacity="0.02"/>
-                  <rect x="16" y="158" width="130" height="5" rx="2" fill="white" fillOpacity="0.22"/>
-                  <rect x="20"  y="120" width="13" height="38" rx="2" fill="#ef4444" fillOpacity="0.75"/>
-                  <rect x="35"  y="126" width="11" height="32" rx="2" fill="#3b82f6" fillOpacity="0.75"/>
-                  <rect x="48"  y="122" width="13" height="36" rx="2" fill="#10b981" fillOpacity="0.75"/>
-                  <rect x="63"  y="129" width="10" height="29" rx="2" fill="#f59e0b" fillOpacity="0.75"/>
-                  <rect x="75"  y="121" width="14" height="37" rx="2" fill="#8b5cf6" fillOpacity="0.75"/>
-                  <rect x="91"  y="130" width="10" height="28" rx="2" fill="#ec4899" fillOpacity="0.75"/>
-                  <rect x="103" y="124" width="12" height="34" rx="2" fill="#14b8a6" fillOpacity="0.75"/>
-                  <rect x="117" y="127" width="12" height="31" rx="2" fill="#f97316" fillOpacity="0.75"/>
-                  <rect x="160" y="168" width="62" height="11" rx="3" fill="#6366f1" fillOpacity="0.85"/>
-                  <rect x="165" y="155" width="54" height="11" rx="3" fill="#3b82f6" fillOpacity="0.85"/>
-                  <rect x="170" y="143" width="46" height="10" rx="3" fill="#8b5cf6" fillOpacity="0.85"/>
-                  <circle cx="252" cy="94" r="50" stroke="white" strokeOpacity="0.28" strokeWidth="5" fill="white" fillOpacity="0.05"/>
-                  <line x1="289" y1="131" x2="318" y2="160" stroke="white" strokeOpacity="0.35" strokeWidth="8" strokeLinecap="round"/>
-                  <path d="M 230,104 C 228,68 240,53 249,47 L 254,47 L 254,104 Z" fill="white" fillOpacity="0.18" stroke="white" strokeOpacity="0.28" strokeWidth="1"/>
-                  <path d="M 274,104 C 276,68 264,53 255,47 L 254,47 L 254,104 Z" fill="white" fillOpacity="0.12" stroke="white" strokeOpacity="0.28" strokeWidth="1"/>
-                  <line x1="254" y1="47" x2="254" y2="104" stroke="white" strokeOpacity="0.4" strokeWidth="1.5" strokeLinecap="round"/>
-                  <g>
-                    <path d="M 340,16 L 350,16 L 350,44 L 345,38 L 340,44 Z" fill="#f59e0b" fillOpacity="0.8" stroke="#fcd34d" strokeOpacity="0.5" strokeWidth="1"/>
-                    <animateTransform attributeName="transform" type="translate" values="0,0;0,-5;0,0" dur="2.6s" repeatCount="indefinite" calcMode="ease-in-out"/>
-                  </g>
-                  <path d="M 36,20 L 38.5,12 L 41,20 L 49,22 L 41,24 L 38.5,32 L 36,24 L 28,22 Z" fill="#fcd34d" fillOpacity="0.7">
-                    <animate attributeName="opacity" values="0.7;1;0.7" dur="2.2s" repeatCount="indefinite"/>
-                  </path>
-                </svg>
-              </div>
+              {/* Hero right panel — bookstore card or decorative SVG (value known from SSR) */}
+              {saleEnabled ? (
+                <Link
+                  href={`/${locale}/shop`}
+                  className="hidden xl:block flex-shrink-0 select-none group"
+                  style={{ width: 270 }}
+                >
+                  <div className="rounded-2xl overflow-hidden shadow-2xl border border-white/10 group-hover:-translate-y-1.5 group-hover:shadow-[0_24px_64px_rgba(0,0,0,0.55)] transition-all duration-300">
+
+                    {/* Dark navy header */}
+                    <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#16142e" }}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(255,255,255,0.12)" }}>
+                          <BookOpen className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <span className="font-black text-white text-sm tracking-tight">BOOK</span>
+                        <span className="text-white/40 font-light text-sm tracking-[0.18em]">store</span>
+                      </div>
+                      <span className="text-white/35 text-[11px]">Browse &amp; Buy</span>
+                    </div>
+
+                    {/* Warm cream bookshelf */}
+                    <div className="px-3 pt-4 pb-0" style={{ background: "#f5ead5" }}>
+                      <div className="flex items-end gap-[3px]">
+                        {[
+                          { w: 14, h: 52, c: "#8b5e3c" }, { w: 13, h: 44, c: "#5c3d2e" },
+                          { w: 16, h: 58, c: "#3b4a6b" }, { w: 13, h: 48, c: "#7a5c3b" },
+                          { w: 17, h: 62, c: "#c4a882" }, { w: 12, h: 42, c: "#4a3728" },
+                          { w: 14, h: 56, c: "#2d3f5c" }, { w: 16, h: 47, c: "#9b7c55" },
+                          { w: 13, h: 60, c: "#3d2b1e" }, { w: 12, h: 45, c: "#8a7065" },
+                          { w: 15, h: 53, c: "#1e3a5f" }, { w: 13, h: 50, c: "#7c6550" },
+                          { w: 16, h: 57, c: "#c8b89a" }, { w: 12, h: 41, c: "#5c4535" },
+                        ].map((book, i) => (
+                          <div key={i} className="rounded-t-[2px] flex-shrink-0"
+                            style={{ width: book.w, height: book.h, backgroundColor: book.c }} />
+                        ))}
+                        {/* Plant + stacked books */}
+                        <div className="ml-2 flex-shrink-0 flex flex-col items-center">
+                          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                            <ellipse cx="10" cy="14" rx="7" ry="5" fill="#4ade80" transform="rotate(-25 10 14)" />
+                            <ellipse cx="18" cy="12" rx="7" ry="5" fill="#22c55e" transform="rotate(20 18 12)" />
+                            <ellipse cx="14" cy="16" rx="5" ry="3.5" fill="#16a34a" />
+                            <rect x="12" y="19" width="4" height="7" rx="2" fill="#78350f" />
+                            <rect x="8" y="25" width="12" height="2.5" rx="1.25" fill="#92400e" />
+                          </svg>
+                          <div className="w-10 h-2.5 rounded-sm mb-0.5" style={{ backgroundColor: "#8b5e3c" }} />
+                          <div className="w-9 h-2.5 rounded-sm" style={{ backgroundColor: "#c4a882" }} />
+                        </div>
+                      </div>
+                      {/* Wooden shelf board */}
+                      <div className="h-3 w-full rounded-sm" style={{ background: "#9b6b3e", boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }} />
+                    </div>
+
+                    {/* Cream CTA footer */}
+                    <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#f5ead5" }}>
+                      <span className="text-xs font-medium" style={{ color: "#5c4535" }}>Books for purchase</span>
+                      <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-gray-900 group-hover:gap-1.5 transition-all"
+                        style={{ background: "#f5b731" }}>
+                        Visit Store <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+
+                  </div>
+                </Link>
+              ) : null}
             </div>
           </div>
         </header>
 
         {/* ── New Arrivals carousel ── */}
+        {/* ══════════════════════════════════════════════════════════
+            NEW ARRIVALS — bigger cards, 4 cols max, Embla carousel
+        ══════════════════════════════════════════════════════════ */}
         {showSections && heroBooks.length > 0 && (
-          <section id="new-arrivals" className="max-w-6xl mx-auto px-4 pt-8 pb-2 w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                {t("newArrivals")}
-              </h2>
-              <div className="flex items-center gap-2">
-                <button onClick={() => document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" })}
-                  className="text-xs text-blue-600 hover:underline">View all →</button>
-                <button onClick={() => emblaApi?.scrollPrev()}
-                  className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                  <ChevronLeft className="w-3.5 h-3.5" />
+          <section id="new-arrivals" className={`${cx} pt-10 pb-2 w-full`}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-500
+                  flex items-center justify-center shadow-md shadow-amber-200 flex-shrink-0">
+                  <Star className="w-5 h-5 text-white fill-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-gray-900 leading-tight tracking-tight">
+                    {t("newArrivals")}
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-0.5">{t("freshlyAddedSubtitle", { count: heroBooks.length })}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" })}
+                  className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600
+                    hover:text-gray-900 px-4 py-2 rounded-xl border border-gray-200
+                    hover:border-gray-300 hover:bg-gray-50 transition-all duration-150">
+                  {t("viewAll")} <ChevronRight className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => emblaApi?.scrollNext()}
-                  className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                {/* Arrow pair */}
+                <div className="flex items-center gap-1">
+                  <button onClick={() => emblaApi?.scrollPrev()}
+                    className="w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-sm
+                      flex items-center justify-center text-gray-600
+                      hover:bg-gray-900 hover:text-white hover:border-gray-900 hover:shadow-md
+                      active:scale-95 transition-all duration-150">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => emblaApi?.scrollNext()}
+                    className="w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-sm
+                      flex items-center justify-center text-gray-600
+                      hover:bg-gray-900 hover:text-white hover:border-gray-900 hover:shadow-md
+                      active:scale-95 transition-all duration-150">
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="overflow-hidden" ref={emblaRef}>
-              <div className="flex gap-3">
+
+            <div ref={emblaRef} className="overflow-hidden py-3 -my-3">
+              <div className="flex -ml-5">
                 {heroBooks.map((book) => (
-                  <div key={book.id} className="flex-[0_0_130px] min-w-0">
-                    <button className="w-full text-left group" onClick={() => setSelected(book)}>
-                      <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow bg-gray-100 mb-2 relative">
+                  <div key={book.id}
+                    className={`flex-[0_0_calc(50%+10px)] sm:flex-[0_0_calc(33.333%+7px)] md:flex-[0_0_calc(25%+5px)] lg:flex-[0_0_calc(20%+4px)] ${fullWidth ? "lg:flex-[0_0_calc(16.666%+3px)] xl:flex-[0_0_calc(14.285%+3px)] 2xl:flex-[0_0_calc(11.111%+2px)]" : ""} min-w-0 pl-5 flex flex-col`}>
+                    <button className="w-full text-left group flex flex-col" onClick={() => setSelected(book)}>
+                      {/* Cover */}
+                      <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden
+                        shadow-[0_4px_16px_rgba(0,0,0,0.12)]
+                        group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
+                        transition-all duration-300 bg-gray-100 flex-shrink-0 relative">
                         <BookCover coverImage={book.coverImage} title={book.title} />
+
+                        {/* NEW badge */}
+                        <div className="absolute top-2.5 left-2.5 bg-yellow-400 text-gray-900
+                          text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wide uppercase shadow-sm">
+                          NEW
+                        </div>
+
+                        {/* Rating */}
                         {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pt-4 pb-1.5 flex items-center gap-1">
-                            <span className="text-amber-400 text-[11px] leading-none">★</span>
-                            <span className="text-white text-[11px] font-semibold leading-none">{book.avgRating?.toFixed(1)}</span>
-                            {(book.ratingCount ?? 0) > 0 && <span className="text-white/60 text-[10px] leading-none">({book.ratingCount})</span>}
+                          <div className="absolute bottom-2.5 left-2.5 flex items-center gap-0.5
+                            bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
+                            <span className="text-amber-400 text-xs">★</span>
+                            <span className="text-xs font-bold">{book.avgRating?.toFixed(1)}</span>
                           </div>
                         )}
-                        <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${book.availableCopies > 0 ? "bg-green-400" : "bg-red-400"} shadow`} />
+
+                        {/* Availability */}
+                        <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow
+                          ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
                       </div>
-                      <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug">{book.title}</p>
-                      {allAuthors(book) && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{allAuthors(book)}</p>}
-                      <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${book.availableCopies > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-500"}`}>
-                        {book.availableCopies > 0 ? t("available") : t("borrowed")}
-                      </span>
+
+                      {/* Text */}
+                      <div className="mt-3 h-[56px] overflow-hidden">
+                        <p className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug">{book.title}</p>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{allAuthors(book) || " "}</p>
+                      </div>
                     </button>
                   </div>
                 ))}
@@ -508,120 +644,181 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
           </section>
         )}
 
-        {/* ── Most Borrowed ── */}
+        {/* ══════════════════════════════════════════════════════════
+            MOST BORROWED — ranked cards with rank numbers
+        ══════════════════════════════════════════════════════════ */}
         {showSections && mostBorrowed.length > 0 && (
-          <section id="most-borrowed" className="max-w-6xl mx-auto px-4 pt-6 pb-2 w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-500" />
-                {t("mostBorrowed")}
-              </h2>
-              <button onClick={() => document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" })}
-                className="text-xs text-blue-600 hover:underline">View all →</button>
+          <section id="most-borrowed" className={`${cx} pt-8 pb-2 w-full`}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-400 to-red-500
+                  flex items-center justify-center shadow-md shadow-orange-200 flex-shrink-0">
+                  <Flame className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-gray-900 leading-tight tracking-tight">
+                    {t("mostBorrowed")}
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-0.5">{t("trendingSubtitle")}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" })}
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-600
+                  hover:text-gray-900 px-4 py-2 rounded-xl border border-gray-200
+                  hover:border-gray-300 hover:bg-gray-50 transition-all duration-150">
+                View all <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {mostBorrowed.map((book) => (
-                <button key={book.id} onClick={() => setSelected(book)} className="flex-shrink-0 w-28 text-left group">
-                  <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow bg-gray-100 mb-2 relative">
+
+            <div className="flex gap-5 overflow-x-auto pt-3 -mt-3 pb-4 scrollbar-hide">
+              {mostBorrowed.map((book, idx) => (
+                <button key={book.id} onClick={() => setSelected(book)}
+                  className={`flex-shrink-0 w-[calc(50%-10px)] sm:w-[calc(33.333%-14px)] md:w-[calc(25%-15px)] lg:w-[calc(20%-16px)] ${fullWidth ? "lg:w-[calc(16.666%-17px)] xl:w-[calc(14.285%-17px)] 2xl:w-[calc(11.111%-18px)]" : ""} text-left group flex flex-col`}>
+
+                  {/* Cover */}
+                  <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden relative
+                    shadow-[0_4px_16px_rgba(0,0,0,0.12)]
+                    group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
+                    transition-all duration-300 bg-gray-100 flex-shrink-0">
                     <BookCover coverImage={book.coverImage} title={book.title} />
-                    {/* Borrow count badge */}
+
+                    {/* Rank badge */}
+                    <div className={`absolute top-2.5 left-2.5 w-7 h-7 rounded-lg flex items-center justify-center
+                      text-xs font-extrabold shadow-md border border-white/30
+                      ${idx === 0 ? "bg-yellow-400 text-gray-900"
+                        : idx === 1 ? "bg-gray-300 text-gray-700"
+                        : idx === 2 ? "bg-amber-600 text-white"
+                        : "bg-black/60 backdrop-blur-sm text-white"}`}>
+                      {idx + 1}
+                    </div>
+
+                    {/* Borrow count */}
                     {(book._count?.loans ?? 0) > 0 && (
-                      <div className="absolute top-1.5 left-1.5 bg-blue-600/85 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 backdrop-blur-sm">
-                        <Flame className="w-2.5 h-2.5" />
-                        {(book._count!.loans) > 999
-                          ? `${((book._count!.loans) / 1000).toFixed(1)}k`
-                          : book._count!.loans}
+                      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1
+                        bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
+                        <Flame className="w-3 h-3 text-orange-400" />
+                        <span className="text-xs font-bold">
+                          {(book._count!.loans) > 999
+                            ? `${((book._count!.loans) / 1000).toFixed(1)}k`
+                            : book._count!.loans}
+                        </span>
                       </div>
                     )}
+
+                    {/* Rating */}
                     {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pt-4 pb-1.5 flex items-center gap-1">
-                        <span className="text-amber-400 text-[11px] leading-none">★</span>
-                        <span className="text-white text-[11px] font-semibold leading-none">{book.avgRating?.toFixed(1)}</span>
+                      <div className="absolute bottom-2.5 right-2.5 flex items-center gap-0.5
+                        bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
+                        <span className="text-amber-400 text-xs">★</span>
+                        <span className="text-xs font-bold">{book.avgRating?.toFixed(1)}</span>
                       </div>
                     )}
+
+                    <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow
+                      ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
                   </div>
-                  <p className="text-[11px] font-semibold text-gray-800 line-clamp-2 leading-snug">{book.title}</p>
+
+                  {/* Text */}
+                  <div className="mt-3 h-[56px] overflow-hidden">
+                    <p className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug">{book.title}</p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{allAuthors(book) || " "}</p>
+                  </div>
                 </button>
               ))}
             </div>
           </section>
         )}
 
-        {/* ── Books for Sale ── */}
-        {showSections && saleEnabled && forSaleBooks.length > 0 && (
-          <section className="max-w-6xl mx-auto px-4 pt-6 pb-2 w-full">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-violet-600" />
-                Books for Sale
-                <span className="text-xs font-normal text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
-                  {forSaleBooks.length} available
-                </span>
-              </h2>
-              <Link
-                href={`/${locale}/shop`}
-                className="text-xs text-violet-600 hover:text-violet-800 font-medium hover:underline flex items-center gap-1"
-              >
-                Browse Shop →
-              </Link>
-            </div>
+        {/* ── Bookstore Banner (hidden on xl — shown in hero right panel there) ── */}
+        {showSections && saleEnabled && (
+          <section className={`${cx} pt-4 pb-2 w-full xl:hidden`}>
+            <Link href={`/${locale}/shop`} className="block group">
+              <div className="rounded-2xl overflow-hidden shadow-md hover:shadow-xl group-hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">
 
-            {/* Cards — same compact horizontal-scroll row as Most Borrowed */}
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {forSaleBooks.map((book) => (
-                <Link
-                  key={book.copyId}
-                  href={`/${locale}/shop`}
-                  className="flex-shrink-0 w-28 group"
-                >
-                  <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow bg-gradient-to-br from-violet-100 to-purple-100 mb-2 relative">
-                    {book.coverImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={book.coverImage} alt={book.title} className="w-full h-full object-contain" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <BookOpen className="w-8 h-8 text-violet-300" />
-                      </div>
-                    )}
-                    {/* Price badge — only when price is set */}
-                    {book.price != null && (
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1.5 pt-4">
-                        <span className="text-white text-[11px] font-bold">
-                          {saleCurrency === "USD" ? "$" : `${saleCurrency} `}{book.price.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+                {/* Dark navy header */}
+                <div className="flex items-center justify-between px-5 py-3" style={{ background: "#16142e" }}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.12)" }}>
+                      <BookOpen className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="font-black text-white text-base tracking-tight">BOOK</span>
+                    <span className="text-white/40 font-light text-base tracking-[0.18em]">store</span>
                   </div>
-                  <p className="text-[11px] font-semibold text-gray-900 line-clamp-2 leading-snug group-hover:text-violet-700 transition-colors">
-                    {book.title}
-                  </p>
-                  {book.author?.name && (
-                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{book.author.name}</p>
-                  )}
-                </Link>
-              ))}
+                  <span className="text-white/35 text-xs">Browse &amp; Buy</span>
+                </div>
 
-              {/* "See all" card at the end */}
-              <Link
-                href={`/${locale}/shop`}
-                className="flex-shrink-0 w-28 flex flex-col items-center justify-center gap-2 aspect-[2/3] rounded-xl border-2 border-dashed border-violet-200 text-violet-500 hover:border-violet-400 hover:bg-violet-50 transition-colors mb-2"
-              >
-                <ShoppingBag className="w-6 h-6" />
-                <span className="text-[10px] font-medium text-center leading-tight px-2">Browse all</span>
-              </Link>
-            </div>
+                {/* Warm cream bookshelf */}
+                <div className="px-4 pt-5 pb-0" style={{ background: "#f5ead5" }}>
+                  <div className="flex items-end gap-[3px]">
+                    {[
+                      { w: 15, h: 54, c: "#8b5e3c" }, { w: 13, h: 46, c: "#5c3d2e" },
+                      { w: 17, h: 60, c: "#3b4a6b" }, { w: 14, h: 50, c: "#7a5c3b" },
+                      { w: 18, h: 65, c: "#c4a882" }, { w: 13, h: 44, c: "#4a3728" },
+                      { w: 15, h: 58, c: "#2d3f5c" }, { w: 17, h: 49, c: "#9b7c55" },
+                      { w: 14, h: 62, c: "#3d2b1e" }, { w: 13, h: 47, c: "#8a7065" },
+                      { w: 16, h: 55, c: "#1e3a5f" }, { w: 14, h: 52, c: "#7c6550" },
+                      { w: 17, h: 59, c: "#c8b89a" }, { w: 13, h: 43, c: "#5c4535" },
+                      { w: 15, h: 56, c: "#3b5c8a" }, { w: 14, h: 48, c: "#6b4c35" },
+                    ].map((book, i) => (
+                      <div key={i} className="rounded-t-[2px] flex-shrink-0"
+                        style={{ width: book.w, height: book.h, backgroundColor: book.c }} />
+                    ))}
+                    {/* Plant + stacked books */}
+                    <div className="ml-auto flex-shrink-0 flex flex-col items-center">
+                      <svg width="34" height="34" viewBox="0 0 28 28" fill="none">
+                        <ellipse cx="10" cy="14" rx="7" ry="5" fill="#4ade80" transform="rotate(-25 10 14)" />
+                        <ellipse cx="18" cy="12" rx="7" ry="5" fill="#22c55e" transform="rotate(20 18 12)" />
+                        <ellipse cx="14" cy="16" rx="5" ry="3.5" fill="#16a34a" />
+                        <rect x="12" y="19" width="4" height="7" rx="2" fill="#78350f" />
+                        <rect x="8" y="25" width="12" height="2.5" rx="1.25" fill="#92400e" />
+                      </svg>
+                      <div className="w-12 h-3 rounded-sm mb-0.5" style={{ backgroundColor: "#8b5e3c" }} />
+                      <div className="w-10 h-3 rounded-sm" style={{ backgroundColor: "#c4a882" }} />
+                    </div>
+                  </div>
+                  {/* Wooden shelf board */}
+                  <div className="h-3.5 w-full rounded-sm" style={{ background: "#9b6b3e", boxShadow: "0 2px 8px rgba(0,0,0,0.28)" }} />
+                </div>
+
+                {/* Cream CTA footer */}
+                <div className="flex items-center justify-between px-5 py-3" style={{ background: "#f5ead5" }}>
+                  <span className="text-sm font-medium" style={{ color: "#5c4535" }}>Books available for purchase</span>
+                  <span className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-gray-900 group-hover:gap-2 transition-all"
+                    style={{ background: "#f5b731" }}>
+                    Visit Store <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+
+              </div>
+            </Link>
           </section>
         )}
 
         {/* ── Catalog ── */}
-        <main id="catalog" className="max-w-6xl mx-auto px-4 py-6 min-h-[60vh] w-full">
-          <div className="flex flex-wrap items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+        <main id="catalog" className={`${cx} py-6 min-h-[60vh] w-full`}>
+          <div id="catalog-filters" className="flex flex-wrap items-center gap-3 mb-6 pb-4 border-b border-gray-200 min-w-0">
+            {/* Sort */}
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+              <option value="barcode">№ Number</option>
+              <option value="title">Title A → Z</option>
+              <option value="title_z">Title Z → A</option>
+              <option value="newest">Newest</option>
+              <option value="year">Year ↓</option>
+              <option value="avail">Available first</option>
+            </select>
+
+            {/* Category */}
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[180px] truncate">
               <option value="">{t("allCategories")}</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+
+            {/* Material type */}
             <select value={materialType} onChange={(e) => setMaterialType(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">{t("allTypes")}</option>
@@ -629,27 +826,43 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
                 <option key={mt} value={mt}>{tb(MAT_KEY[mt] as Parameters<typeof tb>[0])}</option>
               ))}
             </select>
+
+            {/* Audience level */}
+            <select value={audienceLevel} onChange={(e) => setAudienceLevel(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Audience — All</option>
+              <option value="CHILDREN">{audienceLabels["CHILDREN"] ?? "Children"}</option>
+              <option value="YOUTH">{audienceLabels["YOUTH"] ?? "Youth"}</option>
+              <option value="ADULTS">{audienceLabels["ADULTS"] ?? "Adults"}</option>
+            </select>
+
+            {/* Available only */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={availableOnly} onChange={(e) => setAvailableOnly(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
               <span className="text-sm text-gray-700">{t("availableOnly")}</span>
             </label>
-            {(query || categoryId || materialType || availableOnly) && (
-              <button onClick={() => { setQuery(""); setCategoryId(""); setMaterialType(""); setAvailableOnly(false); }}
+
+            {/* Clear filters */}
+            {(query || categoryId || materialType || audienceLevel || availableOnly) && (
+              <button onClick={() => { setQuery(""); setCategoryId(""); setMaterialType(""); setAudienceLevel(""); setAvailableOnly(false); }}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                <X className="w-3 h-3" /> Clear filters
+                <X className="w-3 h-3" /> {t("allBooks") ? "Clear" : "Clear"}
               </button>
             )}
-            <span className="ml-auto text-sm text-gray-400">{books.length} {t("allBooks").toLowerCase()}</span>
+
+            <span className="ml-auto text-sm text-gray-400">{total} {t("allBooks").toLowerCase()}</span>
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="aspect-[2/3] bg-gray-200 rounded-xl mb-2" />
-                  <div className="h-3 bg-gray-200 rounded w-4/5 mb-1" />
-                  <div className="h-3 bg-gray-100 rounded w-3/5" />
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 ${fullWidth ? "xl:grid-cols-7 2xl:grid-cols-9" : ""}`}>
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="animate-pulse flex flex-col">
+                  <div className="w-full aspect-[2/3] bg-gray-200 rounded-2xl flex-shrink-0" />
+                  <div className="mt-2.5 h-[52px]">
+                    <div className="h-3.5 bg-gray-200 rounded-full w-4/5 mb-1.5" />
+                    <div className="h-3 bg-gray-100 rounded-full w-3/5" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -659,45 +872,81 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
               <p className="text-gray-400">{t("noResults")}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5 ${fullWidth ? "xl:grid-cols-7 2xl:grid-cols-9" : ""}`}>
               {books.map((book) => (
-                <div key={book.id} className="group">
-                  <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-sm group-hover:shadow-lg transition-all cursor-pointer bg-gray-100 mb-2 relative"
-                    onClick={() => setSelected(book)}>
+                <div key={book.id} className="group cursor-pointer flex flex-col" onClick={() => setSelected(book)}>
+                  {/* ── Cover — fixed aspect, all identical ── */}
+                  <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-gray-100
+                    shadow-md group-hover:shadow-xl group-hover:-translate-y-1.5
+                    transition-all duration-300 ease-out flex-shrink-0">
                     <BookCover coverImage={book.coverImage} title={book.title} />
+
+                    <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow-sm
+                      ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
+
                     {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 pt-5 pb-1.5 flex items-center gap-1 group-hover:opacity-0 transition-opacity">
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-0.5
+                        bg-black/55 backdrop-blur-sm text-white px-2 py-0.5 rounded-full">
                         <span className="text-amber-400 text-[11px] leading-none">★</span>
-                        <span className="text-white text-[11px] font-semibold leading-none">{book.avgRating?.toFixed(1)}</span>
-                        {(book.ratingCount ?? 0) > 0 && <span className="text-white/60 text-[10px] leading-none">({book.ratingCount})</span>}
+                        <span className="text-[11px] font-semibold leading-none">{book.avgRating?.toFixed(1)}</span>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="absolute bottom-0 inset-x-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => { e.stopPropagation(); handleReserve(book.id); }}
+
+                    <div className="absolute inset-x-0 bottom-0 p-2.5
+                      translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleReserve(book.id); }}
                         disabled={status === "loading" || reserving === book.id || basket.has(book.id)}
-                        className={`w-full flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg font-medium transition-colors ${
-                          basket.has(book.id) ? "bg-green-500 text-white" : "bg-white text-gray-800 hover:bg-gray-50"
-                        } disabled:opacity-70`}>
-                        {basket.has(book.id) ? <><CheckCircle className="w-3 h-3" /> {t("alreadyInBasketBtn")}</>
-                          : reserving === book.id ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><ShoppingCart className="w-3 h-3" /> {t("reserve")}</>}
+                        className={`w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-semibold transition-colors shadow-lg
+                          ${basket.has(book.id) ? "bg-emerald-500 text-white" : "bg-white text-gray-900 hover:bg-gray-50"}
+                          disabled:opacity-70`}>
+                        {basket.has(book.id)
+                          ? <><CheckCircle className="w-3.5 h-3.5" />{t("alreadyInBasketBtn")}</>
+                          : reserving === book.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <><ShoppingCart className="w-3.5 h-3.5" />{t("reserve")}</>}
                       </button>
                     </div>
-                    <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${book.availableCopies > 0 ? "bg-green-400" : "bg-red-400"} shadow`} />
                   </div>
-                  <button className="w-full text-left" onClick={() => setSelected(book)}>
-                    <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug">{book.title}</p>
-                    {allAuthors(book) && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{allAuthors(book)}</p>}
-                    {book.materialType && book.materialType !== "BOOK" && (
-                      <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${MAT_CLS[book.materialType] ?? "bg-gray-100 text-gray-600"}`}>
-                        {tb((MAT_KEY[book.materialType] ?? "materialOther") as Parameters<typeof tb>[0])}
-                      </span>
-                    )}
-                  </button>
+
+                  {/* ── Text — fixed height so all cards align ── */}
+                  <div className="mt-2.5 h-[52px] flex flex-col justify-start overflow-hidden">
+                    <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+                      {book.title}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">
+                      {allAuthors(book) || " "}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Pagination */}
+          {paginationMode === "numbers" ? (
+            pages > 1 && (
+              <div className="mt-8">
+                <Pagination page={page} pages={pages} total={total} limit={paginationLimit}
+                  onPage={(p) => {
+                    setPage(p); fetchBooks(p, false);
+                    const el = document.getElementById("catalog-filters");
+                    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 56, behavior: "instant" });
+                  }} />
+              </div>
+            )
+          ) : (
+            hasMore && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  onClick={() => { const next = page + 1; setPage(next); fetchBooks(next, true); }}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50">
+                  {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            )
           )}
 
           {/* CTA */}
@@ -723,8 +972,8 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
 
         {/* ── Book Detail Modal ── */}
         {selected && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={() => setSelected(null)}>
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="animate-modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={() => setSelected(null)}>
+            <div className="animate-modal-in bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="flex gap-4 p-5">
                 <div className="flex-shrink-0 w-28 aspect-[2/3] rounded-xl overflow-hidden shadow-md bg-gray-100">
                   <BookCover coverImage={selected.coverImage} title={selected.title} />
@@ -752,8 +1001,11 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
                         )}
                       </div>
                     </div>
-                    <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5">
-                      <X className="w-4 h-4" />
+                    <button
+                      onClick={() => setSelected(null)}
+                      className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-all duration-150 active:scale-90"
+                    >
+                      <X className="w-4.5 h-4.5" strokeWidth={2.5} />
                     </button>
                   </div>
                   <div className="space-y-1 text-xs">
@@ -812,13 +1064,20 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
               </div>
 
               {/* Availability */}
-              <div className="px-5 pb-3">
+              <div key={availability === null ? "loading" : "loaded"} className="px-5 pb-3 animate-fade-in">
                 {selected.referenceOnly ? (
                   <div className="rounded-xl px-4 py-3 text-xs bg-amber-50 border border-amber-200 text-amber-800">
                     <p className="font-semibold">📖 {t("inLibraryUseOnly")}</p>
                     <p className="text-[11px] mt-0.5 opacity-80">{t("referenceOnlyDesc")}</p>
                   </div>
+                ) : selected.totalCopies === 0 ? (
+                  <div className="rounded-xl px-4 py-3 text-xs bg-gray-50 border border-gray-200 text-gray-500">
+                    <p className="font-semibold">📭 {t("noCopiesMsg")}</p>
+                  </div>
+                ) : availability === null ? (
+                  <div className="rounded-xl px-4 py-3 bg-gray-50 border border-gray-100 animate-pulse h-12" />
                 ) : availability ? (
+                  availability.totalCopies === 0 ? null : (
                   <div className={`rounded-xl px-4 py-3 text-xs border ${
                     availability.availableNow > 0 ? "bg-green-50 border-green-200 text-green-800"
                       : availability.queueFull ? "bg-red-50 border-red-200 text-red-700"
@@ -834,25 +1093,33 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
                       {t("availabilityStats", { total: availability.totalCopies, borrowed: availability.borrowed ?? 0, onHoldShelf: availability.onHoldShelf, inQueue: availability.inQueue })}
                     </p>
                   </div>
+                  )
                 ) : null}
               </div>
 
+              {/* Always render button area so modal height stays stable while availability loads */}
+              {selected.totalCopies !== 0 && (
               <div className="px-5 pb-5">
+                {availability === null ? (
+                  <div className="w-full h-10 rounded-xl bg-gray-100 animate-pulse" />
+                ) : (
                 <button
                   onClick={() => { handleReserve(selected.id); setSelected(null); }}
-                  disabled={basket.has(selected.id) || !!selected.referenceOnly || (availability?.queueFull && availability.availableNow === 0)}
+                  disabled={basket.has(selected.id) || !!selected.referenceOnly || (availability.queueFull && availability.availableNow === 0)}
                   className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                     basket.has(selected.id) ? "bg-green-100 text-green-700"
                       : selected.referenceOnly ? "bg-amber-100 text-amber-700 cursor-not-allowed"
-                      : availability?.queueFull && availability.availableNow === 0 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : availability.queueFull && availability.availableNow === 0 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                       : `${theme.btnPrimary} text-white`
                   }`}>
                   {basket.has(selected.id) ? <><CheckCircle className="w-4 h-4" /> {t("alreadyInBasketBtn")}</>
                     : selected.referenceOnly ? <>📖 {t("referenceOnlyBtn")}</>
-                    : availability?.queueFull && availability.availableNow === 0 ? <>{t("queueFullBtn")}</>
+                    : availability.queueFull && availability.availableNow === 0 ? <>{t("queueFullBtn")}</>
                     : <><ShoppingCart className="w-4 h-4" /> {t("reserve")}</>}
                 </button>
+                )}
               </div>
+              )}
             </div>
           </div>
         )}
@@ -905,6 +1172,24 @@ export default function DiscoverClient({ opacTheme }: { opacTheme: string }) {
         )}
 
       {aiEnabled && <BookSearchChat locale={locale} />}
+
     </div>
+
+    <PublicFooter
+      enabled={footerEnabled}
+      show={footerShow}
+      navCss={theme.navCss}
+      accentHex={theme.accentHex}
+      phone={footerPhone}
+      email={footerEmail}
+      address={footerAddress}
+      telegram={footerTelegram}
+      hours={footerHours}
+      whatsapp={footerWhatsapp}
+      website={footerWebsite}
+      description={footerDescription}
+      fullWidth={fullWidth}
+    />
+    </>
   );
 }

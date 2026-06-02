@@ -7,7 +7,8 @@ import { useTranslations, useLocale } from "next-intl";
 interface MemberFormProps {
   initial?: {
     id: string; name: string; email?: string; phone?: string;
-    address?: string; memberType: string; isActive: boolean; expireDate?: string;
+    address?: string; memberType: string; gender?: string; isActive: boolean; expireDate?: string;
+    studentId?: string; school?: string; className?: string;
   };
 }
 
@@ -23,8 +24,12 @@ export default function MemberForm({ initial }: MemberFormProps) {
     phone: initial?.phone ?? "",
     address: initial?.address ?? "",
     memberType: initial?.memberType ?? "STUDENT",
+    gender: initial?.gender ?? "UNSPECIFIED",
     isActive: initial?.isActive ?? true,
     expireDate: initial?.expireDate ? initial.expireDate.slice(0, 10) : "",
+    studentId: initial?.studentId ?? "",
+    school: initial?.school ?? "",
+    className: initial?.className ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -87,7 +92,7 @@ export default function MemberForm({ initial }: MemberFormProps) {
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label htmlFor="member-type" className="block text-sm font-medium text-gray-700 mb-1.5">{t("memberType")}</label>
           <select id="member-type" value={form.memberType} onChange={(e) => setForm((f) => ({ ...f, memberType: e.target.value }))}
@@ -96,11 +101,43 @@ export default function MemberForm({ initial }: MemberFormProps) {
           </select>
         </div>
         <div>
+          <label htmlFor="member-gender" className="block text-sm font-medium text-gray-700 mb-1.5">{t("gender")}</label>
+          <select id="member-gender" value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="UNSPECIFIED">{t("genderUnspecified")}</option>
+            <option value="MALE">{t("genderMale")}</option>
+            <option value="FEMALE">{t("genderFemale")}</option>
+          </select>
+        </div>
+        <div>
           <label htmlFor="member-expire" className="block text-sm font-medium text-gray-700 mb-1.5">{t("expireDate")}</label>
           <input id="member-expire" type="date" value={form.expireDate} onChange={(e) => setForm((f) => ({ ...f, expireDate: e.target.value }))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
+
+      {form.memberType === "STUDENT" && (
+        <div className="border border-blue-100 bg-blue-50 rounded-lg p-4 space-y-4">
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">{t("schoolInfo")}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="member-student-id" className="block text-sm font-medium text-gray-700 mb-1.5">{t("studentId")}</label>
+              <input id="member-student-id" type="text" value={form.studentId} onChange={(e) => setForm((f) => ({ ...f, studentId: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label htmlFor="member-school" className="block text-sm font-medium text-gray-700 mb-1.5">{t("school")}</label>
+              <input id="member-school" type="text" value={form.school} onChange={(e) => setForm((f) => ({ ...f, school: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label htmlFor="member-class" className="block text-sm font-medium text-gray-700 mb-1.5">{t("className")}</label>
+              <input id="member-class" type="text" value={form.className} onChange={(e) => setForm((f) => ({ ...f, className: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {initial && (
         <div className="flex items-center gap-3">

@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const body = await request.json();
   const parsed = updateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   // STAFF may only toggle labelPrinted — any other field requires LIBRARIAN
   const fields = Object.keys(parsed.data);
@@ -95,6 +95,32 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await tx.book.update({ where: { id: before.bookId }, data: { availableCopies: { decrement: 1 } } });
     } else if (!wasAvailable && isAvailable) {
       await tx.book.update({ where: { id: before.bookId }, data: { availableCopies: { increment: 1 } } });
+    }
+
+    // ── Write a StockMovement whenever the status actually changes ──────────
+    if (parsed.data.status && parsed.data.status !== before.status) {
+      const movementType = (() => {
+        switch (parsed.data.status) {
+          case "STOCK":     return "RETURNED_TO_STOCK" as const;
+          case "AVAILABLE": return "DEPLOYED"          as const;
+          case "FOR_SALE":  return "DEPLOYED_FOR_SALE" as const;
+          case "WITHDRAWN": return "WITHDRAWN"         as const;
+          default:          return "STATUS_CHANGE"     as const;
+        }
+      })();
+
+      await tx.stockMovement.create({
+        data: {
+          copyId:    id,
+          bookId:    before.bookId,
+          type:      movementType,
+          fromStatus: before.status,
+          toStatus:   updated.status,
+          source:     "MANUAL",
+          actorId:    session.user?.id   ?? null,
+          actorName:  session.user?.name ?? null,
+        },
+      });
     }
 
     // If we just freed a copy that was held for someone, send their reservation back to APPROVED

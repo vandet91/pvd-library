@@ -8,7 +8,8 @@ import {
   LayoutDashboard, BookOpen, BookMarked, Users, ArrowLeftRight,
   AlertCircle, BarChart3, Search, Settings, LogOut, ShoppingCart, ShieldCheck, Inbox,
   ClipboardList, ShoppingBasket, Barcode, Shield, DatabaseBackup, Bell, Tags, Activity,
-  Bot, Tag, Trash2, PackagePlus, Warehouse, ShoppingBag,
+  Bot, Tag, Trash2, PackagePlus, Warehouse, ShoppingBag, CheckSquare, ArrowDownToLine, Hash,
+  Languages, Wand2, UserRound, Wrench, ChevronDown,
 } from "lucide-react";
 import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
@@ -50,6 +51,7 @@ interface Alerts {
   overdue:      number;
   fines:        number;
   processing:   number;  // basket items needing labeling
+  pendingTasks: number;  // active staff tasks
 }
 
 /* ── Rotating daily quote ───────────────────────────────────────── */
@@ -75,6 +77,46 @@ function QuoteCard() {
   );
 }
 
+/* ── Reusable collapsible section ──────────────────────────────── */
+function CollapsibleSection({
+  label, icon: Icon, open, onToggle, children,
+}: {
+  label: string; icon: React.ElementType; open: boolean;
+  onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="pt-1 pb-0.5">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        <span className="flex-1 text-left">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="ml-3 pl-3 border-l border-white/10 mt-0.5 space-y-0.5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubLink({ href, label, icon: Icon, active }: { href: string; label: string; icon: React.ElementType; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        active ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+      <span className="flex-1">{label}</span>
+    </Link>
+  );
+}
+
 export default function Sidebar({ role }: { role: string }) {
   const t        = useTranslations("nav");
   const locale   = useLocale();
@@ -83,7 +125,7 @@ export default function Sidebar({ role }: { role: string }) {
   const libraryLogo = useLibraryLogo();
 
   const [alerts, setAlerts] = useState<Alerts>({
-    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0, processing: 0,
+    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0, processing: 0, pendingTasks: 0,
   });
 
   const [aiAdminEnabled, setAiAdminEnabled] = useState(true);
@@ -265,22 +307,13 @@ export default function Sidebar({ role }: { role: string }) {
       minRole: "STAFF",
     }] : []),
     {
-      href: `/${locale}/admin/notifications`,
-      label: t("notifications"),
-      icon: Bell,
-      minRole: "ADMIN",
-    },
-    {
-      href: `/${locale}/admin/logs`,
-      label: t("activityLogs"),
-      icon: Activity,
-      minRole: "ADMIN",
-    },
-    {
-      href: `/${locale}/admin/database`,
-      label: t("database"),
-      icon: DatabaseBackup,
-      minRole: "ADMIN",
+      href: `/${locale}/admin/tasks`,
+      label: t("staffTasks"),
+      icon: CheckSquare,
+      minRole: "STAFF",
+      badge: alerts.pendingTasks > 0
+        ? <Badge count={alerts.pendingTasks} color="purple" />
+        : null,
     },
     {
       href: `/${locale}/discover`,
@@ -293,8 +326,41 @@ export default function Sidebar({ role }: { role: string }) {
   const links = allLinks.filter((l) => hasAccess(role, l.minRole));
   const chip  = ROLE_CHIP[role] ?? ROLE_CHIP.MEMBER;
 
+  /* ── Settings section (collapsible) ── */
+  const allSettingsLinks: NavLink[] = [
+    { href: `/${locale}/admin/settings`,      label: t("settings"),      icon: Settings,   minRole: "ADMIN"     },
+    { href: `/${locale}/admin/notifications`, label: t("notifications"), icon: Bell,       minRole: "ADMIN"     },
+    { href: `/${locale}/admin/logs`,          label: t("activityLogs"),  icon: Activity,   minRole: "ADMIN"     },
+    { href: `/${locale}/admin/translations`,  label: t("translations"),  icon: Languages,  minRole: "LIBRARIAN" },
+  ];
+  const settingsLinks = allSettingsLinks.filter((l) => hasAccess(role, l.minRole));
+  const isOnSettingsPage = ["/admin/settings", "/admin/notifications", "/admin/logs", "/admin/translations"]
+    .some((p) => pathname.includes(p));
+  const [settingsOpen, setSettingsOpen] = useState(isOnSettingsPage);
+
+  /* ── Database section (collapsible) ── */
+  const allDbLinks: NavLink[] = [
+    { href: `/${locale}/admin/database`,  label: t("database"),  icon: DatabaseBackup, minRole: "ADMIN" },
+    { href: `/${locale}/admin/migration`, label: t("migration"), icon: ArrowDownToLine, minRole: "ADMIN" },
+  ];
+  const dbLinks = allDbLinks.filter((l) => hasAccess(role, l.minRole));
+  const isOnDbPage = pathname.includes("/admin/database") || pathname.includes("/admin/migration");
+  const [dbOpen, setDbOpen] = useState(isOnDbPage);
+
+  /* ── Tools section (collapsible) ── */
+  const allToolLinks: NavLink[] = [
+    { href: `/${locale}/admin/tools/isbn`,             label: t("fixIsbn"),        icon: Hash,      minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/tools/dedup-books`,      label: t("dedupBooks"),     icon: BookOpen,  minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/tools/dedup-authors`,    label: t("dedupAuthors"),   icon: UserRound, minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/tools/members`,          label: t("dedupMembers"),   icon: Users,     minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/tools/regen-member-ids`, label: t("regenMemberIds"), icon: Wand2,     minRole: "ADMIN"     },
+  ];
+  const toolLinks = allToolLinks.filter((l) => hasAccess(role, l.minRole));
+  const isOnToolsPage = pathname.includes("/admin/tools");
+  const [toolsOpen, setToolsOpen] = useState(isOnToolsPage);
+
   /* Total urgent count for the page <title> */
-  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests + alerts.overdue + alerts.fines + alerts.processing;
+  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests + alerts.overdue + alerts.fines + alerts.processing + alerts.pendingTasks;
 
   return (
     <aside className="w-64 min-h-screen flex flex-col" style={{ background: "var(--sidebar)", color: "var(--sidebar-foreground)" }}>
@@ -338,21 +404,69 @@ export default function Sidebar({ role }: { role: string }) {
       {/* ── Nav links ── */}
       <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
         {links.map(({ href, label, icon: Icon, badge }) => {
+          // Inject collapsible sections right before the OPAC link
+          const isTranslations = href === `/${locale}/discover`;
           const isActive = pathname === href || (href !== `/${locale}/admin` && pathname.startsWith(href));
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-white/20 text-white"
-                  : "text-white/70 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1">{label}</span>
-              {badge}
-            </Link>
+            <div key={href}>
+              {isTranslations && (
+                <>
+                  {/* ── Settings section ── */}
+                  {settingsLinks.length > 0 && (
+                    <CollapsibleSection
+                      label={t("settingsSection")}
+                      icon={Settings}
+                      open={settingsOpen}
+                      onToggle={() => setSettingsOpen((v) => !v)}
+                    >
+                      {settingsLinks.map(({ href: h, label: l, icon: I }) => (
+                        <SubLink key={h} href={h} label={l} icon={I} active={pathname === h || pathname.startsWith(h)} />
+                      ))}
+                    </CollapsibleSection>
+                  )}
+
+                  {/* ── Database section ── */}
+                  {dbLinks.length > 0 && (
+                    <CollapsibleSection
+                      label={t("databaseSection")}
+                      icon={DatabaseBackup}
+                      open={dbOpen}
+                      onToggle={() => setDbOpen((v) => !v)}
+                    >
+                      {dbLinks.map(({ href: h, label: l, icon: I }) => (
+                        <SubLink key={h} href={h} label={l} icon={I} active={pathname === h || pathname.startsWith(h)} />
+                      ))}
+                    </CollapsibleSection>
+                  )}
+
+                  {/* ── Tools section ── */}
+                  {toolLinks.length > 0 && (
+                    <CollapsibleSection
+                      label={t("tools")}
+                      icon={Wrench}
+                      open={toolsOpen}
+                      onToggle={() => setToolsOpen((v) => !v)}
+                    >
+                      {toolLinks.map(({ href: h, label: l, icon: I }) => (
+                        <SubLink key={h} href={h} label={l} icon={I} active={pathname === h || pathname.startsWith(h)} />
+                      ))}
+                    </CollapsibleSection>
+                  )}
+                </>
+              )}
+              <Link
+                href={href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-white/20 text-white"
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="flex-1">{label}</span>
+                {badge}
+              </Link>
+            </div>
           );
         })}
       </nav>
@@ -360,17 +474,8 @@ export default function Sidebar({ role }: { role: string }) {
       {/* ── Daily quote ── */}
       <QuoteCard />
 
-      {/* ── Bottom links ── */}
-      <div className="p-4 border-t border-white/10 space-y-0.5">
-        {hasAccess(role, "ADMIN") && (
-          <Link
-            href={`/${locale}/admin/settings`}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            {t("settings")}
-          </Link>
-        )}
+      {/* ── Bottom bar — logout only ── */}
+      <div className="p-4 border-t border-white/10">
         <form action="/api/auth/signout" method="POST">
           <input type="hidden" name="callbackUrl" value={`/${locale}/auth/login`} />
           <button type="submit"

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { can } from "@/lib/rbac";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 
-const MATERIAL_TYPES = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
+const MATERIAL_TYPES  = ["BOOK", "MAGAZINE", "JOURNAL", "NEWSPAPER", "DVD", "AUDIO_CD", "THESIS", "MAP", "OTHER"] as const;
+const AUDIENCE_LEVELS = ["CHILDREN", "YOUTH", "ADULTS", "UNSPECIFIED"] as const;
 
 const bookUpdateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -18,13 +19,15 @@ const bookUpdateSchema = z.object({
   publishYear: z.number().optional(),
   pages: z.number().optional(),
   language: z.string().optional(),
+  callNumber: z.string().optional(),
   location: z.string().optional(),
   locationId: z.string().optional().nullable(),
   branchId: z.string().optional().nullable(),
   totalCopies: z.number().min(1).optional(),
   price: z.number().min(0).optional().nullable(),
   referenceOnly: z.boolean().optional(),
-  materialType: z.enum(MATERIAL_TYPES).optional(),
+  materialType:  z.enum(MATERIAL_TYPES).optional(),
+  audienceLevel: z.enum(AUDIENCE_LEVELS).optional(),
   categoryId: z.string().optional(),
   authorId: z.string().optional(),
   coAuthorIds: z.array(z.string()).optional(),
@@ -49,10 +52,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const body = await request.json();
   const parsed = bookUpdateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   // coAuthorIds is a relation — use `set` so the full list is replaced atomically
-  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, ...bookData } = parsed.data;
+  const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, callNumber, ...bookData } = parsed.data;
 
   // If locationId was sent directly from the form, use it; otherwise fall back to text-match
   let locationUpdate: { locationId: string | null } | object = {};
@@ -84,6 +87,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     },
     include: { category: true, author: true, coAuthors: true },
   });
+
+  if (callNumber !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Book" SET "callNumber" = $1 WHERE id = $2`, callNumber || null, id);
+  }
 
   await logActivity(actorFromSession(session), Actions.BOOK_UPDATED, {
     entityType: "Book",

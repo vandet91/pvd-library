@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   ShoppingBag, Check, Truck, Package, X, RefreshCw,
   Loader2, ChevronDown, ChevronUp, AlertCircle,
-  MapPin, QrCode, RotateCcw, Eye, ArrowRight,
-  BookOpen, DollarSign,
+  MapPin, QrCode, RotateCcw, ArrowRight,
+  BookOpen, DollarSign, Store, Search, Plus, Trash2,
+  UserCheck, Tag, CreditCard, Banknote, ScanLine,
 } from "lucide-react";
+import { formatPrice } from "@/lib/price-format";
 import Image from "next/image";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -18,17 +20,39 @@ interface OrderItem {
 }
 interface Order {
   id: string; orderNumber: string; status: string; deliveryType: string;
+  saleChannel: string;
   deliveryAddress: string | null; paymentMethod: string | null;
   paymentProof: string | null; paymentRef: string | null;
-  subtotal: number; shippingFee: number; total: number; currency: string;
+  subtotal: number; taxAmount: number; shippingFee: number; total: number; currency: string;
   logisticsCompany: string | null; trackingNumber: string | null;
   expectedDelivery: string | null; memberNote: string | null; staffNote: string | null;
   cancelReason: string | null; createdAt: string;
-  memberRel: OrderMember;
+  walkInName: string | null; walkInPhone: string | null;
+  memberRel: OrderMember | null;
   branch: { id: string; name: string } | null;
   items: OrderItem[];
 }
 interface StatusCounts { [key: string]: number }
+
+// ── Counter-sale types ─────────────────────────────────────────────────────
+interface ForSaleCopy {
+  id: string; copyNumber: number; barcode: string | null;
+  condition: string; price: number | null;
+}
+interface ForSaleBook {
+  id: string; title: string; isbn: string | null; coverImage: string | null;
+  price: number | null; author: { name: string } | null;
+  copies: ForSaleCopy[];
+}
+interface CartItem {
+  copyId: string; bookId: string; bookTitle: string;
+  copyNumber: number; barcode: string | null;
+  unitPrice: number; currency: string;
+}
+interface MemberHit {
+  id: string; memberId: string; name: string;
+  email: string | null; phone: string | null;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
@@ -60,6 +84,10 @@ const STATUS_COLOR: Record<string, string> = {
   REFUNDED:          "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
+const CONDITION_LABEL: Record<string, string> = {
+  NEW: "New", GOOD: "Good", FAIR: "Fair", POOR: "Poor", DAMAGED: "Damaged",
+};
+
 // Tab groups
 const TAB_GROUPS: { label: string; statuses: string[] }[] = [
   { label: "All",            statuses: [] },
@@ -71,6 +99,11 @@ const TAB_GROUPS: { label: string; statuses: string[] }[] = [
 
 function fmt(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// Resolve effective unit price: copy-level price → book-level price → 0
+function effectivePrice(copy: ForSaleCopy, book: ForSaleBook) {
+  return copy.price ?? book.price ?? 0;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -96,17 +129,35 @@ export default function AdminOrdersPage() {
   const [showRefund,   setShowRefund]   = useState(false);
   const [refundNote,   setRefundNote]   = useState("");
 
+  // ── Counter sale state ───────────────────────────────────────────────────
+  const [showCS,       setShowCS]       = useState(false);
+  const [csQuery,      setCsQuery]      = useState("");
+  const [csBooks,      setCsBooks]      = useState<ForSaleBook[]>([]);
+  const [csSearching,  setCsSearching]  = useState(false);
+  const [csCart,       setCsCart]       = useState<CartItem[]>([]);
+  const [csCustType,   setCsCustType]   = useState<"member" | "walkin">("walkin");
+  const [csMemberQ,    setCsMemberQ]    = useState("");
+  const [csMembers,    setCsMembers]    = useState<MemberHit[]>([]);
+  const [csMemberSrch, setCsMemberSrch] = useState(false);
+  const [csMember,     setCsMember]     = useState<MemberHit | null>(null);
+  const [csWalkName,   setCsWalkName]   = useState("");
+  const [csWalkPhone,  setCsWalkPhone]  = useState("");
+  const [csPayMethod,  setCsPayMethod]  = useState<"cash" | "card_counter" | "qr">("cash");
+  const [csCurrency,   setCsCurrency]   = useState("USD");
+  const [csTaxRate,    setCsTaxRate]    = useState(0);
+  const [csProcessing, setCsProcessing] = useState(false);
+  const [csError,      setCsError]      = useState("");
+  const [csNote,       setCsNote]       = useState("");
+
+  const csBookTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const csMemberTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const pageSize = 20;
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     const group    = TAB_GROUPS[activeTab];
-    const statusQs = group.statuses.length
-      ? group.statuses.map((s) => `status=${s}`).join("&")
-      : "";
     const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-    // For multi-status filter we pass first one only (API supports one status at a time)
-    // For simplicity, fetch all when 'Needs Action' has 2 statuses
     let url = `/api/admin/sale/orders?${qs}`;
     if (group.statuses.length === 1) url += `&status=${group.statuses[0]}`;
 
@@ -127,6 +178,105 @@ export default function AdminOrdersPage() {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
+  // ── Book search for counter sale (debounced 350 ms) ─────────────────────
+  useEffect(() => {
+    if (!showCS) return;
+    if (csBookTimer.current) clearTimeout(csBookTimer.current);
+    csBookTimer.current = setTimeout(async () => {
+      setCsSearching(true);
+      const res = await fetch(`/api/admin/sale/books?q=${encodeURIComponent(csQuery)}`);
+      const data = await res.json().catch(() => []);
+      setCsBooks(Array.isArray(data) ? data : []);
+      setCsSearching(false);
+    }, 350);
+    return () => { if (csBookTimer.current) clearTimeout(csBookTimer.current); };
+  }, [csQuery, showCS]);
+
+  // ── Initial book load when modal opens ──────────────────────────────────
+  useEffect(() => {
+    if (showCS) {
+      setCsQuery("");
+      setCsBooks([]);
+      setCsCart([]);
+      setCsMember(null);
+      setCsMemberQ("");
+      setCsMembers([]);
+      setCsWalkName("");
+      setCsWalkPhone("");
+      setCsPayMethod("cash");
+      setCsTaxRate(0);
+      setCsError("");
+      setCsNote("");
+      // Load all for-sale books right away
+      fetch("/api/admin/sale/books?q=")
+        .then((r) => r.json()).then((d) => setCsBooks(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+  }, [showCS]);
+
+  // ── Member search (debounced 350 ms) ─────────────────────────────────────
+  useEffect(() => {
+    if (csCustType !== "member" || !csMemberQ.trim()) { setCsMembers([]); return; }
+    if (csMemberTimer.current) clearTimeout(csMemberTimer.current);
+    csMemberTimer.current = setTimeout(async () => {
+      setCsMemberSrch(true);
+      const res = await fetch(`/api/members?q=${encodeURIComponent(csMemberQ)}&limit=6`);
+      const data = await res.json().catch(() => ({ members: [] }));
+      setCsMembers(Array.isArray(data.members) ? data.members : []);
+      setCsMemberSrch(false);
+    }, 350);
+    return () => { if (csMemberTimer.current) clearTimeout(csMemberTimer.current); };
+  }, [csMemberQ, csCustType]);
+
+  // ── Add copy to cart ─────────────────────────────────────────────────────
+  function addToCart(book: ForSaleBook, copy: ForSaleCopy) {
+    if (csCart.find((c) => c.copyId === copy.id)) return; // already in cart
+    setCsCart((prev) => [...prev, {
+      copyId:    copy.id,
+      bookId:    book.id,
+      bookTitle: book.title,
+      copyNumber: copy.copyNumber,
+      barcode:   copy.barcode,
+      unitPrice: effectivePrice(copy, book),
+      currency:  csCurrency,
+    }]);
+  }
+
+  function removeFromCart(copyId: string) {
+    setCsCart((prev) => prev.filter((c) => c.copyId !== copyId));
+  }
+
+  const csSubtotal  = csCart.reduce((s, i) => s + i.unitPrice, 0);
+  const csTaxAmount = csTaxRate > 0 ? csSubtotal * (csTaxRate / 100) : 0;
+  const csTotal     = csSubtotal + csTaxAmount;
+
+  // ── Process counter sale ─────────────────────────────────────────────────
+  async function processCounterSale() {
+    setCsError("");
+    if (csCart.length === 0) { setCsError("Add at least one book to the cart."); return; }
+    if (csCustType === "member" && !csMember) { setCsError("Select a member or switch to Walk-in."); return; }
+    if (csCustType === "walkin" && !csWalkName.trim()) { setCsError("Enter a customer name."); return; }
+
+    setCsProcessing(true);
+    const res = await fetch("/api/admin/sale/counter", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        items:         csCart.map((i) => ({ copyId: i.copyId, bookId: i.bookId, unitPrice: i.unitPrice })),
+        paymentMethod: csPayMethod,
+        currency:      csCurrency,
+        taxRate:       csTaxRate,
+        ...(csCustType === "member" ? { memberId: csMember!.id } : {}),
+        ...(csCustType === "walkin" ? { walkInName: csWalkName.trim(), walkInPhone: csWalkPhone.trim() || undefined } : {}),
+        staffNote: csNote.trim() || undefined,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setCsProcessing(false);
+    if (!res.ok) { setCsError(data.error ?? "Failed to process sale."); return; }
+    setShowCS(false);
+    fetchOrders();
+  }
+
   // ── Action helper ────────────────────────────────────────────────────────
   async function act(orderId: string, action: string, extra: Record<string, string> = {}) {
     setActing(true); setActionError("");
@@ -145,10 +295,14 @@ export default function AdminOrdersPage() {
 
   const totalPages = Math.ceil(total / pageSize);
 
-  // ── Tab badge count ──────────────────────────────────────────────────────
   function tabCount(tab: typeof TAB_GROUPS[0]) {
     if (!tab.statuses.length) return Object.values(statusCounts).reduce((a, b) => a + b, 0);
     return tab.statuses.reduce((a, s) => a + (statusCounts[s] ?? 0), 0);
+  }
+
+  // Customer display helper
+  function customerName(o: Order) {
+    return o.memberRel?.name ?? o.walkInName ?? "Walk-in";
   }
 
   return (
@@ -165,9 +319,18 @@ export default function AdminOrdersPage() {
             <p className="text-xs text-gray-400">Manage member book purchases</p>
           </div>
         </div>
-        <button onClick={fetchOrders} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCS(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+          >
+            <Store className="w-4 h-4" />
+            <span className="hidden sm:inline">Counter Sale</span>
+          </button>
+          <button onClick={fetchOrders} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* ── Status summary ──────────────────────────────────────────── */}
@@ -237,14 +400,14 @@ export default function AdminOrdersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {["Order", "Member", "Items", "Total", "Status", "Date", ""].map((h) => (
+                    {["Order", "Customer", "Items", "Total", "Status", "Date", ""].map((h) => (
                       <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {orders.map((o) => {
-                    const currSym = o.currency === "USD" ? "$" : o.currency + " ";
+                    const isCounter = o.saleChannel === "COUNTER";
                     return (
                       <tr
                         key={o.id}
@@ -253,14 +416,21 @@ export default function AdminOrdersPage() {
                       >
                         <td className="px-4 py-3">
                           <p className="font-mono text-xs font-semibold text-gray-900">{o.orderNumber}</p>
-                          <p className="text-[10px] text-gray-400">{o.deliveryType === "PICKUP" ? "📦 Pickup" : "🚚 Delivery"}</p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            {isCounter
+                              ? <span className="text-[10px] text-violet-600 font-medium bg-violet-50 px-1.5 py-0.5 rounded-full">🏪 Counter</span>
+                              : <span className="text-[10px] text-gray-400">{o.deliveryType === "PICKUP" ? "📦 Pickup" : "🚚 Delivery"}</span>
+                            }
+                          </div>
                         </td>
                         <td className="px-4 py-3 max-w-[120px]">
-                          <p className="text-xs font-medium text-gray-800 truncate">{o.memberRel.name}</p>
-                          <p className="text-[10px] text-gray-400">{o.memberRel.memberId}</p>
+                          <p className="text-xs font-medium text-gray-800 truncate">{customerName(o)}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {o.memberRel ? o.memberRel.memberId : (isCounter ? "Walk-in" : "—")}
+                          </p>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-600">{o.items.length}</td>
-                        <td className="px-4 py-3 text-xs font-semibold text-gray-900">{currSym}{o.total.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-xs font-semibold text-gray-900">{formatPrice(o.total, o.currency)}</td>
                         <td className="px-4 py-3">
                           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLOR[o.status] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
                             {STATUS_LABEL[o.status] ?? o.status}
@@ -298,7 +468,12 @@ export default function AdminOrdersPage() {
             <div className="w-1/2 p-5 overflow-y-auto max-h-[75vh] space-y-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-mono font-bold text-gray-900">{selected.orderNumber}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono font-bold text-gray-900">{selected.orderNumber}</p>
+                    {selected.saleChannel === "COUNTER" && (
+                      <span className="text-[10px] font-medium bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">Counter Sale</span>
+                    )}
+                  </div>
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLOR[selected.status] ?? ""}`}>
                     {STATUS_LABEL[selected.status]}
                   </span>
@@ -308,50 +483,80 @@ export default function AdminOrdersPage() {
                 </button>
               </div>
 
-              {/* Member */}
+              {/* Customer info */}
               <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-0.5">
-                <p className="font-semibold text-gray-900">{selected.memberRel.name} <span className="text-gray-400">({selected.memberRel.memberId})</span></p>
-                {selected.memberRel.email && <p className="text-gray-500">{selected.memberRel.email}</p>}
-                {selected.memberRel.phone && <p className="text-gray-500">📞 {selected.memberRel.phone}</p>}
+                {selected.memberRel ? (
+                  <>
+                    <p className="font-semibold text-gray-900">
+                      {selected.memberRel.name}
+                      <span className="text-gray-400 ml-1">({selected.memberRel.memberId})</span>
+                    </p>
+                    {selected.memberRel.email && <p className="text-gray-500">{selected.memberRel.email}</p>}
+                    {selected.memberRel.phone && <p className="text-gray-500">📞 {selected.memberRel.phone}</p>}
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-gray-900 flex items-center gap-1">
+                      🚶 {selected.walkInName ?? "Walk-in customer"}
+                      <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full ml-1">Walk-in</span>
+                    </p>
+                    {selected.walkInPhone && <p className="text-gray-500">📞 {selected.walkInPhone}</p>}
+                  </>
+                )}
+                {selected.paymentMethod && (
+                  <p className="text-gray-400 pt-0.5">
+                    Paid via {selected.paymentMethod === "cash" ? "💵 Cash"
+                      : selected.paymentMethod === "card_counter" ? "💳 Card"
+                      : selected.paymentMethod === "qr" ? "📱 QR"
+                      : selected.paymentMethod}
+                  </p>
+                )}
               </div>
 
               {/* Items */}
               <div>
                 <p className="text-xs font-semibold text-gray-700 mb-2">Books ({selected.items.length})</p>
                 <div className="space-y-2">
-                  {selected.items.map((item) => {
-                    const currSym = item.currency === "USD" ? "$" : item.currency + " ";
-                    return (
-                      <div key={item.id} className="flex items-center gap-2.5">
-                        <div className="w-9 h-11 bg-violet-50 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
-                          {item.book.coverImage
-                            ? <Image src={item.book.coverImage} alt="" width={36} height={44} className="object-cover w-full h-full rounded" />
-                            : <BookOpen className="w-4 h-4 text-violet-300" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-900 truncate">{item.book.title}</p>
-                          <p className="text-[10px] text-gray-400">Copy #{item.copy.copyNumber}{item.copy.barcode ? ` · ${item.copy.barcode}` : ""}</p>
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">{currSym}{item.unitPrice.toFixed(2)}</p>
+                  {selected.items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2.5">
+                      <div className="w-9 h-11 bg-violet-50 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {item.book.coverImage
+                          ? <Image src={item.book.coverImage} alt="" width={36} height={44} className="object-cover w-full h-full rounded" />
+                          : <BookOpen className="w-4 h-4 text-violet-300" />}
                       </div>
-                    );
-                  })}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">{item.book.title}</p>
+                        <p className="text-[10px] text-gray-400">Copy #{item.copy.copyNumber}{item.copy.barcode ? ` · ${item.copy.barcode}` : ""}</p>
+                      </div>
+                      <p className="text-xs font-bold text-gray-900">{formatPrice(item.unitPrice, item.currency)}</p>
+                    </div>
+                  ))}
                 </div>
-                <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between text-xs font-bold text-gray-900">
-                  <span>Total</span>
-                  <span>{selected.currency === "USD" ? "$" : selected.currency + " "}{selected.total.toFixed(2)}</span>
+                <div className="border-t border-gray-100 mt-2 pt-2 space-y-0.5 text-xs text-gray-600">
+                  {selected.taxAmount > 0 && (
+                    <div className="flex justify-between"><span>Tax</span><span>{formatPrice(selected.taxAmount, selected.currency)}</span></div>
+                  )}
+                  {selected.shippingFee > 0 && (
+                    <div className="flex justify-between"><span>Shipping</span><span>{formatPrice(selected.shippingFee, selected.currency)}</span></div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-900 border-t border-gray-100 pt-1">
+                    <span>Total</span>
+                    <span>{formatPrice(selected.total, selected.currency)}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Delivery */}
-              <div className="bg-gray-50 rounded-lg p-3 text-xs">
-                <p className="font-semibold text-gray-700 flex items-center gap-1 mb-1">
-                  {selected.deliveryType === "PICKUP" ? <><MapPin className="w-3 h-3" />Pickup</> : <><Truck className="w-3 h-3" />Delivery</>}
-                </p>
-                {selected.deliveryType === "PICKUP"
-                  ? <p className="text-gray-600">{selected.branch?.name ?? "—"}</p>
-                  : <p className="text-gray-600 whitespace-pre-wrap">{selected.deliveryAddress}</p>}
-              </div>
+              {/* Delivery (skip for counter sales) */}
+              {selected.saleChannel !== "COUNTER" && (
+                <div className="bg-gray-50 rounded-lg p-3 text-xs">
+                  <p className="font-semibold text-gray-700 flex items-center gap-1 mb-1">
+                    {selected.deliveryType === "PICKUP" ? <><MapPin className="w-3 h-3" />Pickup</> : <><Truck className="w-3 h-3" />Delivery</>}
+                  </p>
+                  {selected.deliveryType === "PICKUP"
+                    ? <p className="text-gray-600">{selected.branch?.name ?? "—"}</p>
+                    : <p className="text-gray-600 whitespace-pre-wrap">{selected.deliveryAddress}</p>}
+                </div>
+              )}
 
               {/* Payment proof */}
               {selected.paymentProof && (
@@ -362,10 +567,15 @@ export default function AdminOrdersPage() {
                 </div>
               )}
 
-              {/* Member note */}
+              {/* Notes */}
               {selected.memberNote && (
                 <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-800">
                   📝 {selected.memberNote}
+                </div>
+              )}
+              {selected.staffNote && (
+                <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800">
+                  🗒️ {selected.staffNote}
                 </div>
               )}
 
@@ -506,6 +716,341 @@ export default function AdminOrdersPage() {
           )}
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          Counter Sale Modal
+      ══════════════════════════════════════════════════════════════ */}
+      {showCS && (
+        <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4 sm:items-center">
+          <div className="relative bg-white w-full sm:max-w-4xl sm:rounded-2xl shadow-2xl flex flex-col max-h-screen sm:max-h-[90vh] overflow-hidden">
+
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+                  <Store className="w-4 h-4 text-violet-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 text-base">Counter Sale</h2>
+                  <p className="text-[11px] text-gray-400">Process a walk-in purchase at the library counter</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCS(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Modal body — two columns on md+ */}
+            <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+
+              {/* ── Left: Book search + results ────────────────────── */}
+              <div className="md:w-[55%] flex flex-col border-b md:border-b-0 md:border-r border-gray-100 overflow-hidden">
+                {/* Search bar */}
+                <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                    {csSearching
+                      ? <Loader2 className="w-4 h-4 text-gray-400 animate-spin flex-shrink-0" />
+                      : <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                    <input
+                      autoFocus
+                      value={csQuery}
+                      onChange={(e) => setCsQuery(e.target.value)}
+                      placeholder="Search books for sale — title, ISBN, author…"
+                      className="flex-1 bg-transparent text-sm outline-none placeholder-gray-400"
+                    />
+                    {csQuery && (
+                      <button onClick={() => setCsQuery("")} className="text-gray-400 hover:text-gray-600">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Book list */}
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                  {csBooks.length === 0 && !csSearching && (
+                    <div className="text-center py-10">
+                      <BookOpen className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                      <p className="text-xs text-gray-400">
+                        {csQuery ? "No FOR_SALE books match your search." : "No books are currently marked for sale."}
+                      </p>
+                    </div>
+                  )}
+                  {csBooks.map((book) => (
+                    <div key={book.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                      {/* Book header */}
+                      <div className="flex items-center gap-3 px-3 py-2.5 bg-gray-50">
+                        <div className="w-8 h-10 bg-violet-100 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                          {book.coverImage
+                            ? <Image src={book.coverImage} alt="" width={32} height={40} className="object-cover w-full h-full" />
+                            : <BookOpen className="w-4 h-4 text-violet-300" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 truncate">{book.title}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {book.author?.name}{book.isbn ? ` · ${book.isbn}` : ""}
+                          </p>
+                        </div>
+                        <p className="text-[10px] text-violet-600 font-medium flex-shrink-0">
+                          {book.copies.length} copy{book.copies.length !== 1 ? " " : ""}
+                        </p>
+                      </div>
+                      {/* Copies */}
+                      <div className="divide-y divide-gray-50">
+                        {book.copies.map((copy) => {
+                          const inCart   = csCart.some((c) => c.copyId === copy.id);
+                          const price    = effectivePrice(copy, book);
+                          return (
+                            <div key={copy.id}
+                              className={`flex items-center gap-3 px-3 py-2 transition-colors ${inCart ? "bg-violet-50" : "hover:bg-gray-50/80"}`}>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-[11px] text-gray-700">
+                                  Copy #{copy.copyNumber}
+                                  {copy.barcode ? <span className="text-gray-400"> · {copy.barcode}</span> : null}
+                                  <span className="ml-1.5 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                                    {CONDITION_LABEL[copy.condition] ?? copy.condition}
+                                  </span>
+                                </span>
+                              </div>
+                              <p className="text-xs font-bold text-gray-900 flex-shrink-0">
+                                {price > 0 ? formatPrice(price, csCurrency) : <span className="text-gray-400 font-normal">No price</span>}
+                              </p>
+                              <button
+                                onClick={() => addToCart(book, copy)}
+                                disabled={inCart}
+                                className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors flex-shrink-0 ${
+                                  inCart
+                                    ? "bg-violet-100 text-violet-600 cursor-default"
+                                    : "bg-violet-600 hover:bg-violet-700 text-white"
+                                }`}
+                              >
+                                {inCart ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                {inCart ? "Added" : "Add"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Right: Cart + Customer + Payment ───────────────── */}
+              <div className="md:w-[45%] flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+                  {/* Cart */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" /> Cart
+                      {csCart.length > 0 && <span className="bg-violet-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{csCart.length}</span>}
+                    </p>
+                    {csCart.length === 0 ? (
+                      <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center">
+                        <ShoppingBag className="w-6 h-6 text-gray-300 mx-auto mb-1" />
+                        <p className="text-xs text-gray-400">Add books from the left panel</p>
+                      </div>
+                    ) : (
+                      <div className="border border-gray-100 rounded-xl overflow-hidden">
+                        {csCart.map((item) => (
+                          <div key={item.copyId} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-900 truncate">{item.bookTitle}</p>
+                              <p className="text-[10px] text-gray-400">Copy #{item.copyNumber}{item.barcode ? ` · ${item.barcode}` : ""}</p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-900 flex-shrink-0">
+                              {formatPrice(item.unitPrice, item.currency)}
+                            </p>
+                            <button onClick={() => removeFromCart(item.copyId)}
+                              className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {/* Totals */}
+                        <div className="bg-gray-50 px-3 py-2.5 space-y-1 text-xs text-gray-600">
+                          <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(csSubtotal, csCurrency)}</span></div>
+                          {csTaxAmount > 0 && <div className="flex justify-between"><span>Tax ({csTaxRate}%)</span><span>{formatPrice(csTaxAmount, csCurrency)}</span></div>}
+                          <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-1">
+                            <span>Total</span><span>{formatPrice(csTotal, csCurrency)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Customer */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5" /> Customer
+                    </p>
+                    {/* Toggle */}
+                    <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs mb-3">
+                      <button
+                        onClick={() => setCsCustType("walkin")}
+                        className={`flex-1 py-2 font-medium transition-colors ${csCustType === "walkin" ? "bg-violet-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                      >
+                        🚶 Walk-in
+                      </button>
+                      <button
+                        onClick={() => { setCsCustType("member"); setCsMember(null); }}
+                        className={`flex-1 py-2 font-medium transition-colors ${csCustType === "member" ? "bg-violet-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                      >
+                        👤 Member
+                      </button>
+                    </div>
+
+                    {csCustType === "walkin" ? (
+                      <div className="space-y-2">
+                        <input
+                          value={csWalkName}
+                          onChange={(e) => setCsWalkName(e.target.value)}
+                          placeholder="Customer name *"
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        />
+                        <input
+                          value={csWalkPhone}
+                          onChange={(e) => setCsWalkPhone(e.target.value)}
+                          placeholder="Phone (optional)"
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {csMember ? (
+                          <div className="flex items-center gap-2.5 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2.5">
+                            <div className="w-7 h-7 rounded-full bg-violet-200 flex items-center justify-center flex-shrink-0 text-violet-700 text-xs font-bold">
+                              {csMember.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-900 truncate">{csMember.name}</p>
+                              <p className="text-[10px] text-gray-500">{csMember.memberId}{csMember.email ? ` · ${csMember.email}` : ""}</p>
+                            </div>
+                            <button onClick={() => setCsMember(null)} className="p-1 rounded hover:bg-violet-200 text-violet-400">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                              {csMemberSrch
+                                ? <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin flex-shrink-0" />
+                                : <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
+                              <input
+                                value={csMemberQ}
+                                onChange={(e) => setCsMemberQ(e.target.value)}
+                                placeholder="Search by name, email, member ID…"
+                                className="flex-1 bg-transparent text-xs outline-none placeholder-gray-400"
+                              />
+                            </div>
+                            {csMembers.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
+                                {csMembers.map((m) => (
+                                  <button
+                                    key={m.id}
+                                    onClick={() => { setCsMember(m); setCsMemberQ(""); setCsMembers([]); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-violet-50 text-left transition-colors border-b border-gray-50 last:border-0"
+                                  >
+                                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-600 text-[10px] font-bold">
+                                      {m.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-gray-900 truncate">{m.name}</p>
+                                      <p className="text-[10px] text-gray-400">{m.memberId}{m.email ? ` · ${m.email}` : ""}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payment method */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Payment Method</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { v: "cash",         label: "Cash",  icon: Banknote },
+                        { v: "card_counter", label: "Card",  icon: CreditCard },
+                        { v: "qr",           label: "QR",    icon: ScanLine },
+                      ] as { v: "cash" | "card_counter" | "qr"; label: string; icon: React.ElementType }[]).map(({ v, label, icon: Icon }) => (
+                        <button key={v} onClick={() => setCsPayMethod(v)}
+                          className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-colors ${
+                            csPayMethod === v
+                              ? "bg-violet-600 border-violet-600 text-white"
+                              : "border-gray-200 text-gray-600 hover:border-violet-300 hover:bg-violet-50"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tax rate + Currency */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Tax Rate (%)</label>
+                      <input
+                        type="number" min={0} max={100} step={0.5}
+                        value={csTaxRate}
+                        onChange={(e) => setCsTaxRate(parseFloat(e.target.value) || 0)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Currency</label>
+                      <input
+                        value={csCurrency}
+                        onChange={(e) => setCsCurrency(e.target.value.toUpperCase())}
+                        placeholder="USD"
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs uppercase focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Staff note */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Staff Note (optional)</label>
+                    <textarea
+                      value={csNote}
+                      onChange={(e) => setCsNote(e.target.value)}
+                      rows={2}
+                      placeholder="Internal note for this sale…"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                  </div>
+
+                  {csError && (
+                    <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 text-xs text-red-700">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {csError}
+                    </div>
+                  )}
+                </div>
+
+                {/* Process button — pinned at bottom */}
+                <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
+                  <button
+                    onClick={processCounterSale}
+                    disabled={csProcessing || csCart.length === 0}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+                  >
+                    {csProcessing
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                      : <><Check className="w-4 h-4" /> Process Sale · {formatPrice(csTotal, csCurrency)}</>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

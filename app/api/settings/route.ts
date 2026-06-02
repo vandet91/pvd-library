@@ -14,6 +14,7 @@ const DEFAULTS: Record<string, string> = {
   LIBRARY_EMAIL:            "",
   LIBRARY_PHONE:            "",
   LIBRARY_ADDRESS:          "",
+  LIBRARY_TELEGRAM:         "",   // e.g. "@pvdlibrary" — shown to members for direct contact
   BARCODE_PREFIX:           "PVD",
   BARCODE_PADDING:          "6",
   RESERVATION_EXPIRE_DAYS:  "7",
@@ -43,15 +44,39 @@ const DEFAULTS: Record<string, string> = {
   BOOK_SALE_QR_IMAGE:                "",      // URL of payment QR code image
   BOOK_SALE_PAYMENT_METHODS:         "qr",    // comma-separated: qr,cash_on_pickup
   BOOK_SALE_SHIPPING_FEE:            "2.00",  // default delivery fee in primary currency
+  BOOK_SALE_TAX_RATE:                "0",     // tax percentage e.g. "10" = 10%
   BOOK_SALE_DELIVERY_ENABLED:        "true",
   BOOK_SALE_PICKUP_ENABLED:          "true",
   BOOK_SALE_RETURN_WINDOW_DAYS:      "7",
   BOOK_SALE_CART_HOLD_MINUTES:       "60",    // reserve copy in cart for X minutes
+  // Bank / QR payment details shown to members at checkout
+  BOOK_SALE_BANK_NAME:               "",      // e.g. "ABA Bank"
+  BOOK_SALE_ACCOUNT_NAME:            "",      // account holder name
+  BOOK_SALE_ACCOUNT_NUMBER:          "",      // account number or phone
+  BOOK_SALE_PAYMENT_INSTRUCTIONS:    "",      // freeform instructions shown to member
   // Member self-registration
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
   // Public catalog (Discover + E-Library) theme
   OPAC_THEME:                        "royal",
+  // Full-width layout for Discover, E-Library and Shop (false = max-w-6xl centered)
+  OPAC_FULL_WIDTH:                   "false",
+  OPAC_PAGE_BG:                      "light",  // "light" | "white" | "dark"
+  OPAC_FONT:                         "default", // Google Fonts family name, "default", or a custom font name
+  OPAC_CUSTOM_FONTS:                 "[]",      // JSON: [{name:string, url:string}]
+  // Public footer — contact info shown on Discover, E-Library, Bookstore
+  PUBLIC_FOOTER_ENABLED:             "false",
+  PUBLIC_FOOTER_SHOW:                "phone,email,telegram,address",
+  PUBLIC_FOOTER_DESCRIPTION:         "Your gateway to knowledge and discovery. Explore, learn, and grow with us.",
+  LIBRARY_HOURS:                     "",
+  LIBRARY_WHATSAPP:                  "",
+  LIBRARY_WEBSITE:                   "",
+  // Public catalog pagination mode — "numbers" or "loadmore"
+  PUBLIC_PAGINATION_MODE:            "loadmore",
+  // Per-page limit for paginated catalog/ebook/shop listings
+  PUBLIC_PAGINATION_LIMIT:           "20",
+  // Audience level display labels (JSON map of enum value → display name)
+  AUDIENCE_LEVEL_LABELS: JSON.stringify({ CHILDREN: "Children", YOUTH: "Youth", ADULTS: "Adults", UNSPECIFIED: "Unspecified" }),
   // NOTE: LIBRARY_LOGO is intentionally excluded here.
   // It is managed exclusively via POST/DELETE /api/settings/logo
   // and must never be overwritten by the bulk PUT handler.

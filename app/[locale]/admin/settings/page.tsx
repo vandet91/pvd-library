@@ -25,6 +25,12 @@ import {
   Trash2,
   Bot,
   UserPlus,
+  Send,
+  Activity,
+  MapPin,
+  ExternalLink,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { useLibraryLogo } from "@/context/library-logo";
 import { ALL_LOCALES, DEFAULT_LOCALE } from "@/lib/locales";
@@ -45,6 +51,7 @@ interface SettingsData {
   LIBRARY_EMAIL:                    string;
   LIBRARY_PHONE:                    string;
   LIBRARY_ADDRESS:                  string;
+  LIBRARY_TELEGRAM:                 string;
   DEFAULT_STAFF_THEME:              string;
   DEFAULT_STAFF_AUTH_STYLE:         string;
   DEFAULT_STAFF_AUTH_METHODS:       string;
@@ -54,17 +61,41 @@ interface SettingsData {
   MEMBER_SELF_REGISTER:              string;
   MEMBER_SELF_REGISTER_AUTO_APPROVE: string;
   OPAC_THEME:                        string;
+  OPAC_FULL_WIDTH:                   string;
+  OPAC_PAGE_BG:                      string;
+  OPAC_FONT:                         string;
+  OPAC_CUSTOM_FONTS:                 string;
+  PUBLIC_PAGINATION_MODE:            string;
+  PUBLIC_PAGINATION_LIMIT:           string;
   // Book Sale
   BOOK_SALE_ENABLED:                 string;
   BOOK_SALE_QR_IMAGE:                string;
+  BOOK_SALE_BANK_NAME:               string;
+  BOOK_SALE_ACCOUNT_NAME:            string;
+  BOOK_SALE_ACCOUNT_NUMBER:          string;
+  BOOK_SALE_PAYMENT_INSTRUCTIONS:    string;
   BOOK_SALE_PAYMENT_METHODS:         string;
   BOOK_SALE_SHIPPING_FEE:            string;
+  BOOK_SALE_TAX_RATE:                string;
   BOOK_SALE_DELIVERY_ENABLED:        string;
   BOOK_SALE_PICKUP_ENABLED:          string;
   BOOK_SALE_RETURN_WINDOW_DAYS:      string;
+  // Public footer
+  PUBLIC_FOOTER_ENABLED:             string;
+  PUBLIC_FOOTER_SHOW:                string;
+  PUBLIC_FOOTER_DESCRIPTION:         string;
+  LIBRARY_HOURS:                     string;
+  LIBRARY_WHATSAPP:                  string;
+  LIBRARY_WEBSITE:                   string;
   STOCK_CURRENCY:                    string;
   STOCK_SECONDARY_CURRENCY:          string;
   STOCK_SECONDARY_RATE:              string;
+  // Telegram
+  TELEGRAM_NOTIFICATIONS_ENABLED:   string;
+  TELEGRAM_ADMIN_CHAT_ID:           string;
+  TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:  string;
+  TELEGRAM_LINK_MEMBER:             string;
+  PHONE_CLICK_ACTION:               string;
 }
 
 const DEFAULT: SettingsData = {
@@ -81,6 +112,7 @@ const DEFAULT: SettingsData = {
   LIBRARY_EMAIL:                    "",
   LIBRARY_PHONE:                    "",
   LIBRARY_ADDRESS:                  "",
+  LIBRARY_TELEGRAM:                 "",
   DEFAULT_STAFF_THEME:              "ocean",
   DEFAULT_STAFF_AUTH_STYLE:         "split",
   DEFAULT_STAFF_AUTH_METHODS:       '["password","google","magic"]',
@@ -90,16 +122,40 @@ const DEFAULT: SettingsData = {
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
   OPAC_THEME:                        "royal",
+  OPAC_FULL_WIDTH:                   "false",
+  OPAC_PAGE_BG:                      "light",
+  OPAC_FONT:                         "default",
+  OPAC_CUSTOM_FONTS:                 "[]",
+  PUBLIC_PAGINATION_MODE:            "loadmore",
+  PUBLIC_PAGINATION_LIMIT:           "20",
   BOOK_SALE_ENABLED:                 "false",
   BOOK_SALE_QR_IMAGE:                "",
+  BOOK_SALE_BANK_NAME:               "",
+  BOOK_SALE_ACCOUNT_NAME:            "",
+  BOOK_SALE_ACCOUNT_NUMBER:          "",
+  BOOK_SALE_PAYMENT_INSTRUCTIONS:    "",
   BOOK_SALE_PAYMENT_METHODS:         "qr",
   BOOK_SALE_SHIPPING_FEE:            "2.00",
+  BOOK_SALE_TAX_RATE:                "0",
   BOOK_SALE_DELIVERY_ENABLED:        "true",
   BOOK_SALE_PICKUP_ENABLED:          "true",
   BOOK_SALE_RETURN_WINDOW_DAYS:      "7",
+  // Public footer
+  PUBLIC_FOOTER_ENABLED:             "false",
+  PUBLIC_FOOTER_SHOW:                "phone,email,telegram,address",
+  PUBLIC_FOOTER_DESCRIPTION:         "Your gateway to knowledge and discovery. Explore, learn, and grow with us.",
+  LIBRARY_HOURS:                     "",
+  LIBRARY_WHATSAPP:                  "",
+  LIBRARY_WEBSITE:                   "",
   STOCK_CURRENCY:                    "USD",
   STOCK_SECONDARY_CURRENCY:          "",
   STOCK_SECONDARY_RATE:              "4100",
+  // Telegram
+  TELEGRAM_NOTIFICATIONS_ENABLED:   "true",
+  TELEGRAM_ADMIN_CHAT_ID:           "",
+  TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:  "7",
+  TELEGRAM_LINK_MEMBER:             "true",
+  PHONE_CLICK_ACTION:               "both",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -507,6 +563,112 @@ export default function SettingsPage() {
             );
           })}
         </div>
+
+        {/* Full-width layout toggle */}
+        <div className="pt-2 border-t border-gray-100">
+          <Field
+            label="Full-Width Layout"
+            hint="When on, Discover, E-Library and Shop pages stretch edge-to-edge instead of being centred in a max-width container. Ideal for large monitors."
+            icon={<Monitor className="w-4 h-4 text-gray-400" />}
+          >
+            <div className="flex gap-3 mt-1">
+              {([["false", "Centred (max-w)"], ["true", "Full Width"]] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => set("OPAC_FULL_WIDTH", val)}
+                  disabled={busy}
+                  className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
+                    ${data.OPAC_FULL_WIDTH === val
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field
+            label="Page Background"
+            hint="Background colour for Discover, E-Library and Shop pages."
+            icon={<Monitor className="w-4 h-4 text-gray-400" />}
+          >
+            <div className="flex gap-3 mt-1">
+              {([
+                { val: "light", label: "Light",  preview: "bg-gray-200",  ring: "ring-gray-300" },
+                { val: "white", label: "White",  preview: "bg-white",     ring: "ring-gray-300" },
+                { val: "dark",  label: "Dark",   preview: "bg-slate-950", ring: "ring-slate-700" },
+              ] as const).map(({ val, label, preview, ring }) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => set("OPAC_PAGE_BG", val)}
+                  disabled={busy}
+                  className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all flex flex-col items-center gap-1.5
+                    ${data.OPAC_PAGE_BG === val
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                >
+                  <span className={`w-8 h-5 rounded ${preview} ring-1 ${ring} inline-block`} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Font picker */}
+          <FontPickerField
+            currentFont={data.OPAC_FONT}
+            customFontsJson={data.OPAC_CUSTOM_FONTS}
+            busy={busy}
+            inputCls={inputCls}
+            onFontChange={(v) => set("OPAC_FONT", v)}
+            onCustomFontsChange={(v) => set("OPAC_CUSTOM_FONTS", v)}
+          />
+        </div>
+
+        {/* Pagination mode */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-gray-100">
+          <Field
+            label="Catalog Pagination Style"
+            hint="How Discover, E-Library and Shop load more items."
+            icon={<Monitor className="w-4 h-4 text-gray-400" />}
+          >
+            <div className="flex gap-3 mt-1">
+              {([["loadmore", "Load More Button"], ["numbers", "Page Numbers"]] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => set("PUBLIC_PAGINATION_MODE", val)}
+                  disabled={busy}
+                  className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
+                    ${data.PUBLIC_PAGINATION_MODE === val
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field
+            label="Items Per Page"
+            hint="Number of books / e-resources shown per page or per load."
+            icon={<BookOpen className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="number"
+              min={5}
+              max={100}
+              value={data.PUBLIC_PAGINATION_LIMIT}
+              onChange={(e) => set("PUBLIC_PAGINATION_LIMIT", e.target.value)}
+              disabled={busy}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-60"
+            />
+          </Field>
+        </div>
       </Section>
 
       {/* ── Loan & Fine Policy ─────────────────────────────────────────── */}
@@ -664,6 +826,87 @@ export default function SettingsPage() {
         </div>
       </Section>
 
+      {/* ── Telegram Notifications ───────────────────────────────────── */}
+      <Section title="Telegram Notifications" icon={<Send className="w-4 h-4 text-sky-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">
+          Send loan reminders, membership expiry alerts, and reservation notices to members via Telegram bot.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Field
+            label="Enable Telegram Notifications"
+            hint="Master switch — when disabled, no Telegram messages will be sent regardless of other settings."
+            icon={<Send className="w-4 h-4 text-gray-400" />}
+          >
+            <select value={data.TELEGRAM_NOTIFICATIONS_ENABLED} onChange={(e) => set("TELEGRAM_NOTIFICATIONS_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="true">{t("enabled")}</option>
+              <option value="false">{t("disabled")}</option>
+            </select>
+          </Field>
+
+          <Field
+            label="Admin / Staff Alert Chat ID"
+            hint="Telegram chat ID for the admin or a staff group. When set, the bot sends alerts for new orders, payment proofs awaiting confirmation, and return requests."
+            icon={<Bot className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="text"
+              value={data.TELEGRAM_ADMIN_CHAT_ID}
+              onChange={(e) => set("TELEGRAM_ADMIN_CHAT_ID", e.target.value)}
+              disabled={busy || data.TELEGRAM_NOTIFICATIONS_ENABLED !== "true"}
+              placeholder="e.g. 123456789 or -100123456789"
+              className={inputCls}
+            />
+          </Field>
+
+          <Field
+            label="Membership Expiry Warning (days)"
+            hint="How many days before membership expiry to send a Telegram reminder."
+            icon={<Clock className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="number" min={1} max={30}
+              value={data.TELEGRAM_MEMBERSHIP_EXPIRY_DAYS}
+              onChange={(e) => set("TELEGRAM_MEMBERSHIP_EXPIRY_DAYS", e.target.value)}
+              disabled={busy || data.TELEGRAM_NOTIFICATIONS_ENABLED !== "true"}
+              className={inputCls}
+            />
+          </Field>
+
+          <Field
+            label="Allow Members to Link Telegram"
+            hint="When enabled, members can connect their Telegram account from the member portal to receive push notifications."
+            icon={<Send className="w-4 h-4 text-gray-400" />}
+          >
+            <select value={data.TELEGRAM_LINK_MEMBER} onChange={(e) => set("TELEGRAM_LINK_MEMBER", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="true">Allowed — members can link</option>
+              <option value="false">Disabled — staff only</option>
+            </select>
+          </Field>
+
+          <Field
+            label="Phone Number Click Action"
+            hint="What happens when staff click a phone number in the Members list — dial, open Telegram, both, or plain text."
+            icon={<Activity className="w-4 h-4 text-gray-400" />}
+          >
+            <select value={data.PHONE_CLICK_ACTION} onChange={(e) => set("PHONE_CLICK_ACTION", e.target.value)} disabled={busy} className={inputCls}>
+              <option value="both">Both — dial &amp; open Telegram</option>
+              <option value="dial">Dial only (tel: link)</option>
+              <option value="telegram">Telegram only (t.me link)</option>
+              <option value="disabled">Disabled — plain text</option>
+            </select>
+          </Field>
+        </div>
+
+        <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 text-xs text-sky-700 space-y-1">
+          <p className="font-semibold">How to set up the Telegram bot</p>
+          <p>• Create a bot via <strong>@BotFather</strong> on Telegram and copy the bot token</p>
+          <p>• Add <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> to your <code className="bg-sky-100 px-1 rounded">.env</code> file</p>
+          <p>• <strong>Admin alerts:</strong> message the bot to get your personal chat ID (forward any message to <strong>@userinfobot</strong>), then paste it in <em>Admin / Staff Alert Chat ID</em> above. For a group, add the bot to the group and use the group&apos;s negative chat ID.</p>
+          <p>• <strong>Member notifications:</strong> members link their account by messaging the bot <code className="bg-sky-100 px-1 rounded">/start</code> — they receive their chat ID to enter in the member portal</p>
+          <p>• Loan/membership reminders are sent automatically by the cron job or via the Notifications page</p>
+        </div>
+      </Section>
+
       {/* ── Member Self-Registration ──────────────────────────────────── */}
       <Section title="Member Self-Registration" icon={<UserPlus className="w-4 h-4 text-emerald-500" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -740,8 +983,74 @@ export default function SettingsPage() {
             </Field>
           )}
 
-          <Field label="Payment QR Image URL" hint="URL of the KHQR / ABA / bank QR image shown to members at checkout." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
-            <input value={data.BOOK_SALE_QR_IMAGE} onChange={(e) => set("BOOK_SALE_QR_IMAGE", e.target.value)} placeholder="https://…/qr.png" disabled={busy} className={inputCls} />
+          {/* ── Payment QR Image ── */}
+          <div className="space-y-3 rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              <ImagePlus className="w-4 h-4 text-amber-600" /> Payment QR Code
+            </p>
+            <p className="text-xs text-gray-500">Upload your KHQR / ABA / bank QR image. Members will see this at checkout when paying by QR transfer.</p>
+
+            {/* Preview + upload */}
+            <div className="flex items-start gap-4">
+              {data.BOOK_SALE_QR_IMAGE ? (
+                <div className="relative flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={data.BOOK_SALE_QR_IMAGE} alt="Payment QR" className="w-28 h-28 rounded-xl border border-amber-200 object-contain bg-white shadow-sm" />
+                  <button
+                    type="button"
+                    onClick={() => set("BOOK_SALE_QR_IMAGE", "")}
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-28 h-28 rounded-xl border-2 border-dashed border-amber-200 flex flex-col items-center justify-center bg-white text-amber-400 flex-shrink-0">
+                  <ImagePlus className="w-6 h-6 mb-1" />
+                  <span className="text-[10px]">No QR yet</span>
+                </div>
+              )}
+              <div className="flex-1 space-y-2">
+                <label className="flex items-center gap-2 px-3 py-2 bg-white border border-amber-200 rounded-lg text-sm font-medium text-amber-700 hover:bg-amber-50 cursor-pointer transition-colors w-fit">
+                  <ImagePlus className="w-4 h-4" />
+                  {data.BOOK_SALE_QR_IMAGE ? "Replace QR image" : "Upload QR image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={busy}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.append("file", file);
+                      fd.append("folder", "settings");
+                      const res = await fetch("/api/upload", { method: "POST", body: fd });
+                      const json = await res.json();
+                      if (json.url) set("BOOK_SALE_QR_IMAGE", json.url);
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-gray-400">Or paste a URL directly:</p>
+                <input value={data.BOOK_SALE_QR_IMAGE} onChange={(e) => set("BOOK_SALE_QR_IMAGE", e.target.value)} placeholder="https://…/qr.png" disabled={busy} className={inputCls} />
+              </div>
+            </div>
+          </div>
+
+          <Field label="Bank / Payment Name" hint="e.g. ABA Bank, ACLEDA, Wing" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.BOOK_SALE_BANK_NAME} onChange={(e) => set("BOOK_SALE_BANK_NAME", e.target.value)} placeholder="ABA Bank" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Account Holder Name" hint="Name shown on the transfer screen" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.BOOK_SALE_ACCOUNT_NAME} onChange={(e) => set("BOOK_SALE_ACCOUNT_NAME", e.target.value)} placeholder="PVD Library" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Account Number / Phone" hint="Bank account number or mobile number for the QR" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.BOOK_SALE_ACCOUNT_NUMBER} onChange={(e) => set("BOOK_SALE_ACCOUNT_NUMBER", e.target.value)} placeholder="012 345 678" disabled={busy} className={inputCls} />
+          </Field>
+
+          <Field label="Payment Instructions" hint="Extra instructions shown to member below the QR code (optional)" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <textarea value={data.BOOK_SALE_PAYMENT_INSTRUCTIONS} onChange={(e) => set("BOOK_SALE_PAYMENT_INSTRUCTIONS", e.target.value)} placeholder="Scan, pay, then upload your payment screenshot on the order page." disabled={busy} rows={2} className={`${inputCls} resize-none`} />
           </Field>
 
           <Field label="Payment Methods" hint="Comma-separated: qr, cash_on_pickup" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
@@ -766,10 +1075,117 @@ export default function SettingsPage() {
             <input type="number" step="0.01" min="0" value={data.BOOK_SALE_SHIPPING_FEE} onChange={(e) => set("BOOK_SALE_SHIPPING_FEE", e.target.value)} disabled={busy} className={inputCls} />
           </Field>
 
+          <Field label="Tax Rate (%)" hint="Applied on top of book prices. Set 0 to disable tax. e.g. 10 = 10% VAT." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <div className="relative">
+              <input type="number" step="0.01" min="0" max="100" value={data.BOOK_SALE_TAX_RATE} onChange={(e) => set("BOOK_SALE_TAX_RATE", e.target.value)} disabled={busy} className={inputCls} placeholder="0" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">%</span>
+            </div>
+          </Field>
+
           <Field label="Return Window (days)" hint="How many days after purchase a member can request a return." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input type="number" min="0" value={data.BOOK_SALE_RETURN_WINDOW_DAYS} onChange={(e) => set("BOOK_SALE_RETURN_WINDOW_DAYS", e.target.value)} disabled={busy} className={inputCls} />
           </Field>
+
         </div>
+      </Section>
+
+      {/* ── Public Footer ─────────────────────────────────────────────── */}
+      <Section title="Public Contact Footer" icon={<MapPin className="w-4 h-4 text-teal-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">
+          Show library contact info in the footer of Discover, E-Library, and Bookstore pages.
+          Contact details come from <strong>Library Information</strong> below.
+        </p>
+
+        {/* Master toggle */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 mb-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Enable Public Footer</p>
+            <p className="text-xs text-gray-500 mt-0.5">Show contact footer on all public-facing pages</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => set("PUBLIC_FOOTER_ENABLED", data.PUBLIC_FOOTER_ENABLED === "true" ? "false" : "true")}
+            disabled={busy}
+            className="flex items-center gap-2 text-sm font-medium transition-colors"
+          >
+            {data.PUBLIC_FOOTER_ENABLED === "true" ? (
+              <><ToggleRight className="w-8 h-8 text-teal-500" /><span className="text-teal-600">On</span></>
+            ) : (
+              <><ToggleLeft className="w-8 h-8 text-gray-400" /><span className="text-gray-400">Off</span></>
+            )}
+          </button>
+        </div>
+
+        {data.PUBLIC_FOOTER_ENABLED === "true" && (
+          <>
+            {/* Which contact types to show */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Show on footer</p>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { key: "phone",    label: "Phone"    },
+                  { key: "email",    label: "Email"    },
+                  { key: "whatsapp", label: "WhatsApp" },
+                  { key: "telegram", label: "Telegram" },
+                  { key: "address",  label: "Address"  },
+                  { key: "hours",    label: "Hours"    },
+                  { key: "website",  label: "Website"  },
+                ] as const).map(({ key, label }) => {
+                  const current = (data.PUBLIC_FOOTER_SHOW ?? "").split(",").map(v => v.trim()).filter(Boolean);
+                  const active  = current.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        const next = active
+                          ? current.filter(v => v !== key)
+                          : [...current, key];
+                        set("PUBLIC_FOOTER_SHOW", next.join(","));
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 ${
+                        active
+                          ? "bg-teal-50 border-teal-300 text-teal-700"
+                          : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                Click to toggle. Items only show if the corresponding field in Library Information is filled in.
+              </p>
+            </div>
+
+            {/* Extra fields not in Library Information */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <Field label="Opening Hours" hint='e.g. "Mon–Fri 8am–5pm, Sat 8am–12pm"' icon={<Clock className="w-4 h-4 text-gray-400" />}>
+                <input value={data.LIBRARY_HOURS} onChange={(e) => set("LIBRARY_HOURS", e.target.value)}
+                  placeholder="Mon–Fri 8am–5pm" disabled={busy} className={inputCls} />
+              </Field>
+              <Field label="WhatsApp Number" hint='Include country code, e.g. "+85512345678"' icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+                <input value={data.LIBRARY_WHATSAPP} onChange={(e) => set("LIBRARY_WHATSAPP", e.target.value)}
+                  placeholder="+855 12 345 678" disabled={busy} className={inputCls} />
+              </Field>
+              <Field label="Website URL" hint='e.g. "https://pvdlibrary.org"' icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+                <input value={data.LIBRARY_WEBSITE} onChange={(e) => set("LIBRARY_WEBSITE", e.target.value)}
+                  placeholder="https://..." disabled={busy} className={inputCls} />
+              </Field>
+            </div>
+
+            {/* ── Description ── */}
+            <div className="mt-6">
+              <Field label="Footer Description" hint="Short tagline shown under the library logo" icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+                <textarea value={data.PUBLIC_FOOTER_DESCRIPTION} onChange={(e) => set("PUBLIC_FOOTER_DESCRIPTION", e.target.value)}
+                  rows={2} placeholder="Your gateway to knowledge…" disabled={busy}
+                  className={`${inputCls} resize-none`} />
+              </Field>
+            </div>
+          </>
+        )}
       </Section>
 
       {/* ── Library Information ────────────────────────────────────────── */}
@@ -905,6 +1321,30 @@ export default function SettingsPage() {
               placeholder="123 Street, Phnom Penh"
             />
           </Field>
+          <Field
+            label="Librarian Telegram"
+            hint="Username shown to members when they need to contact staff — e.g. to cancel a deposit pre-order. Include the @ symbol."
+            icon={<Phone className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="text"
+              value={data.LIBRARY_TELEGRAM}
+              onChange={(e) => set("LIBRARY_TELEGRAM", e.target.value)}
+              disabled={busy}
+              className={inputCls}
+              placeholder="@pvdlibrary"
+            />
+            {data.LIBRARY_TELEGRAM && (
+              <a
+                href={`https://t.me/${data.LIBRARY_TELEGRAM.replace("@", "")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 mt-1 text-xs text-blue-500 hover:underline"
+              >
+                Preview link ↗
+              </a>
+            )}
+          </Field>
         </div>
       </Section>
 
@@ -915,24 +1355,23 @@ export default function SettingsPage() {
         {/* Per-locale toggle cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {ALL_LOCALES.map((loc) => {
-            const isDefault = loc.code === DEFAULT_LOCALE;
-            const isOn = enabledLocalesList.includes(loc.code);
+            const isDefault     = loc.code === DEFAULT_LOCALE;
+            const isOn          = enabledLocalesList.includes(loc.code);
             const isOnlyEnabled = enabledLocalesList.length === 1 && isOn;
 
             return (
               <div
                 key={loc.code}
                 className={`relative flex items-center justify-between gap-4 rounded-xl border-2 pl-4 pr-5 py-3.5 transition-all
-                  ${isOn
-                    ? "border-indigo-200 bg-indigo-50/60"
-                    : "border-gray-100 bg-gray-50/60 opacity-60"
-                  }`}
+                  ${isOn ? "border-indigo-200 bg-indigo-50/60" : "border-gray-100 bg-gray-50/60 opacity-60"}`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-2xl leading-none select-none">{loc.flag}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-800 leading-tight">{loc.nativeLabel}</p>
-                    <p className="text-xs text-gray-400 leading-tight">{loc.label} · <code className="font-mono">{loc.code}</code></p>
+                    <p className="text-xs text-gray-400 leading-tight">
+                      {loc.label} · <code className="font-mono">{loc.code}</code>
+                    </p>
                     {isDefault && (
                       <p className="text-[10px] text-indigo-500 mt-0.5 flex items-center gap-1">
                         <Lock className="w-2.5 h-2.5" /> {t("langDefaultLocked")}
@@ -941,11 +1380,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 {isDefault ? (
-                  /* Default locale — always on, cannot be toggled */
-                  <div
-                    title={t("langDefaultLocked")}
-                    className="flex-shrink-0 flex items-center justify-center w-10 h-6 rounded-full bg-indigo-200 cursor-not-allowed"
-                  >
+                  <div title={t("langDefaultLocked")}
+                    className="flex-shrink-0 flex items-center justify-center w-10 h-6 rounded-full bg-indigo-200 cursor-not-allowed">
                     <Lock className="w-3.5 h-3.5 text-indigo-500" />
                   </div>
                 ) : (
@@ -960,11 +1396,8 @@ export default function SettingsPage() {
                       ${isOn ? "bg-indigo-500" : "bg-gray-300"}`}
                     aria-pressed={isOn}
                   >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm
-                        transition-transform duration-200
-                        ${isOn ? "translate-x-5" : "translate-x-0"}`}
-                    />
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm
+                      transition-transform duration-200 ${isOn ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
                 )}
               </div>
@@ -972,40 +1405,19 @@ export default function SettingsPage() {
           })}
         </div>
 
-        {/* Developer guide for adding languages */}
-        <details className="mt-2 group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-indigo-600 hover:text-indigo-700 cursor-pointer select-none list-none">
-            <Info className="w-3.5 h-3.5 flex-shrink-0" />
-            {t("addLangGuideTitle")}
-            <span className="ml-auto text-gray-400 group-open:rotate-180 transition-transform text-base leading-none">▾</span>
-          </summary>
-          <div className="mt-3 rounded-xl bg-gray-900 text-gray-200 p-4 text-xs space-y-3 font-mono leading-relaxed">
-            <p className="text-gray-400 font-sans font-medium not-italic">{t("addLangGuideNote")}</p>
-            <div>
-              <span className="text-emerald-400 font-sans">Step 1 —</span>{" "}
-              <span className="text-gray-300 font-sans">{t("addLangGuideStep1")}</span>
-              <pre className="mt-1.5 bg-gray-800 rounded-lg p-2 overflow-x-auto text-[11px] leading-5">{`// lib/locales.ts
-{
-  code:        "fr",
-  label:       "French",
-  nativeLabel: "Français",
-  flag:        "🇫🇷",
-  rtl:         false,
-}`}</pre>
-            </div>
-            <div>
-              <span className="text-emerald-400 font-sans">Step 2 —</span>{" "}
-              <span className="text-gray-300 font-sans">{t("addLangGuideStep2")}</span>
-              <pre className="mt-1.5 bg-gray-800 rounded-lg p-2 overflow-x-auto text-[11px] leading-5">{`# copy en.json as a starting point
-cp messages/en.json messages/fr.json
-# then translate the strings in fr.json`}</pre>
-            </div>
-            <div>
-              <span className="text-emerald-400 font-sans">Step 3 —</span>{" "}
-              <span className="text-gray-300 font-sans">{t("addLangGuideStep3")}</span>
-            </div>
-          </div>
-        </details>
+        {/* Link to Translations manager */}
+        <div className="flex items-center justify-between gap-4 pt-2 border-t border-gray-100">
+          <p className="text-xs text-gray-400">
+            To add a new language or edit translations, use the Translations manager.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(`/${(typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "en")}/admin/translations`)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors shrink-0"
+          >
+            <Globe className="w-3.5 h-3.5" /> Manage Translations →
+          </button>
+        </div>
       </Section>
 
       {/* Loading skeleton overlay */}
@@ -1041,6 +1453,161 @@ function Section({
         <h2 className="text-base font-semibold text-gray-800">{title}</h2>
       </div>
       {children}
+    </div>
+  );
+}
+
+/* ── Font picker (self-contained to avoid IIFE-in-JSX issues) ──────────── */
+const FONT_PRESETS = [
+  { val: "default",         label: "System Default", sample: "Aa"    },
+  { val: "Battambang",      label: "Battambang",     sample: "អក្សរ" },
+  { val: "Noto Sans Khmer", label: "Noto Sans Khmer",sample: "អក្សរ" },
+  { val: "Hanuman",         label: "Hanuman",        sample: "អក្សរ" },
+  { val: "Moul",            label: "Moul",           sample: "អក្សរ" },
+  { val: "Dangrek",         label: "Dangrek",        sample: "អក្សរ" },
+  { val: "Inter",           label: "Inter",          sample: "Aa"    },
+  { val: "Poppins",         label: "Poppins",        sample: "Aa"    },
+  { val: "Roboto",          label: "Roboto",         sample: "Aa"    },
+] as const;
+
+function FontPickerField({
+  currentFont, customFontsJson, busy, inputCls, onFontChange, onCustomFontsChange,
+}: {
+  currentFont: string;
+  customFontsJson: string;
+  busy: boolean;
+  inputCls: string;
+  onFontChange: (v: string) => void;
+  onCustomFontsChange: (v: string) => void;
+}) {
+  const [newFontName, setNewFontName] = useState("");
+
+  let customFonts: {name:string; url:string}[] = [];
+  try { customFonts = JSON.parse(customFontsJson || "[]"); } catch { /* ignore */ }
+
+  const allPresetVals = FONT_PRESETS.map(p => p.val) as string[];
+  const allFontNames  = [...allPresetVals, ...customFonts.map(f => f.name)];
+  const googleValue   = allFontNames.includes(currentFont) ? "" : currentFont;
+
+  return (
+    <div className="space-y-1">
+      <p className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+        <Monitor className="w-4 h-4 text-gray-400" />
+        Page Font
+      </p>
+      <div className="mt-1 space-y-3">
+        {/* Preset grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {FONT_PRESETS.map(({ val, label, sample }) => {
+            const active = currentFont === val;
+            return (
+              <button key={val} type="button" disabled={busy}
+                onClick={() => onFontChange(val)}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all
+                  ${active ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}>
+                <span className={`text-lg leading-none flex-shrink-0 ${active ? "text-indigo-600" : "text-gray-500"}`}>{sample}</span>
+                <span className={`text-xs font-medium truncate ${active ? "text-indigo-700" : "text-gray-600"}`}>{label}</span>
+              </button>
+            );
+          })}
+          {/* Uploaded custom fonts */}
+          {customFonts.map((cf) => {
+            const active = currentFont === cf.name;
+            return (
+              <button key={cf.name} type="button" disabled={busy}
+                onClick={() => onFontChange(cf.name)}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all
+                  ${active ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}>
+                <span className={`text-lg leading-none flex-shrink-0 ${active ? "text-indigo-600" : "text-gray-500"}`}>អ</span>
+                <span className={`text-xs font-medium truncate ${active ? "text-indigo-700" : "text-gray-600"}`}>{cf.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Google Fonts name */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 whitespace-nowrap">Google Font:</span>
+          <input
+            value={googleValue}
+            onChange={(e) => onFontChange(e.target.value || "default")}
+            placeholder="e.g. Nokora, Open Sans…"
+            disabled={busy}
+            className={inputCls}
+          />
+        </div>
+
+        {/* Custom uploaded fonts */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-700">Custom / Uploaded Fonts</p>
+          <p className="text-xs text-gray-400">Upload .ttf / .woff / .woff2 for fonts not on Google Fonts (e.g. Kh Ang PeaNor, AKbalthom KOUPREY Chaet).</p>
+
+          {customFonts.map((cf, i) => (
+            <div key={i} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200">
+              <span className="text-xs font-medium text-gray-700 flex-1 truncate">{cf.name}</span>
+              <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{cf.url.split("/").pop()}</span>
+              <button type="button" disabled={busy}
+                onClick={async () => {
+                  const next      = customFonts.filter((_, j) => j !== i);
+                  const nextFont  = currentFont === cf.name ? "default" : currentFont;
+                  const nextJson  = JSON.stringify(next);
+                  onCustomFontsChange(nextJson);
+                  onFontChange(nextFont);
+                  // Persist immediately — don't wait for the Save button
+                  await fetch("/api/settings", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ OPAC_CUSTOM_FONTS: nextJson, OPAC_FONT: nextFont }),
+                  });
+                }}
+                className="w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 flex-shrink-0">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+
+          <div className="flex gap-2">
+            <input
+              value={newFontName}
+              onChange={(e) => setNewFontName(e.target.value)}
+              placeholder="Font name (e.g. Kh Ang PeaNor)"
+              disabled={busy}
+              className={`${inputCls} flex-1 text-xs`}
+            />
+            <label className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 cursor-pointer transition-colors whitespace-nowrap">
+              <ImagePlus className="w-3.5 h-3.5" />
+              Upload File
+              <input type="file" accept=".ttf,.woff,.woff2,.otf" className="hidden" disabled={busy}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  const name = newFontName.trim();
+                  if (!file || !name) { alert("Enter a font name first."); return; }
+                  const fd = new FormData();
+                  fd.append("file", file);
+                  fd.append("folder", "fonts");
+                  const res  = await fetch("/api/upload", { method: "POST", body: fd });
+                  const json = await res.json();
+                  if (json.url) {
+                    const next     = [...customFonts, { name, url: json.url }];
+                    const nextJson = JSON.stringify(next);
+                    onCustomFontsChange(nextJson);
+                    onFontChange(name);
+                    setNewFontName("");
+                    e.target.value = "";
+                    // Persist immediately
+                    await fetch("/api/settings", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ OPAC_CUSTOM_FONTS: nextJson, OPAC_FONT: name }),
+                    });
+                  }
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400">Applied to Discover, E-Library and Shop pages.</p>
     </div>
   );
 }

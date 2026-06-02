@@ -1,17 +1,20 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { ALL_LOCALES } from "@/lib/locales";
+import { type LocaleEntry, buildLocaleEntry } from "@/lib/locale-meta";
 
-type LocaleEntry = (typeof ALL_LOCALES)[number];
+export type { LocaleEntry };
 
 /**
- * Holds the list of enabled locales fetched server-side (from Settings →
- * ENABLED_LOCALES). Populated once in RootLayout → Providers and available
- * to every client component (LanguageToggle, etc.).
+ * Holds the list of enabled locales resolved at request time (from DB +
+ * messages/ directory). Populated in RootLayout → Providers.
+ *
+ * Uses the runtime LocaleEntry type (not the compiled ALL_LOCALES tuple)
+ * so locales added via the Translations admin tool appear immediately
+ * without a server restart.
  */
 const EnabledLocalesContext = createContext<LocaleEntry[]>([
-  ...ALL_LOCALES,
+  buildLocaleEntry("en"),
 ]);
 
 export function EnabledLocalesProvider({

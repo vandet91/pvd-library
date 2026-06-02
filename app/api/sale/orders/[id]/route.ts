@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { notifyAdmin, tg } from "@/lib/telegram";
+
+/** Shared include shape — keeps GET and PATCH responses identical */
+const ORDER_INCLUDE = {
+  branch: { select: { id: true, name: true, address: true, phone: true } },
+  items: {
+    include: {
+      book: {
+        select: {
+          id: true, title: true, coverImage: true, isbn: true,
+          author: { select: { name: true } },
+        },
+      },
+      copy: { select: { id: true, copyNumber: true, barcode: true, condition: true } },
+    },
+  },
+} as const;
 
 const cancelSchema = z.object({
   action:       z.literal("cancel"),
@@ -32,20 +49,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 
   const order = await prisma.saleOrder.findFirst({
     where:   { id, memberId: member.id },
-    include: {
-      branch: { select: { id: true, name: true, address: true, phone: true } },
-      items: {
-        include: {
-          book: {
-            select: {
-              id: true, title: true, coverImage: true, isbn: true,
-              author: { select: { name: true } },
-            },
-          },
-          copy: { select: { id: true, copyNumber: true, barcode: true, condition: true } },
-        },
-      },
-    },
+    include: ORDER_INCLUDE,
   });
 
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
@@ -59,7 +63,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const member = await prisma.member.findFirst({
     where: { userId: session.user?.id ?? "" },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
@@ -70,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const body   = await request.json().catch(() => ({}));
   const parsed = patchSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   if (parsed.data.action === "cancel") {
     // Can only cancel if still pending payment
@@ -84,6 +88,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         cancelledAt:  new Date(),
         cancelReason: parsed.data.cancelReason ?? "Cancelled by member",
       },
+      include: ORDER_INCLUDE,
     });
     return NextResponse.json(updated);
   }
@@ -109,7 +114,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         status:    "RETURN_REQUESTED",
         staffNote: parsed.data.note ? `Return request: ${parsed.data.note}` : "Member requested return",
       },
+      include: ORDER_INCLUDE,
     });
+    notifyAdmin(tg.adminReturnRequest(member.name, order.orderNumber, parsed.data.note)).catch(() => {});
     return NextResponse.json(updated);
   }
+
+  // Exhaustive fallback — should never be reached with a valid discriminated union
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

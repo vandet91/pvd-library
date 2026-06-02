@@ -11,6 +11,7 @@ import {
   DollarSign, Bookmark, ChevronLeft, ChevronRight, Loader2,
   TrendingUp, UserPlus,
 } from "lucide-react";
+import AddToBasketButton from "@/components/admin/AddToBasketButton";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -450,19 +451,26 @@ export default function MembersPage() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-950 border border-white/10 px-5 py-3 rounded-2xl shadow-2xl">
           <CheckSquare className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-medium">{selected.size} selected</span>
+          <span className="text-sm font-semibold text-white">{selected.size} selected</span>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={handleBulkPrint} className="flex items-center gap-1.5 text-sm hover:text-blue-300 transition-colors">
-            <Printer className="w-3.5 h-3.5" /> Cards
+          <button onClick={handleBulkPrint} className="flex items-center gap-1.5 text-sm font-semibold text-white hover:text-blue-300 transition-colors">
+            <Printer className="w-3.5 h-3.5 text-blue-400" /> Cards
           </button>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={() => handleBulkExport("xlsx")} className="text-sm hover:text-blue-300 transition-colors">Excel</button>
-          <button onClick={() => handleBulkExport("csv")}  className="text-sm hover:text-blue-300 transition-colors">CSV</button>
+          <button onClick={() => handleBulkExport("xlsx")} className="text-sm font-semibold text-white hover:text-sky-300 transition-colors">Excel</button>
+          <button onClick={() => handleBulkExport("csv")}  className="text-sm font-semibold text-white hover:text-sky-300 transition-colors">CSV</button>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={handleBulkDelete} className="text-sm text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
-          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 hover:bg-white/10 rounded-lg transition-colors">
+          <AddToBasketButton
+            basketType="MEMBER"
+            selectedIds={[...selected]}
+            entityField="memberIds"
+            onAdded={() => setSelected(new Set())}
+          />
+          <div className="h-4 w-px bg-white/20" />
+          <button onClick={handleBulkDelete} className="text-sm font-semibold text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
+          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

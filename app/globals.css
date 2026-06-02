@@ -320,8 +320,67 @@ body {
    parsed — zero dependency on JS/React hydration timing. */
 :lang(km) body {
   font-family: var(--font-khmer), sans-serif;
+  font-size: 112%;
 }
 
 * {
   box-sizing: border-box;
 }
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-card-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 0.2s ease both;
+}
+.animate-modal-in {
+  animation: modal-card-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.35s ease both;
+}
+
+/* ── Page dark mode (OPAC_PAGE_BG = dark) ──────────────────────────────── */
+.page-dark .text-gray-900,
+.page-dark .text-gray-800  { color: #f1f5f9 !important; }
+.page-dark .text-gray-700  { color: #cbd5e1 !important; }
+.page-dark .text-gray-600  { color: #94a3b8 !important; }
+.page-dark .text-gray-500  { color: #64748b !important; }
+.page-dark .text-gray-400  { color: #475569 !important; }
+.page-dark .text-gray-300  { color: #334155 !important; }
+
+/* Card / surface colours */
+.page-dark .bg-white       { background-color: #1e293b !important; }
+.page-dark .bg-gray-50     { background-color: #0f172a !important; }
+.page-dark .bg-gray-100    { background-color: #1e293b !important; }
+.page-dark .bg-gray-200    { background-color: #334155 !important; }
+
+/* Borders */
+.page-dark .border-gray-100,
+.page-dark .border-gray-200 { border-color: #334155 !important; }
+.page-dark .border-gray-300 { border-color: #475569 !important; }
+
+/* Inputs / selects */
+.page-dark input,
+.page-dark select,
+.page-dark textarea {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+.page-dark input::placeholder,
+.page-dark textarea::placeholder { color: #64748b !important; }
+

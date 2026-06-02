@@ -58,7 +58,7 @@ export default function LabelsLauncherPage() {
         return;
       }
       // Book mode (legacy)
-      const res  = await fetch("/api/books?limit=2000");
+      const res  = await fetch("/api/books?limit=50000");
       const data = await res.json().catch(() => []) as BookLabel[];
       const list = Array.isArray(data) ? data : [];
       if (idsParam) {
@@ -89,9 +89,17 @@ export default function LabelsLauncherPage() {
   }
 
   function openPrintWindow() {
-    const ids = books.map((b) => b.id).join(",");
-    const param = isCopyMode ? "copyIds" : "ids";
-    const url = `/${locale}/print/labels?${param}=${ids}&size=${size}&copies=${copies}`;
+    let url: string;
+    if (isCopyMode) {
+      const ids = books.map((b) => b.id).join(",");
+      url = `/${locale}/print/labels?copyIds=${ids}&size=${size}&copies=${copies}`;
+    } else if (!idsParam) {
+      // "all barcoded books" mode — avoid a URL with thousands of IDs
+      url = `/${locale}/print/labels?filter=barcoded&size=${size}&copies=${copies}`;
+    } else {
+      const ids = books.map((b) => b.id).join(",");
+      url = `/${locale}/print/labels?ids=${ids}&size=${size}&copies=${copies}`;
+    }
     window.open(url, "_blank", "width=900,height=700,menubar=yes,toolbar=yes");
   }
 

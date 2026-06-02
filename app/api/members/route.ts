@@ -12,7 +12,11 @@ const memberSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   memberType: z.enum(["STUDENT", "TEACHER", "STAFF", "PUBLIC"]).default("STUDENT"),
+  gender: z.enum(["MALE", "FEMALE", "UNSPECIFIED"]).default("UNSPECIFIED"),
   expireDate: z.string().optional(),
+  studentId: z.string().optional(),
+  school: z.string().optional(),
+  className: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -106,7 +110,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const parsed = memberSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { expireDate, email, ...rest } = parsed.data;
   const member = await prisma.member.create({

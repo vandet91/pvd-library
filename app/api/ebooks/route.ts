@@ -28,28 +28,34 @@ export async function GET(request: NextRequest) {
   const type       = searchParams.get("type") || undefined;
   const categoryId = searchParams.get("categoryId") || undefined;
   const sort       = searchParams.get("sort") || "newest";
-  const limit      = parseInt(searchParams.get("limit") || "100", 10);
+  const paginate   = searchParams.has("page");
+  const pageParam  = parseInt(searchParams.get("page") || "1", 10) || 1;
+  const limitParam = parseInt(searchParams.get("limit") || (paginate ? "20" : "100"), 10);
+  const limit      = paginate ? Math.min(limitParam, 100) : Math.min(limitParam, 500);
+  const skip       = paginate ? (pageParam - 1) * limit : 0;
 
   const orderBy = sort === "views"
     ? { views: "desc" as const }
     : { createdAt: "desc" as const };
 
+  const where = {
+    ...(q && { OR: [
+      { title:  { contains: q, mode: "insensitive" as const } },
+      { author: { name: { contains: q, mode: "insensitive" as const } } },
+    ]}),
+    ...(type       && { ebookType: type as "PDF"|"EPUB"|"LINK"|"VIDEO"|"AUDIO" }),
+    ...(categoryId && { categoryId }),
+  };
+
   const ebooks = await prisma.ebook.findMany({
-    where: {
-      // Admins see everything; public users see public ebooks AND protected ones
-      // (protected are shown in listing but their fileUrl is hidden)
-      ...(isAdmin ? {} : {}),   // show all to everyone in listing
-      ...(q && { OR: [
-        { title:  { contains: q, mode: "insensitive" } },
-        { author: { name: { contains: q, mode: "insensitive" } } },
-      ]}),
-      ...(type       && { ebookType: type as "PDF"|"EPUB"|"LINK"|"VIDEO"|"AUDIO" }),
-      ...(categoryId && { categoryId }),
-    },
+    where,
     include: { category: true, author: true },
     orderBy,
     take: limit,
+    skip,
   });
+
+  const total = paginate ? await prisma.ebook.count({ where }) : null;
 
   // ── Attach avg rating (one groupBy query) ────────────────────────────
   const ebookIds = ebooks.map((e) => e.id);
@@ -71,6 +77,14 @@ export async function GET(request: NextRequest) {
     ...(ratingMap.get(e.id) ?? { avgRating: null, ratingCount: 0 }),
   }));
 
+  if (paginate && total !== null) {
+    return NextResponse.json({
+      ebooks: sanitised,
+      total,
+      page:  pageParam,
+      pages: Math.ceil(total / limit) || 1,
+    });
+  }
   return NextResponse.json(sanitised);
 }
 
@@ -82,7 +96,7 @@ export async function POST(request: NextRequest) {
   const body   = await request.json();
   const parsed = ebookSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const ebook = await prisma.ebook.create({
     data:    parsed.data,

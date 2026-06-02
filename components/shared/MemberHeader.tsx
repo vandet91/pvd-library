@@ -14,7 +14,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState, useRef, useEffect } from "react";
 import {
   LogIn, LogOut, ShoppingCart, Settings, User,
-  BookOpen, Inbox, Banknote, ChevronDown, Send, ShoppingBag,
+  BookOpen, Inbox, Banknote, ChevronDown, Send, ShoppingBag, ShoppingBasket,
 } from "lucide-react";
 import LanguageToggle from "@/components/shared/LanguageToggle";
 
@@ -113,7 +113,7 @@ export default function MemberHeader({ basketCount = 0, theme = "dark" }: Props)
                   <div className="py-1">
                     {([
                       { href: `/${locale}/loans`,    Icon: BookOpen,     label: t("myLoans"),    badge: 0 },
-                      { href: `/${locale}/basket`,   Icon: ShoppingCart, label: t("basket"),     badge: basketCount },
+                      { href: `/${locale}/basket`,   Icon: ShoppingBasket, label: t("basket"),   badge: basketCount },
                       { href: `/${locale}/requests`, Icon: Inbox,        label: t("myRequests"), badge: 0 },
                       { href: `/${locale}/fines`,    Icon: Banknote,     label: t("myFines"),    badge: 0 },
                       { href: `/${locale}/shop`,     Icon: ShoppingBag,  label: t("shop"),       badge: 0 },

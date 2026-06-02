@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
-import { notifyMember, tg } from "@/lib/telegram";
+import { notifyMember, notifyAdmin, tg } from "@/lib/telegram";
 
 const schema = z.object({
   deliveryType:    z.enum(["PICKUP", "DELIVERY"]),
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { deliveryType, branchId, deliveryAddress, paymentMethod, memberNote } = parsed.data;
 
@@ -75,15 +75,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Load settings for shipping fee + currency
-  const [shippingFeeSetting, currencySetting] = await Promise.all([
+  // Verify all copies have a price set
+  const noPriceItems = cart.items.filter((i) => !i.copy.price || i.copy.price <= 0);
+  if (noPriceItems.length > 0) {
+    return NextResponse.json(
+      { error: `Some items do not have a price set: ${noPriceItems.map((i) => i.book.title).join(", ")}. Please contact the library.` },
+      { status: 400 },
+    );
+  }
+
+  // Load settings for shipping fee, tax rate, currency
+  const [shippingFeeSetting, taxRateSetting, currencySetting] = await Promise.all([
     prisma.settings.findUnique({ where: { key: "BOOK_SALE_SHIPPING_FEE" } }),
+    prisma.settings.findUnique({ where: { key: "BOOK_SALE_TAX_RATE" } }),
     prisma.settings.findUnique({ where: { key: "STOCK_CURRENCY" } }),
   ]);
   const shippingFee    = deliveryType === "DELIVERY" ? parseFloat(shippingFeeSetting?.value ?? "2.00") : 0;
+  const taxRate        = parseFloat(taxRateSetting?.value ?? "0") || 0;
   const currency       = currencySetting?.value ?? "USD";
   const subtotal       = cart.items.reduce((s, i) => s + (i.copy.price ?? 0), 0);
-  const total          = subtotal + shippingFee;
+  const taxAmount      = taxRate > 0 ? subtotal * (taxRate / 100) : 0;
+  const total          = subtotal + taxAmount + shippingFee;
   const orderNumber    = await nextOrderNumber();
 
   const order = await prisma.$transaction(async (tx) => {
@@ -96,6 +108,7 @@ export async function POST(request: NextRequest) {
         deliveryAddress: deliveryAddress ?? null,
         paymentMethod,
         subtotal,
+        taxAmount,
         shippingFee,
         total,
         currency,
@@ -125,8 +138,9 @@ export async function POST(request: NextRequest) {
     detail:     { total, currency, itemCount: order.items.length, deliveryType },
   });
 
-  // Fire-and-forget Telegram notification
+  // Fire-and-forget Telegram notifications
   notifyMember(member.id, tg.saleOrderPlaced(member.name, order.orderNumber, order.total, order.currency)).catch(() => {});
+  notifyAdmin(tg.adminNewOrder(member.name, order.orderNumber, order.total, order.currency, deliveryType, paymentMethod)).catch(() => {});
 
   return NextResponse.json(order, { status: 201 });
 }

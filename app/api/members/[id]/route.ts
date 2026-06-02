@@ -11,8 +11,12 @@ const updateSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   memberType: z.enum(["STUDENT", "TEACHER", "STAFF", "PUBLIC"]).optional(),
+  gender: z.enum(["MALE", "FEMALE", "UNSPECIFIED"]).optional(),
   expireDate: z.string().optional(),
   isActive: z.boolean().optional(),
+  studentId: z.string().optional(),
+  school: z.string().optional(),
+  className: z.string().optional(),
 });
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -44,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const body = await request.json();
   const parsed = updateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { expireDate, email, ...rest } = parsed.data;
 

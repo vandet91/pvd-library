@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
-import { Plus, Search, Edit, Trash2, FileText, BookMarked, Link2, Video, Music, Eye, CheckSquare, X } from "lucide-react";
+import { Plus, Search, Edit, Trash2, FileText, BookMarked, Link2, Video, Music, Eye, CheckSquare, X, RotateCcw } from "lucide-react";
+import AddToBasketButton from "@/components/admin/AddToBasketButton";
 
 interface Ebook {
   id: string; title: string; titleKm?: string; ebookType: string;
@@ -62,6 +63,29 @@ export default function AdminEbooksPage() {
     fetchEbooks();
   }
 
+  async function handleResetViews(id: string) {
+    await fetch(`/api/ebooks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ views: 0 }),
+    });
+    fetchEbooks();
+  }
+
+  async function handleBulkResetViews() {
+    if (!selected.size) return;
+    if (!confirm(`Reset views for ${selected.size} ebook(s) to 0?`)) return;
+    await Promise.all([...selected].map((id) =>
+      fetch(`/api/ebooks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ views: 0 }),
+      })
+    ));
+    setSelected(new Set());
+    fetchEbooks();
+  }
+
   function toggleSelect(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -97,12 +121,23 @@ export default function AdminEbooksPage() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-950 border border-white/10 px-5 py-3 rounded-2xl shadow-2xl">
           <CheckSquare className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-medium">{t("bulkSelected", { count: selected.size })}</span>
+          <span className="text-sm font-semibold text-white">{t("bulkSelected", { count: selected.size })}</span>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={handleBulkDelete} className="text-sm text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
-          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 hover:bg-white/10 rounded-lg transition-colors">
+          <button onClick={handleBulkResetViews} className="flex items-center gap-1.5 text-sm font-semibold text-white hover:text-blue-300 transition-colors">
+            <RotateCcw className="w-3.5 h-3.5 text-blue-400" /> Reset views
+          </button>
+          <div className="h-4 w-px bg-white/20" />
+          <AddToBasketButton
+            basketType="EBOOK"
+            selectedIds={[...selected]}
+            entityField="ebookIds"
+            onAdded={() => setSelected(new Set())}
+          />
+          <div className="h-4 w-px bg-white/20" />
+          <button onClick={handleBulkDelete} className="text-sm font-semibold text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
+          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -171,6 +206,11 @@ export default function AdminEbooksPage() {
                           className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                           <Edit className="w-4 h-4" />
                         </Link>
+                        <button onClick={() => handleResetViews(ebook.id)}
+                          title="Reset views to 0"
+                          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
                         <button onClick={() => handleDelete(ebook.id)}
                           className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                           <Trash2 className="w-4 h-4" />

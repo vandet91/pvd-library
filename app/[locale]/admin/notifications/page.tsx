@@ -29,21 +29,13 @@ interface ApiResponse {
 }
 
 interface NotifConfig {
-  NOTIFICATIONS_ENABLED:           string;
-  DUE_SOON_DAYS:                   string;
-  TELEGRAM_NOTIFICATIONS_ENABLED:  string;
-  TELEGRAM_MEMBERSHIP_EXPIRY_DAYS: string;
-  TELEGRAM_LINK_MEMBER:            string;
-  PHONE_CLICK_ACTION:              string;
+  NOTIFICATIONS_ENABLED: string;
+  DUE_SOON_DAYS:         string;
 }
 
 const CONFIG_DEFAULT: NotifConfig = {
-  NOTIFICATIONS_ENABLED:           "true",
-  DUE_SOON_DAYS:                   "3",
-  TELEGRAM_NOTIFICATIONS_ENABLED:  "true",
-  TELEGRAM_MEMBERSHIP_EXPIRY_DAYS: "7",
-  TELEGRAM_LINK_MEMBER:            "true",
-  PHONE_CLICK_ACTION:              "both",
+  NOTIFICATIONS_ENABLED: "true",
+  DUE_SOON_DAYS:         "3",
 };
 
 // tKey-based metas — label is looked up via t(labelKey) at render time
@@ -351,67 +343,10 @@ export default function NotificationsAdminPage() {
             </div>
           </NotifSection>
 
-          {/* Telegram Notifications */}
-          <NotifSection title={t("sectionTelegram")} icon={<Send className="w-4 h-4 text-blue-500" />}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <NotifField label={t("fieldTelegramEnabledLabel")} hint={t("fieldTelegramEnabledHint")} icon={<Send className="w-4 h-4 text-gray-400" />}>
-                <select value={config.TELEGRAM_NOTIFICATIONS_ENABLED} onChange={(e) => setConfigKey("TELEGRAM_NOTIFICATIONS_ENABLED", e.target.value)}
-                  disabled={configBusy} className={inputCls}>
-                  <option value="true">{t("enabled")}</option>
-                  <option value="false">{t("disabled")}</option>
-                </select>
-              </NotifField>
-
-              <NotifField label={t("fieldTelegramExpiryLabel")} hint={t("fieldTelegramExpiryHint")} icon={<Clock className="w-4 h-4 text-gray-400" />}>
-                <input type="number" min={1} max={30}
-                  value={config.TELEGRAM_MEMBERSHIP_EXPIRY_DAYS}
-                  onChange={(e) => setConfigKey("TELEGRAM_MEMBERSHIP_EXPIRY_DAYS", e.target.value)}
-                  disabled={configBusy} className={inputCls} />
-              </NotifField>
-
-              <NotifField
-                label="Allow Members to Link Telegram"
-                hint="When enabled, members can connect their Telegram account from the member portal to receive push notifications."
-                icon={<Send className="w-4 h-4 text-gray-400" />}
-              >
-                <select
-                  value={config.TELEGRAM_LINK_MEMBER}
-                  onChange={(e) => setConfigKey("TELEGRAM_LINK_MEMBER", e.target.value)}
-                  disabled={configBusy}
-                  className={inputCls}
-                >
-                  <option value="true">Allowed — members can link</option>
-                  <option value="false">Disabled — staff only</option>
-                </select>
-              </NotifField>
-
-              <NotifField
-                label="Phone Number Click Action"
-                hint="What happens when staff click a phone number in the Members list — dial, open Telegram, both, or plain text."
-                icon={<Activity className="w-4 h-4 text-gray-400" />}
-              >
-                <select
-                  value={config.PHONE_CLICK_ACTION}
-                  onChange={(e) => setConfigKey("PHONE_CLICK_ACTION", e.target.value)}
-                  disabled={configBusy}
-                  className={inputCls}
-                >
-                  <option value="both">Both — dial & open Telegram</option>
-                  <option value="dial">Dial only (tel: link)</option>
-                  <option value="telegram">Telegram only (t.me link)</option>
-                  <option value="disabled">Disabled — plain text</option>
-                </select>
-              </NotifField>
-            </div>
-
-            <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
-              <p className="font-semibold">{t("telegramHowTitle")}</p>
-              <p>• {t("telegramStep1")}</p>
-              <p>• {t("telegramStep2")}</p>
-              <p>• {t("telegramStep3")}</p>
-              <p>• {t("telegramStep4")}</p>
-            </div>
-          </NotifSection>
+          <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 text-xs text-sky-700 flex items-start gap-2">
+            <Settings className="w-4 h-4 flex-shrink-0 mt-0.5 text-sky-500" />
+            <p>Telegram notification settings (bot token, member linking, phone click action) have been moved to <strong>Settings → Telegram Notifications</strong>.</p>
+          </div>
         </div>
       )}
     </div>

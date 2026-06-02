@@ -47,6 +47,8 @@ export default function BarcodePage() {
   /* ── Bulk generate ── */
   const [genBusy,     setGenBusy]     = useState(false);
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
+  const [batchSize,   setBatchSize]   = useState<number>(100);
+  const BATCH_PRESETS = [50, 100, 200, 300, 500];
 
   /* ── Toast ── */
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -70,7 +72,7 @@ export default function BarcodePage() {
   const fetchBooks = useCallback(async () => {
     setBooksLoading(true);
     try {
-      const res  = await fetch("/api/books?limit=2000");
+      const res  = await fetch("/api/books?limit=9999");
       const data = await safeJson<BookRow[]>(res, []);
       const list = Array.isArray(data) ? data : [];
       setAllBooks(list);
@@ -100,29 +102,34 @@ export default function BarcodePage() {
   }
 
   /* ── Bulk generate barcodes for books without one ── */
-  async function bulkGenerate(bookList: BookRow[]) {
+  async function bulkGenerate(bookList: BookRow[], batchSize?: number) {
     if (bookList.length === 0) return;
+    const total = batchSize ? Math.min(batchSize, bookList.length) : bookList.length;
     setGenBusy(true);
-    setGenProgress({ done: 0, total: bookList.length });
-    let done = 0;
-    let failed = 0;
-    for (const book of bookList) {
-      const res  = await fetch(`/api/books/${book.id}/barcode`, { method: "POST" });
-      const data = await safeJson<{ barcode?: string; error?: string }>(res, {});
-      if (data.barcode) {
-        done++;
-        setAllBooks((prev) => prev.map((b) => b.id === book.id ? { ...b, barcode: data.barcode! } : b));
-        setMissing((prev)  => prev.filter((b) => b.id !== book.id));
-      } else {
-        failed++;
-        console.error(`Barcode generation failed for "${book.title}":`, data.error ?? res.status);
-      }
-      setGenProgress({ done, total: bookList.length });
+    setGenProgress({ done: 0, total });
+
+    const res  = await fetch("/api/books/barcode/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batchSize ? { limit: batchSize } : {}),
+    });
+    const data = await safeJson<{ generated?: number; results?: { id: string; barcode: string }[]; error?: string }>(res, {});
+
+    if (!res.ok || data.error) {
+      showToast(`✗ ${data.error ?? "Bulk generation failed"}`, false);
+      setGenBusy(false);
+      setGenProgress(null);
+      return;
     }
+
+    const generated = data.generated ?? (data.results?.length ?? 0);
+    setGenProgress({ done: generated, total: bookList.length });
     setGenBusy(false);
-    setGenProgress(null);
-    if (done > 0)   showToast(`✓ ${done} barcode${done !== 1 ? "s" : ""} generated`);
-    if (failed > 0) showToast(`✗ ${failed} book${failed !== 1 ? "s" : ""} failed — check console`, false);
+    showToast(`✓ ${generated} barcode${generated !== 1 ? "s" : ""} generated`);
+    setTimeout(() => setGenProgress(null), 3000);
+
+    // Re-fetch from DB so counts and list are accurate
+    await fetchBooks();
   }
 
   const preview = `${prefix.trim().toUpperCase() || "PVD"}-${"1".padStart(padding, "0")}`;
@@ -247,33 +254,109 @@ export default function BarcodePage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">{t("needBarcode", { count: missing.length })}</p>
-              <button
-                onClick={() => bulkGenerate(missing)}
-                disabled={genBusy}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-              >
-                {genBusy
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("generating")}</>
-                  : <><RefreshCw className="w-4 h-4" /> {t("generateAll")}</>
-                }
-              </button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">{t("needBarcode", { count: missing.length })}</p>
+              </div>
+
+              {/* Batch size selector */}
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <span className="text-xs font-medium text-gray-500 mr-1">Batch size:</span>
+                {BATCH_PRESETS.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setBatchSize(n)}
+                    disabled={genBusy}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      batchSize === n
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <span className="text-gray-300 mx-1">|</span>
+                <button
+                  onClick={() => setBatchSize(missing.length)}
+                  disabled={genBusy}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    batchSize === missing.length
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+                  }`}
+                >
+                  All ({missing.length})
+                </button>
+                <span className="text-gray-300 mx-1">|</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={missing.length}
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Math.max(1, Math.min(missing.length, parseInt(e.target.value) || 1)))}
+                  disabled={genBusy}
+                  className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+                />
+
+                <button
+                  onClick={() => bulkGenerate(missing, batchSize >= missing.length ? undefined : batchSize)}
+                  disabled={genBusy || missing.length === 0}
+                  className="ml-auto flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {genBusy
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating…</>
+                    : <><RefreshCw className="w-3.5 h-3.5" /> Generate {batchSize >= missing.length ? "All" : batchSize}</>
+                  }
+                </button>
+              </div>
             </div>
 
-            {/* Progress bar */}
+            {/* Bulk progress panel */}
             {genProgress && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>{t("generatingProgress")}</span>
-                  <span>{genProgress.done} / {genProgress.total}</span>
+              <div className={`rounded-xl border px-5 py-4 flex items-center gap-4 transition-all ${
+                genBusy
+                  ? "bg-indigo-50 border-indigo-200"
+                  : "bg-green-50 border-green-200"
+              }`}>
+                {genBusy ? (
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  {genBusy ? (
+                    <>
+                      <p className="text-sm font-semibold text-indigo-800">
+                        Generating {genProgress.total.toLocaleString()} barcodes…
+                      </p>
+                      <p className="text-xs text-indigo-500 mt-0.5">
+                        This may take a few seconds. Please wait.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-green-800">
+                        {genProgress.done.toLocaleString()} barcodes generated successfully
+                      </p>
+                      <p className="text-xs text-green-600 mt-0.5">All books now have a barcode.</p>
+                    </>
+                  )}
+                  <div className="mt-2 w-full bg-white/60 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full transition-all duration-500 ${genBusy ? "bg-indigo-400 animate-pulse w-full" : "bg-green-500 w-full"}`}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div
-                    className="bg-indigo-600 h-2 rounded-full transition-all"
-                    style={{ width: `${Math.round((genProgress.done / genProgress.total) * 100)}%` }}
-                  />
-                </div>
+                {!genBusy && (
+                  <span className="text-2xl font-black text-green-600 shrink-0">
+                    {genProgress.done.toLocaleString()}
+                  </span>
+                )}
               </div>
             )}
 
@@ -324,7 +407,7 @@ export default function BarcodePage() {
           <div className="space-y-3">
             <div className="flex justify-end">
               <Link
-                href={`/${locale}/admin/books/labels?ids=${withBarcode.map((b) => b.id).join(",")}`}
+                href={`/${locale}/admin/books/labels`}
                 className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors"
               >
                 <Printer className="w-4 h-4" /> {t("printAllLabels")}

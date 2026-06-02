@@ -46,7 +46,14 @@ export default function FinesPage() {
   const t  = useTranslations("fines");
   const tc = useTranslations("common");
 
-  const [fines,   setFines]   = useState<Fine[]>([]);
+  const [fines,       setFines]       = useState<Fine[]>([]);
+  const [total,       setTotal]       = useState(0);
+  const [totalPages,  setTotalPages]  = useState(1);
+  const [page,        setPage]        = useState(1);
+  const [totalUnpaid, setTotalUnpaid] = useState(0);
+  const [totalPaid,   setTotalPaid]   = useState(0);
+  const [waivedCount, setWaivedCount] = useState(0);
+  const PAGE_SIZE = 20;
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState<FilterStatus>("ALL");
   const [search,  setSearch]  = useState("");
@@ -79,17 +86,29 @@ export default function FinesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchFines = useCallback(async () => {
+  const fetchFines = useCallback(async (p = page) => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filter !== "ALL")     params.set("status", filter);
-    if (debouncedSearch)      params.set("search", debouncedSearch);
+    if (filter !== "ALL")  params.set("status", filter);
+    if (debouncedSearch)   params.set("search", debouncedSearch);
+    params.set("page",  String(p));
+    params.set("limit", String(PAGE_SIZE));
     const data = await fetch(`/api/fines?${params}`).then((r) => r.json());
-    setFines(Array.isArray(data) ? data : []);
+    setFines(data.fines ?? []);
+    setTotal(data.total ?? 0);
+    setTotalPages(data.totalPages ?? 1);
+    setTotalUnpaid(data.totalUnpaid ?? 0);
+    setTotalPaid(data.totalPaid ?? 0);
+    setWaivedCount(data.waivedCount ?? 0);
     setLoading(false);
+  }, [filter, debouncedSearch, page]);
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedFineIds(new Set());
   }, [filter, debouncedSearch]);
 
-  useEffect(() => { fetchFines(); setSelectedFineIds(new Set()); }, [fetchFines]);
+  useEffect(() => { fetchFines(page); }, [fetchFines, page]);
 
   // ── Mark paid ──
   async function handlePay() {
@@ -553,22 +572,17 @@ export default function FinesPage() {
     w.document.close();
   }
 
-  // Summaries
-  const totalUnpaid = fines.filter((f) => f.status === "UNPAID").reduce((s, f) => s + f.amount, 0);
-  const totalPaid   = fines.filter((f) => f.status === "PAID").reduce((s, f) => s + f.amount, 0);
-  const countWaived      = fines.filter((f) => f.status === "WAIVED").length;
   const selectedFines    = fines.filter((f) => selectedFineIds.has(f.id));
   const selectedMemberId = selectedFines.length > 0 ? selectedFines[0].member.id : null;
   const selectedTotal    = selectedFines.reduce((s, f) => s + f.amount, 0);
-  // True only when every selected fine belongs to the same member
   const selectionIsUniform = selectedFines.length > 0 &&
     selectedFines.every((f) => f.member.id === selectedMemberId);
 
   const TABS: { value: FilterStatus; label: string; count?: number }[] = [
-    { value: "ALL",    label: tc("filter") + " All" },
-    { value: "UNPAID", label: t("unpaid"),  count: fines.filter((f) => f.status === "UNPAID").length },
-    { value: "PAID",   label: t("paid"),    count: fines.filter((f) => f.status === "PAID").length },
-    { value: "WAIVED", label: t("waived"),  count: fines.filter((f) => f.status === "WAIVED").length },
+    { value: "ALL",    label: tc("filter") + " All", count: total },
+    { value: "UNPAID", label: t("unpaid") },
+    { value: "PAID",   label: t("paid")   },
+    { value: "WAIVED", label: t("waived") },
   ];
 
   return (
@@ -587,13 +601,13 @@ export default function FinesPage() {
           {totalPaid > 0 && filter !== "UNPAID" && (
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2 text-sm">
               <span className="text-green-700 font-medium">{t("paid")}: </span>
-              <span className="text-green-800 font-bold">${totalPaid.toFixed(2)}</span>
+              <span className="text-green-800 font-bold">${Number(totalPaid).toFixed(2)}</span>
             </div>
           )}
-          {countWaived > 0 && filter !== "UNPAID" && (
+          {waivedCount > 0 && filter !== "UNPAID" && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm">
               <span className="text-gray-600 font-medium">{t("waived")}: </span>
-              <span className="text-gray-700 font-bold">{countWaived}</span>
+              <span className="text-gray-700 font-bold">{waivedCount}</span>
             </div>
           )}
         </div>
@@ -764,6 +778,38 @@ export default function FinesPage() {
         )}
       </div>
 
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <span>{total} {total === 1 ? "fine" : "fines"} · page {page} of {totalPages}</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)} disabled={page === 1}
+              className="px-2 py-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed font-medium">«</button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+              className="px-3 py-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed font-medium">‹</button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+              const n = start + i;
+              return (
+                <button key={n} onClick={() => setPage(n)}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    n === page ? "bg-blue-900 text-white" : "hover:bg-gray-100"}`}>
+                  {n}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              className="px-3 py-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed font-medium">›</button>
+            <button
+              onClick={() => setPage(totalPages)} disabled={page === totalPages}
+              className="px-2 py-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed font-medium">»</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Pay modal ── */}
       {payTarget && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={() => setPayTarget(null)}>
@@ -846,16 +892,16 @@ export default function FinesPage() {
 
       {/* ── Floating combined-receipt bar ── */}
       {selectedFines.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-gray-700 text-sm">
-          <span className="font-semibold">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-950 border border-white/10 px-5 py-3 rounded-2xl shadow-2xl text-sm">
+          <span className="font-semibold text-white">
             {selectedFines.length} fine{selectedFines.length > 1 ? "s" : ""} selected
           </span>
-          <span className="text-gray-400">·</span>
+          <span className="text-white/30">·</span>
           <span className="font-bold text-green-400">${selectedTotal.toFixed(2)}</span>
 
           {selectedFines.length >= 2 && selectionIsUniform ? (
             <>
-              <span className="text-gray-500 text-xs">Combined receipt:</span>
+              <span className="text-white/50 text-xs">Combined receipt:</span>
               <button
                 onClick={() => handleCombinedPOSPrint(selectedFines, 58)}
                 className="flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
@@ -868,14 +914,14 @@ export default function FinesPage() {
               </button>
             </>
           ) : selectedFines.length === 1 ? (
-            <span className="text-gray-400 text-xs italic">Select more from same member for combined receipt</span>
+            <span className="text-white/40 text-xs italic">Select more from same member for combined receipt</span>
           ) : (
             <span className="text-amber-400 text-xs italic">Select fines from one member only</span>
           )}
 
           <button
             onClick={() => setSelectedFineIds(new Set())}
-            className="ml-1 text-gray-400 hover:text-white transition-colors text-xs">
+            className="ml-1 text-white/50 hover:text-white transition-colors text-xs font-semibold">
             ✕ Clear
           </button>
         </div>

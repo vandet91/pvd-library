@@ -35,7 +35,7 @@ export async function PATCH(
   const body   = await request.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   // Guard: prevent demoting the last remaining admin
   if (parsed.data.role && parsed.data.role !== "ADMIN") {

@@ -3,13 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
+import PublicFooter from "@/components/shared/PublicFooter";
+import FontLoader from "@/components/shared/FontLoader";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Search, BookOpen, FileText, BookMarked, Link2, Video, Music,
-  Eye, ChevronLeft, ChevronRight, Flame, Lock, X,
+  Eye, ChevronLeft, ChevronRight, Flame, Lock, X, ShoppingBag, ArrowRight, Loader2,
 } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
+import Pagination from "@/components/shared/Pagination";
 import { StarDisplay, StarInput } from "@/components/shared/StarRating";
 import { getOpacTheme } from "@/lib/opac-theme";
 import { useLibraryName } from "@/context/library-name";
@@ -58,7 +61,7 @@ function EbookCover({
   if (coverImage) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={coverImage} alt={title} className={`w-full h-full object-contain ${className}`} />
+      <img src={coverImage} alt={title} className={`w-full h-full object-cover ${className}`} />
     );
   }
 
@@ -74,7 +77,38 @@ function EbookCover({
   );
 }
 
-export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
+export default function EbooksClient({
+  opacTheme,
+  initialSaleEnabled,
+  initialAiEnabled,
+  paginationMode = "loadmore",
+  paginationLimit = 20,
+  footerEnabled = false,
+  footerShow = [],
+  footerPhone = "", footerEmail = "", footerAddress = "",
+  footerTelegram = "", footerHours = "", footerWhatsapp = "", footerWebsite = "",
+  footerDescription = "",
+  pageBg = "light" as "light" | "white" | "dark",
+  pageFont = "default",
+  pageCustomFonts = [] as {name:string;url:string}[],
+  fullWidth = false,
+}: {
+  opacTheme: string;
+  initialSaleEnabled: boolean;
+  initialAiEnabled: boolean;
+  paginationMode?: "loadmore" | "numbers";
+  paginationLimit?: number;
+  footerEnabled?: boolean;
+  footerShow?: string[];
+  footerPhone?: string; footerEmail?: string; footerAddress?: string;
+  footerTelegram?: string; footerHours?: string; footerWhatsapp?: string; footerWebsite?: string;
+  footerDescription?: string;
+  pageBg?: "light" | "white" | "dark";
+  pageFont?: string;
+  pageCustomFonts?: {name:string;url:string}[];
+  fullWidth?: boolean;
+}) {
+  const cx = fullWidth ? "w-full px-4" : "max-w-6xl mx-auto px-4";
   const t   = useTranslations("ebooks");
   const tc  = useTranslations("common");
   const to  = useTranslations("opac");
@@ -86,14 +120,22 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
   const { data: session, status } = useSession();
 
   const [ebooks,      setEbooks]      = useState<Ebook[]>([]);
-  const [featured,    setFeatured]    = useState<Ebook[]>([]);
-  const [mostViewed,  setMostViewed]  = useState<Ebook[]>([]);
-  const [query,       setQuery]       = useState("");
-  const [typeFilter,  setTypeFilter]  = useState("ALL");
-  const [loading,     setLoading]     = useState(true);
-  const [aiEnabled,   setAiEnabled]   = useState(false);
+  const [featured,        setFeatured]        = useState<Ebook[]>([]);
+  const [mostViewed,      setMostViewed]      = useState<Ebook[]>([]);
+  const [sectionsLoading, setSectionsLoading] = useState(true);
+  const [query,          setQuery]          = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [typeFilter,     setTypeFilter]     = useState("ALL");
+  const [loading,        setLoading]        = useState(true);
+  const [loadingMore,    setLoadingMore]    = useState(false);
+  const [page,           setPage]           = useState(1);
+  const [pages,          setPages]          = useState(1);
+  const [hasMore,        setHasMore]        = useState(false);
+  const [total,          setTotal]          = useState(0);
+  const [aiEnabled,      setAiEnabled]      = useState(initialAiEnabled);
+  const [saleEnabled,    setSaleEnabled]    = useState(initialSaleEnabled);
   // Initialise with the server-supplied theme key — no flash possible
-  const [theme,       setTheme]       = useState(getOpacTheme(opacTheme));
+  const [theme,          setTheme]          = useState(getOpacTheme(opacTheme));
 
   // ── Rating modal state ──
   const [ratingTarget,  setRatingTarget]  = useState<Ebook | null>(null);
@@ -107,38 +149,56 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
   const autoplay = useRef(Autoplay({ delay: 4500, stopOnInteraction: false }));
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [autoplay.current]);
 
-  // Check AI + theme settings (also live-updates theme if admin changes it)
+  // Keep in sync if settings changed since the page was SSR'd
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.ok ? r.json() : {})
       .then((d: Record<string, string>) => {
-        setAiEnabled(d.AI_SEARCH_MEMBER !== "false");
-        setTheme(getOpacTheme(d.OPAC_THEME));
+        if ("AI_SEARCH_MEMBER"  in d) setAiEnabled(d.AI_SEARCH_MEMBER !== "false");
+        if ("BOOK_SALE_ENABLED" in d) setSaleEnabled(d.BOOK_SALE_ENABLED === "true");
+        if ("OPAC_THEME"        in d) setTheme(getOpacTheme(d.OPAC_THEME));
       })
       .catch(() => {});
   }, []);
 
   // Load featured (newest) and most viewed once
   useEffect(() => {
-    fetch("/api/ebooks?sort=newest&limit=6")
-      .then((r) => r.json())
-      .then((data: Ebook[]) => setFeatured(data.slice(0, 6)));
-    fetch("/api/ebooks?sort=views&limit=10")
-      .then((r) => r.json())
-      .then((data: Ebook[]) => setMostViewed(data.slice(0, 10)));
+    Promise.all([
+      fetch("/api/ebooks?sort=newest&limit=6").then((r) => r.json()),
+      fetch("/api/ebooks?sort=views&limit=10").then((r) => r.json()),
+    ]).then(([newest, viewed]: [Ebook[], Ebook[]]) => {
+      setFeatured(newest.slice(0, 6));
+      setMostViewed(viewed.slice(0, 10));
+      setSectionsLoading(false);
+    }).catch(() => setSectionsLoading(false));
   }, []);
 
-  const fetchEbooks = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (query)               params.set("q", query);
-    if (typeFilter !== "ALL") params.set("type", typeFilter);
-    const data = await fetch(`/api/ebooks?${params}`).then((r) => r.json());
-    setEbooks(data);
-    setLoading(false);
-  }, [query, typeFilter]);
+  // Debounce the text query — type filter changes stay instant
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(id);
+  }, [query]);
 
-  useEffect(() => { fetchEbooks(); }, [fetchEbooks]);
+  // Reset on filter/mode change
+  useEffect(() => { setPage(1); setEbooks([]); }, [debouncedQuery, typeFilter, paginationMode]);
+
+  const fetchEbooks = useCallback(async (pageToLoad: number, append: boolean) => {
+    if (append) setLoadingMore(true); else setLoading(true);
+    const params = new URLSearchParams();
+    if (debouncedQuery)       params.set("q", debouncedQuery);
+    if (typeFilter !== "ALL") params.set("type", typeFilter);
+    params.set("page",  String(pageToLoad));
+    params.set("limit", String(paginationLimit));
+    const data = await fetch(`/api/ebooks?${params}`).then((r) => r.json());
+    const newItems: Ebook[] = Array.isArray(data) ? data : (data.ebooks ?? []);
+    setEbooks((prev) => append ? [...prev, ...newItems] : newItems);
+    setPages(data.pages ?? 1);
+    setHasMore(pageToLoad < (data.pages ?? 1));
+    setTotal(data.total ?? 0);
+    if (append) setLoadingMore(false); else setLoading(false);
+  }, [debouncedQuery, typeFilter, paginationLimit]);
+
+  useEffect(() => { fetchEbooks(1, false); }, [fetchEbooks]);
 
   // Fetch ratings when rating modal opens; clear on close
   useEffect(() => {
@@ -198,15 +258,17 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
   }
 
   const showHero = !query && typeFilter === "ALL";
-  const displayFeatured = featured.length > 0 ? featured : ebooks.slice(0, 6);
+  const displayFeatured = featured.length > 0 ? featured : (sectionsLoading ? [] : ebooks.slice(0, 6));
   const tLabel = (key: string) => t(key as Parameters<typeof t>[0]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
+    <div className={`min-h-screen opac-font-root ${pageBg === "white" ? "bg-white" : pageBg === "dark" ? "bg-slate-950 page-dark" : "bg-gray-200"}`}>
+      <FontLoader font={pageFont} customFonts={pageCustomFonts} />
 
       {/* ── Sticky top nav ──────────────────────────────────────────────── */}
-      <nav className={`sticky top-0 z-30 ${theme.navBg} backdrop-blur border-b border-white/10`}>
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+      <nav className="sticky top-0 z-30 backdrop-blur border-b border-white/10" style={{ background: 'var(--m-nav-bg)' }}>
+        <div className={`${cx} h-14 flex items-center justify-between gap-4`}>
 
           {/* Brand + page tabs */}
           <div className="flex items-center gap-1">
@@ -230,6 +292,14 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
               <BookMarked className={`w-3.5 h-3.5 ${theme.navBrandIcon}`} />
               {to("eLibrary")}
             </span>
+
+            {saleEnabled && (
+              <Link href={`/${locale}/shop`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap">
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{to("shop")}</span>
+              </Link>
+            )}
           </div>
 
           {/* User actions */}
@@ -238,7 +308,7 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <header className={`${theme.heroBg} text-white px-4 py-5 overflow-hidden relative`}>
+      <header className="text-white px-4 py-8 overflow-hidden relative" style={{ background: 'var(--m-hero-bg)' }}>
 
         {/* Subtle dot-grid background */}
         <div className="absolute inset-0 pointer-events-none select-none"
@@ -247,250 +317,420 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
         <div className={`absolute -top-10 right-1/3 w-80 h-80 ${theme.heroGlow1} rounded-full blur-3xl pointer-events-none`} />
         <div className={`absolute bottom-0 right-0 w-64 h-64 ${theme.heroGlow2} rounded-full blur-3xl pointer-events-none`} />
 
-        <div className="max-w-6xl mx-auto relative">
+        <div className={`${fullWidth ? "w-full" : "max-w-6xl mx-auto"} relative`}>
           <div className="flex items-center gap-6">
 
             {/* ── Left: text + search ── */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner">
-                  <BookMarked className="w-5 h-5" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold leading-tight">{t("title")}</h1>
-                  <p className="text-white/55 text-sm">{t("subtitle")}</p>
-                </div>
-              </div>
-              <div className="flex gap-2 max-w-2xl">
-                <div className="flex-1 flex bg-white rounded-xl overflow-hidden shadow-lg ring-1 ring-white/20">
-                  <div className="relative flex-1 flex items-center">
-                    <Search className="absolute left-4 w-4 h-4 text-gray-400 pointer-events-none" />
+              <h1 className="text-2xl sm:text-3xl font-bold leading-tight mb-1">{t("title")}</h1>
+              <p className="text-white/60 text-sm mb-5">{t("subtitle")}</p>
+
+              {/* Auto-search bar */}
+              <div className="max-w-2xl">
+                <div className="flex items-stretch bg-white rounded-2xl shadow-xl ring-2 ring-white/15 focus-within:ring-white/35 transition-all duration-200 overflow-hidden">
+                  {/* Input section */}
+                  <div className="relative flex-1 min-w-0 flex items-center">
+                    <div className="absolute left-4 pointer-events-none text-gray-400">
+                      {loading
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Search className="w-4 h-4" />
+                      }
+                    </div>
                     <input
                       type="text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && fetchEbooks()}
+                      onKeyDown={(e) => { if (e.key === "Enter") setDebouncedQuery(query); }}
                       placeholder={t("searchPlaceholder")}
-                      className="w-full pl-11 pr-4 py-3 text-gray-900 text-sm focus:outline-none bg-transparent"
+                      className="w-full pl-11 pr-8 py-3.5 text-gray-900 text-sm focus:outline-none bg-transparent"
                     />
+                    {query && (
+                      <button
+                        onClick={() => { setQuery(""); setDebouncedQuery(""); }}
+                        className="absolute right-2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                    className="border-l border-gray-100 px-3 py-2.5 text-sm text-gray-600 bg-white focus:outline-none cursor-pointer min-w-[110px] max-w-[140px]"
-                  >
-                    {TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type === "ALL" ? t("allTypes") : tLabel(TYPE_META[type]?.labelKey ?? type)}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Type select */}
+                  <div className="border-l border-gray-200 flex-shrink-0">
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className="h-full px-3 text-sm text-gray-600 bg-white focus:outline-none cursor-pointer w-[120px]"
+                    >
+                      {TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type === "ALL" ? t("allTypes") : tLabel(TYPE_META[type]?.labelKey ?? type)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <button
-                  onClick={fetchEbooks}
-                  className={`px-5 py-3 ${theme.btnPrimary} text-white rounded-xl font-semibold text-sm flex-shrink-0 flex items-center gap-2 hover:opacity-90 transition-opacity shadow-lg`}
-                >
-                  <Search className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{tc("search")}</span>
-                </button>
               </div>
             </div>
 
-            {/* ── Right: decorative illustration ── */}
-            <div className="hidden lg:block flex-shrink-0 select-none pointer-events-none" aria-hidden>
-              <svg width="380" height="160" viewBox="0 0 460 220" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="230" cy="160" r="120" fill="white" fillOpacity="0.02"/>
-                <circle cx="350" cy="90"  r="60"  fill="#818cf8" fillOpacity="0.05"/>
-                <circle cx="90"  cy="130" r="50"  fill="#60a5fa" fillOpacity="0.05"/>
-                <line x1="22" y1="190" x2="22" y2="90"  stroke="white" strokeOpacity="0.28" strokeWidth="2.5" strokeLinecap="round"/>
-                <line x1="22" y1="90"  x2="44" y2="76"  stroke="white" strokeOpacity="0.28" strokeWidth="2"   strokeLinecap="round"/>
-                <path d="M 30,76 L 58,76 L 52,96 L 36,96 Z" fill="#fcd34d" fillOpacity="0.3" stroke="#fcd34d" strokeOpacity="0.45" strokeWidth="1.2"/>
-                <ellipse cx="44" cy="98"  rx="14" ry="5"  fill="#fcd34d" fillOpacity="0.15"/>
-                <ellipse cx="22" cy="192" rx="12" ry="4"  fill="white" fillOpacity="0.15" stroke="white" strokeOpacity="0.2" strokeWidth="1"/>
-                <rect x="46" y="190" width="128" height="5" rx="2" fill="white" fillOpacity="0.22"/>
-                <rect x="50"  y="152" width="14" height="38" rx="2" fill="#ef4444" fillOpacity="0.75"/><rect x="50"  y="152" width="4"  height="38" rx="1" fill="#fca5a5" fillOpacity="0.8"/>
-                <rect x="66"  y="158" width="12" height="32" rx="2" fill="#3b82f6" fillOpacity="0.75"/><rect x="66"  y="158" width="4"  height="32" rx="1" fill="#93c5fd" fillOpacity="0.8"/>
-                <rect x="80"  y="155" width="13" height="35" rx="2" fill="#10b981" fillOpacity="0.75"/><rect x="80"  y="155" width="4"  height="35" rx="1" fill="#6ee7b7" fillOpacity="0.8"/>
-                <rect x="95"  y="162" width="11" height="28" rx="2" fill="#f59e0b" fillOpacity="0.75"/><rect x="95"  y="162" width="4"  height="28" rx="1" fill="#fcd34d" fillOpacity="0.8"/>
-                <rect x="108" y="154" width="14" height="36" rx="2" fill="#8b5cf6" fillOpacity="0.75"/><rect x="108" y="154" width="4"  height="36" rx="1" fill="#c4b5fd" fillOpacity="0.8"/>
-                <rect x="124" y="165" width="10" height="25" rx="2" fill="#ec4899" fillOpacity="0.75"/>
-                <rect x="136" y="157" width="13" height="33" rx="2" fill="#14b8a6" fillOpacity="0.75"/>
-                <rect x="46" y="144" width="128" height="4" rx="2" fill="white" fillOpacity="0.16"/>
-                <rect x="50"  y="112" width="10" height="30" rx="2" fill="#6366f1" fillOpacity="0.7"/>
-                <rect x="62"  y="117" width="9"  height="25" rx="2" fill="#22c55e" fillOpacity="0.7"/>
-                <rect x="73"  y="114" width="11" height="28" rx="2" fill="#e879f9" fillOpacity="0.7"/>
-                <rect x="86"  y="119" width="8"  height="23" rx="2" fill="#0ea5e9" fillOpacity="0.7"/>
-                <rect x="96"  y="113" width="12" height="29" rx="2" fill="#fb923c" fillOpacity="0.7"/>
-                <rect x="110" y="116" width="9"  height="26" rx="2" fill="#a3e635" fillOpacity="0.6"/>
-                <rect x="121" y="112" width="11" height="30" rx="2" fill="#f43f5e" fillOpacity="0.7"/>
-                <ellipse cx="271" cy="210" rx="68" ry="7" fill="white" fillOpacity="0.05"/>
-                <path d="M 198,200 C 193,96 218,62 248,50 L 266,50 L 266,200 Z" fill="white" fillOpacity="0.13" stroke="white" strokeOpacity="0.28" strokeWidth="1.2"/>
-                <path d="M 344,200 C 349,96 324,62 294,50 L 276,50 L 276,200 Z" fill="white" fillOpacity="0.09" stroke="white" strokeOpacity="0.28" strokeWidth="1.2"/>
-                <line x1="271" y1="50" x2="271" y2="200" stroke="white" strokeOpacity="0.4" strokeWidth="2" strokeLinecap="round"/>
-                <line x1="212" y1="80"  x2="260" y2="76"  stroke="white" strokeOpacity="0.17" strokeWidth="1"/>
-                <line x1="210" y1="95"  x2="260" y2="91"  stroke="white" strokeOpacity="0.17" strokeWidth="1"/>
-                <line x1="207" y1="110" x2="260" y2="106" stroke="white" strokeOpacity="0.17" strokeWidth="1"/>
-                <line x1="282" y1="76"  x2="330" y2="80"  stroke="white" strokeOpacity="0.17" strokeWidth="1"/>
-                <line x1="282" y1="91"  x2="332" y2="95"  stroke="white" strokeOpacity="0.17" strokeWidth="1"/>
-                <rect x="285" y="73"  width="38" height="6"  rx="3" fill="white" fillOpacity="0.22"/>
-                <g>
-                  <path d="M 320,28 L 337,28 L 337,70 L 328.5,61 L 320,70 Z" fill="#f59e0b" fillOpacity="0.78" stroke="#fcd34d" strokeOpacity="0.55" strokeWidth="1.2"/>
-                  <animateTransform attributeName="transform" type="translate" values="0,0; 0,-7; 0,0" dur="2.8s" repeatCount="indefinite" calcMode="ease-in-out"/>
-                </g>
-                <path d="M 390,46 L 416,36 L 442,46 L 416,56 Z" fill="white" fillOpacity="0.22" stroke="white" strokeOpacity="0.3" strokeWidth="1"/>
-                <circle cx="416" cy="46" r="4" fill="white" fillOpacity="0.3"/>
-                <g opacity="0.55">
-                  <circle cx="424" cy="152" r="32" stroke="white" strokeOpacity="0.28" strokeWidth="1.4" fill="white" fillOpacity="0.04"/>
-                  <ellipse cx="424" cy="152" rx="32" ry="11" stroke="white" strokeOpacity="0.2" strokeWidth="1" fill="none"/>
-                  <line x1="424" y1="120" x2="424" y2="184" stroke="white" strokeOpacity="0.2" strokeWidth="1"/>
-                  <line x1="424" y1="184" x2="424" y2="196" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" strokeLinecap="round"/>
-                </g>
-                <path d="M 174,22 L 177,12 L 180,22 L 190,25 L 180,28 L 177,38 L 174,28 L 164,25 Z" fill="#fcd34d" fillOpacity="0.7">
-                  <animate attributeName="opacity" values="0.7;1;0.7" dur="2.2s" repeatCount="indefinite"/>
-                </path>
-                <path d="M 352,80 L 354,73 L 356,80 L 363,82 L 356,84 L 354,91 L 352,84 L 345,82 Z" fill="white" fillOpacity="0.5">
-                  <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1.9s" repeatCount="indefinite" begin="0.5s"/>
-                </path>
-                <circle cx="8"   cy="60"  r="2.5" fill="#818cf8" fillOpacity="0.5"/>
-                <circle cx="186" cy="212" r="2"   fill="white"   fillOpacity="0.3"/>
-                <circle cx="248" cy="32"  r="1.5" fill="#fcd34d" fillOpacity="0.45"/>
-              </svg>
-            </div>
+            {/* ── Right: bookstore card (when sale on) or decorative SVG ── */}
+            {saleEnabled ? (
+              <Link
+                href={`/${locale}/shop`}
+                className="hidden lg:block flex-shrink-0 select-none group"
+                style={{ width: 270 }}
+              >
+                <div className="rounded-2xl overflow-hidden shadow-2xl border border-white/10 group-hover:-translate-y-1.5 group-hover:shadow-[0_24px_64px_rgba(0,0,0,0.55)] transition-all duration-300">
+                  {/* Dark navy header */}
+                  <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#16142e" }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(255,255,255,0.12)" }}>
+                        <BookOpen className="w-3.5 h-3.5 text-white" />
+                      </div>
+                      <span className="font-black text-white text-sm tracking-tight">BOOK</span>
+                      <span className="text-white/40 font-light text-sm tracking-[0.18em]">store</span>
+                    </div>
+                    <span className="text-white/35 text-[11px]">Browse &amp; Buy</span>
+                  </div>
+                  {/* Warm cream bookshelf */}
+                  <div className="px-3 pt-4 pb-0" style={{ background: "#f5ead5" }}>
+                    <div className="flex items-end gap-[3px]">
+                      {[
+                        { w: 14, h: 52, c: "#8b5e3c" }, { w: 13, h: 44, c: "#5c3d2e" },
+                        { w: 16, h: 58, c: "#3b4a6b" }, { w: 13, h: 48, c: "#7a5c3b" },
+                        { w: 17, h: 62, c: "#c4a882" }, { w: 12, h: 42, c: "#4a3728" },
+                        { w: 14, h: 56, c: "#2d3f5c" }, { w: 16, h: 47, c: "#9b7c55" },
+                        { w: 13, h: 60, c: "#3d2b1e" }, { w: 12, h: 45, c: "#8a7065" },
+                        { w: 15, h: 53, c: "#1e3a5f" }, { w: 13, h: 50, c: "#7c6550" },
+                        { w: 16, h: 57, c: "#c8b89a" }, { w: 12, h: 41, c: "#5c4535" },
+                      ].map((book, i) => (
+                        <div key={i} className="rounded-t-[2px] flex-shrink-0"
+                          style={{ width: book.w, height: book.h, backgroundColor: book.c }} />
+                      ))}
+                      {/* Plant + stacked books */}
+                      <div className="ml-2 flex-shrink-0 flex flex-col items-center">
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                          <ellipse cx="10" cy="14" rx="7" ry="5" fill="#4ade80" transform="rotate(-25 10 14)" />
+                          <ellipse cx="18" cy="12" rx="7" ry="5" fill="#22c55e" transform="rotate(20 18 12)" />
+                          <ellipse cx="14" cy="16" rx="5" ry="3.5" fill="#16a34a" />
+                          <rect x="12" y="19" width="4" height="7" rx="2" fill="#78350f" />
+                          <rect x="8" y="25" width="12" height="2.5" rx="1.25" fill="#92400e" />
+                        </svg>
+                        <div className="w-10 h-2.5 rounded-sm mb-0.5" style={{ backgroundColor: "#8b5e3c" }} />
+                        <div className="w-9 h-2.5 rounded-sm" style={{ backgroundColor: "#c4a882" }} />
+                      </div>
+                    </div>
+                    {/* Wooden shelf board */}
+                    <div className="h-3 w-full rounded-sm" style={{ background: "#9b6b3e", boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }} />
+                  </div>
+                  {/* Cream CTA footer */}
+                  <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#f5ead5" }}>
+                    <span className="text-xs font-medium" style={{ color: "#5c4535" }}>Books for purchase</span>
+                    <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-gray-900 group-hover:gap-1.5 transition-all"
+                      style={{ background: "#f5b731" }}>
+                      Visit Store <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ) : null}
 
           </div>
         </div>
       </header>
 
       {/* ── Featured carousel ────────────────────────────────────────────── */}
-      {showHero && displayFeatured.length > 0 && (
-        <section className="max-w-6xl mx-auto px-4 py-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <BookMarked className={`w-4 h-4 ${theme.sectionIcon}`} />
-              {t("featured")}
-            </h2>
-            <div className="flex gap-2">
+      {showHero && (sectionsLoading || displayFeatured.length > 0) && (
+        <section className={`${cx} pt-10 pb-2 w-full`}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600
+                flex items-center justify-center shadow-md shadow-blue-200 flex-shrink-0">
+                <BookMarked className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-gray-900 leading-tight tracking-tight">
+                  {t("featured")}
+                </h2>
+                <p className="text-sm text-gray-400 mt-0.5">{t("featuredSubtitle", { count: displayFeatured.length })}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => document.getElementById("ebook-catalog")?.scrollIntoView({ behavior: "smooth" })}
+                className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600
+                  hover:text-gray-900 px-4 py-2 rounded-xl border border-gray-200
+                  hover:border-gray-300 hover:bg-gray-50 transition-all duration-150">
+                {t("viewAll")} <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <div className="flex items-center gap-1">
               <button onClick={() => emblaApi?.scrollPrev()}
-                className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                <ChevronLeft className="w-3.5 h-3.5" />
+                className="w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-sm
+                  flex items-center justify-center text-gray-600
+                  hover:bg-gray-900 hover:text-white hover:border-gray-900 hover:shadow-md
+                  active:scale-95 transition-all duration-150">
+                <ChevronLeft className="w-4 h-4" />
               </button>
               <button onClick={() => emblaApi?.scrollNext()}
-                className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                <ChevronRight className="w-3.5 h-3.5" />
+                className="w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-sm
+                  flex items-center justify-center text-gray-600
+                  hover:bg-gray-900 hover:text-white hover:border-gray-900 hover:shadow-md
+                  active:scale-95 transition-all duration-150">
+                <ChevronRight className="w-4 h-4" />
               </button>
+              </div>
             </div>
           </div>
 
           {/* Embla carousel — portrait cards */}
-          <div className="overflow-hidden" ref={emblaRef}>
-            <div className="flex gap-3">
+          {sectionsLoading ? (
+            <div className="flex gap-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex-shrink-0 w-[calc(50%-10px)] sm:w-[calc(33.333%-14px)] md:w-[calc(25%-15px)] lg:w-[calc(20%-16px)] animate-pulse flex flex-col">
+                  <div className="w-full aspect-[2/3] bg-gray-200 rounded-2xl flex-shrink-0" />
+                  <div className="mt-3 h-[56px]">
+                    <div className="h-3.5 bg-gray-200 rounded-full w-4/5 mb-1.5" />
+                    <div className="h-3 bg-gray-100 rounded-full w-3/5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+          <div
+            ref={emblaRef}
+            className="overflow-hidden py-3 -my-3"
+          >
+            <div className="flex -ml-5">
               {displayFeatured.map((ebook) => {
                 const meta = TYPE_META[ebook.ebookType];
                 return (
                   <Link key={ebook.id} href={`/${locale}/ebooks/${ebook.id}`}
-                    className="flex-[0_0_130px] min-w-0 group">
-                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                      {/* Portrait cover */}
-                      <div className="aspect-[2/3] relative overflow-hidden bg-gray-100">
-                        <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
-                        {/* Type badge — icon only */}
-                        {meta && (
-                          <span className={`absolute top-1.5 left-1.5 inline-flex items-center justify-center ${meta.bg} ${meta.color} p-1 rounded-full shadow-sm [&_svg]:w-3 [&_svg]:h-3`}>
-                            {meta.icon}
-                          </span>
-                        )}
-                        {/* Lock + views */}
-                        <div className="absolute top-1.5 right-1.5 flex flex-col items-end gap-1">
-                          {!ebook.isPublic && (
-                            <span className="inline-flex items-center bg-amber-500 text-white p-0.5 rounded-full shadow-sm">
-                              <Lock className="w-2.5 h-2.5" />
-                            </span>
-                          )}
-                          <span className="inline-flex items-center gap-0.5 text-[10px] bg-black/40 text-white px-1.5 py-0.5 rounded-full">
-                            <Eye className="w-2.5 h-2.5" />{ebook.views}
+                    className={`flex-[0_0_50%] sm:flex-[0_0_33.333%] md:flex-[0_0_25%] lg:flex-[0_0_20%] ${fullWidth ? "lg:flex-[0_0_16.666%] xl:flex-[0_0_14.285%] 2xl:flex-[0_0_11.111%]" : ""} min-w-0 pl-5 flex flex-col group`}>
+                    <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden
+                      shadow-[0_4px_16px_rgba(0,0,0,0.12)]
+                      group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
+                      transition-all duration-300 bg-gray-100 flex-shrink-0 relative">
+                      <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
+                      {/* NEW badge */}
+                      <div className="absolute top-2.5 left-2.5 bg-blue-500 text-white
+                        text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wide uppercase shadow-sm">
+                        NEW
+                      </div>
+                      {/* Type badge */}
+                      {meta && (
+                        <span className={`absolute top-2.5 right-2.5 inline-flex items-center justify-center ${meta.bg} ${meta.color} p-1 rounded-full shadow-sm [&_svg]:w-3 [&_svg]:h-3`}>
+                          {meta.icon}
+                        </span>
+                      )}
+                      {/* Lock */}
+                      {!ebook.isPublic && (
+                        <div className="absolute bottom-2.5 right-2.5">
+                          <span className="inline-flex items-center bg-amber-500 text-white p-0.5 rounded-full shadow">
+                            <Lock className="w-2.5 h-2.5" />
                           </span>
                         </div>
+                      )}
+                      {/* Views */}
+                      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-0.5
+                        bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
+                        <Eye className="w-3 h-3 text-white/70" />
+                        <span className="text-xs font-bold">{ebook.views}</span>
                       </div>
-                      {/* Info */}
-                      <div className="p-2">
-                        <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug">
-                          {locale === "km" && ebook.titleKm ? ebook.titleKm : ebook.title}
-                        </p>
-                        {ebook.author && (
-                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">{ebook.author.name}</p>
-                        )}
-                      </div>
+                    </div>
+                    <div className="mt-3 h-[56px] overflow-hidden">
+                      <p className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug">
+                        {locale === "km" && ebook.titleKm ? ebook.titleKm : ebook.title}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate mt-0.5">{ebook.author?.name || " "}</p>
                     </div>
                   </Link>
                 );
               })}
             </div>
           </div>
+          )}
         </section>
       )}
 
-      {/* ── Most viewed strip ─────────────────────────────────────────────── */}
-      {showHero && mostViewed.length > 0 && (
-        <section className="max-w-6xl mx-auto px-4 pb-6">
-          <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <Flame className="w-4 h-4 text-orange-500" />
-            {t("mostViewed")}
-          </h2>
-          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
-            {mostViewed.map((ebook) => {
+      {/* ── Most viewed ───────────────────────────────────────────────────── */}
+      {showHero && (sectionsLoading || mostViewed.length > 0) && (
+        <section className={`${cx} pt-8 pb-2 w-full`}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-400 to-red-500
+                flex items-center justify-center shadow-md shadow-orange-200 flex-shrink-0">
+                <Flame className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-gray-900 leading-tight tracking-tight">
+                  {t("mostViewed")}
+                </h2>
+                <p className="text-sm text-gray-400 mt-0.5">{t("mostViewedSubtitle")}</p>
+              </div>
+            </div>
+          </div>
+
+          {sectionsLoading ? (
+            <div className="flex gap-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex-shrink-0 w-[calc(50%-10px)] sm:w-[calc(33.333%-14px)] md:w-[calc(25%-15px)] lg:w-[calc(20%-16px)] animate-pulse flex flex-col">
+                  <div className="w-full aspect-[2/3] bg-gray-200 rounded-2xl flex-shrink-0" />
+                  <div className="mt-3 h-[56px]">
+                    <div className="h-3.5 bg-gray-200 rounded-full w-4/5 mb-1.5" />
+                    <div className="h-3 bg-gray-100 rounded-full w-3/5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+          <div className="flex gap-5 overflow-x-auto pt-3 -mt-3 pb-4 scrollbar-hide">
+            {mostViewed.map((ebook, idx) => {
               const meta = TYPE_META[ebook.ebookType];
               return (
                 <Link key={ebook.id} href={`/${locale}/ebooks/${ebook.id}`}
-                  className="flex-shrink-0 w-[88px] group">
-                  <div className="aspect-[2/3] rounded-lg overflow-hidden relative bg-gray-100 shadow-sm group-hover:shadow-md transition-shadow">
+                  className={`flex-shrink-0 w-[calc(50%-10px)] sm:w-[calc(33.333%-14px)] md:w-[calc(25%-15px)] lg:w-[calc(20%-16px)] ${fullWidth ? "lg:w-[calc(16.666%-17px)] xl:w-[calc(14.285%-17px)] 2xl:w-[calc(11.111%-18px)]" : ""} group flex flex-col`}>
+                  <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden relative
+                    shadow-[0_4px_16px_rgba(0,0,0,0.12)]
+                    group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
+                    transition-all duration-300 bg-gray-100 flex-shrink-0">
                     <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
-                    {/* Type icon badge */}
+                    {/* Rank badge */}
+                    <div className={`absolute top-2.5 left-2.5 w-7 h-7 rounded-lg flex items-center justify-center
+                      text-xs font-extrabold shadow-md border border-white/30
+                      ${idx === 0 ? "bg-yellow-400 text-gray-900"
+                        : idx === 1 ? "bg-gray-300 text-gray-700"
+                        : idx === 2 ? "bg-amber-600 text-white"
+                        : "bg-black/60 backdrop-blur-sm text-white"}`}>
+                      {idx + 1}
+                    </div>
+                    {/* Type badge */}
                     {meta && (
-                      <span className={`absolute top-1 left-1 inline-flex items-center ${meta.bg} ${meta.color} p-0.5 rounded-full shadow-sm`}>
-                        <span className="[&_svg]:w-2.5 [&_svg]:h-2.5">{meta.icon}</span>
-                      </span>
-                    )}
-                    {!ebook.isPublic && (
-                      <span className="absolute top-1 right-1 inline-flex bg-amber-500 text-white p-0.5 rounded-full">
-                        <Lock className="w-2.5 h-2.5" />
+                      <span className={`absolute top-2.5 right-2.5 inline-flex items-center justify-center ${meta.bg} ${meta.color} p-1 rounded-full shadow-sm [&_svg]:w-3 [&_svg]:h-3`}>
+                        {meta.icon}
                       </span>
                     )}
                     {/* Views */}
-                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1 py-1 flex items-center gap-0.5">
-                      <Eye className="w-2.5 h-2.5 text-white/70" />
-                      <span className="text-[10px] text-white/80">{ebook.views}</span>
+                    <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1
+                      bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
+                      <Eye className="w-3 h-3 text-white/70" />
+                      <span className="text-xs font-bold">{ebook.views}</span>
                     </div>
+                    {!ebook.isPublic && (
+                      <div className="absolute bottom-2.5 right-2.5">
+                        <span className="inline-flex items-center bg-amber-500 text-white p-0.5 rounded-full shadow">
+                          <Lock className="w-2.5 h-2.5" />
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-[10px] text-gray-600 mt-1 line-clamp-2 leading-snug font-medium px-0.5">
-                    {locale === "km" && ebook.titleKm ? ebook.titleKm : ebook.title}
-                  </p>
+                  <div className="mt-3 h-[56px] overflow-hidden">
+                    <p className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug">
+                      {locale === "km" && ebook.titleKm ? ebook.titleKm : ebook.title}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{ebook.author?.name || " "}</p>
+                  </div>
                 </Link>
               );
             })}
           </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Bookstore Banner (hidden on lg — shown in hero right panel there) ── */}
+      {showHero && saleEnabled && (
+        <section className={`${cx} pt-4 pb-2 w-full lg:hidden`}>
+          <Link href={`/${locale}/shop`} className="block group">
+            <div className="rounded-2xl overflow-hidden shadow-md hover:shadow-xl group-hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">
+              {/* Dark navy header */}
+              <div className="flex items-center justify-between px-5 py-3" style={{ background: "#16142e" }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.12)" }}>
+                    <BookOpen className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="font-black text-white text-base tracking-tight">BOOK</span>
+                  <span className="text-white/40 font-light text-base tracking-[0.18em]">store</span>
+                </div>
+                <span className="text-white/35 text-xs">Browse &amp; Buy</span>
+              </div>
+              {/* Warm cream bookshelf */}
+              <div className="px-4 pt-5 pb-0" style={{ background: "#f5ead5" }}>
+                <div className="flex items-end gap-[3px]">
+                  {[
+                    { w: 15, h: 54, c: "#8b5e3c" }, { w: 13, h: 46, c: "#5c3d2e" },
+                    { w: 17, h: 60, c: "#3b4a6b" }, { w: 14, h: 50, c: "#7a5c3b" },
+                    { w: 18, h: 65, c: "#c4a882" }, { w: 13, h: 44, c: "#4a3728" },
+                    { w: 15, h: 58, c: "#2d3f5c" }, { w: 17, h: 49, c: "#9b7c55" },
+                    { w: 14, h: 62, c: "#3d2b1e" }, { w: 13, h: 47, c: "#8a7065" },
+                    { w: 16, h: 55, c: "#1e3a5f" }, { w: 14, h: 52, c: "#7c6550" },
+                    { w: 17, h: 59, c: "#c8b89a" }, { w: 13, h: 43, c: "#5c4535" },
+                    { w: 15, h: 56, c: "#3b5c8a" }, { w: 14, h: 48, c: "#6b4c35" },
+                  ].map((book, i) => (
+                    <div key={i} className="rounded-t-[2px] flex-shrink-0"
+                      style={{ width: book.w, height: book.h, backgroundColor: book.c }} />
+                  ))}
+                  <div className="ml-auto flex-shrink-0 flex flex-col items-center">
+                    <svg width="34" height="34" viewBox="0 0 28 28" fill="none">
+                      <ellipse cx="10" cy="14" rx="7" ry="5" fill="#4ade80" transform="rotate(-25 10 14)" />
+                      <ellipse cx="18" cy="12" rx="7" ry="5" fill="#22c55e" transform="rotate(20 18 12)" />
+                      <ellipse cx="14" cy="16" rx="5" ry="3.5" fill="#16a34a" />
+                      <rect x="12" y="19" width="4" height="7" rx="2" fill="#78350f" />
+                      <rect x="8" y="25" width="12" height="2.5" rx="1.25" fill="#92400e" />
+                    </svg>
+                    <div className="w-12 h-3 rounded-sm mb-0.5" style={{ backgroundColor: "#8b5e3c" }} />
+                    <div className="w-10 h-3 rounded-sm" style={{ backgroundColor: "#c4a882" }} />
+                  </div>
+                </div>
+                <div className="h-3.5 w-full rounded-sm" style={{ background: "#9b6b3e", boxShadow: "0 2px 8px rgba(0,0,0,0.28)" }} />
+              </div>
+              {/* Cream CTA footer */}
+              <div className="flex items-center justify-between px-5 py-3" style={{ background: "#f5ead5" }}>
+                <span className="text-sm font-medium" style={{ color: "#5c4535" }}>Books available for purchase</span>
+                <span className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-gray-900 group-hover:gap-2 transition-all"
+                  style={{ background: "#f5b731" }}>
+                  Visit Store <ArrowRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+            </div>
+          </Link>
         </section>
       )}
 
       {/* ── Main catalog ──────────────────────────────────────────────────── */}
-      <main className="max-w-6xl mx-auto px-4 py-6 min-h-[60vh]">
+      <main id="ebook-catalog" className={`${cx} py-6 min-h-[60vh]`}>
+
+        {/* Type filter pills */}
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          {TYPES.map((type) => (
+            <button
+              key={type}
+              onClick={() => setTypeFilter(type)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150
+                ${typeFilter === type
+                  ? `${theme.filterActive} text-white border-transparent shadow-sm`
+                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"}`}
+            >
+              {type !== "ALL" && TYPE_META[type] && (
+                <span className="[&_svg]:w-3 [&_svg]:h-3">{TYPE_META[type].icon}</span>
+              )}
+              {type === "ALL" ? t("allTypes") : tLabel(TYPE_META[type]?.labelKey ?? type)}
+            </button>
+          ))}
+        </div>
 
         {/* Result count */}
         <div className="flex items-center justify-between mb-5">
           <p className="text-sm text-gray-500">
-            {ebooks.length} {tc("total").toLowerCase()}
-            {typeFilter !== "ALL" && (
-              <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${theme.filterActive} text-white`}>
-                {tLabel(TYPE_META[typeFilter]?.labelKey ?? typeFilter)}
-                <button onClick={() => setTypeFilter("ALL")} className="opacity-70 hover:opacity-100 ml-0.5">×</button>
-              </span>
-            )}
+            {total || ebooks.length} {tc("total").toLowerCase()}
           </p>
         </div>
 
         {/* Grid */}
         {loading ? (
           /* Skeleton — portrait cards */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 ${fullWidth ? "xl:grid-cols-6 2xl:grid-cols-8" : ""}`}>
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="animate-pulse">
                 <div className="aspect-[2/3] rounded-xl bg-gray-200 mb-2" />
@@ -505,7 +745,7 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
             <p className="text-gray-400 text-sm">{t("noEbooks")}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 ${fullWidth ? "xl:grid-cols-6 2xl:grid-cols-8" : ""}`}>
             {ebooks.map((ebook) => {
               const meta = TYPE_META[ebook.ebookType];
               const actionKey = ACTION_KEY[ebook.ebookType] ?? "read";
@@ -587,6 +827,28 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
               );
             })}
           </div>
+        )}
+
+        {/* Pagination */}
+        {paginationMode === "numbers" ? (
+          pages > 1 && (
+            <div className="mt-8">
+              <Pagination page={page} pages={pages} total={total} limit={paginationLimit}
+                onPage={(p) => { setPage(p); fetchEbooks(p, false); }} />
+            </div>
+          )
+        ) : (
+          hasMore && (
+            <div className="mt-8 flex justify-center">
+              <button
+                onClick={() => { const next = page + 1; setPage(next); fetchEbooks(next, true); }}
+                disabled={loadingMore}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50">
+                {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )
         )}
       </main>
 
@@ -672,5 +934,22 @@ export default function EbooksClient({ opacTheme }: { opacTheme: string }) {
         </div>
       )}
     </div>
+
+    <PublicFooter
+      enabled={footerEnabled}
+      show={footerShow}
+      navCss={theme.navCss}
+      accentHex={theme.accentHex}
+      phone={footerPhone}
+      email={footerEmail}
+      address={footerAddress}
+      telegram={footerTelegram}
+      hours={footerHours}
+      whatsapp={footerWhatsapp}
+      website={footerWebsite}
+      description={footerDescription}
+      fullWidth={fullWidth}
+    />
+    </>
   );
 }

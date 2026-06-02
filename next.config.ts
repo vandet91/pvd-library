@@ -21,6 +21,10 @@ const nextConfig: NextConfig = {
         "**/backups/**",
       ],
     };
+
+    // Required for react-pdf / pdfjs-dist to bundle correctly
+    config.resolve.alias.canvas = false;
+
     return config;
   },
 };

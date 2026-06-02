@@ -27,7 +27,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to parse file" }, { status: 400 });
   }
 
-  const validTypes = ["STUDENT", "TEACHER", "STAFF", "PUBLIC"];
+  const validTypes   = ["STUDENT", "TEACHER", "STAFF", "PUBLIC"];
+  const validGenders = ["MALE", "FEMALE", "UNSPECIFIED"];
   let created = 0, skipped = 0;
 
   for (const row of rows) {
@@ -38,15 +39,28 @@ export async function POST(request: NextRequest) {
       ? String(row["Type"]).toUpperCase() as "STUDENT"|"TEACHER"|"STAFF"|"PUBLIC"
       : "STUDENT";
 
+    const genderRaw = String(row["Gender"] ?? "").toUpperCase().trim();
+    const gender = validGenders.includes(genderRaw)
+      ? genderRaw as "MALE"|"FEMALE"|"UNSPECIFIED"
+      : "UNSPECIFIED";
+
+    const studentId = String(row["StudentID"] ?? row["Student ID"] ?? "").trim() || undefined;
+    const school    = String(row["School"]    ?? "").trim() || undefined;
+    const className = String(row["Class"]     ?? "").trim() || undefined;
+
     try {
       await prisma.member.create({
         data: {
           memberId:   generateMemberId(),
           name,
-          email:      String(row["Email"] ?? "").trim() || undefined,
-          phone:      String(row["Phone"] ?? "").trim() || undefined,
+          email:      String(row["Email"]   ?? "").trim() || undefined,
+          phone:      String(row["Phone"]   ?? "").trim() || undefined,
           address:    String(row["Address"] ?? "").trim() || undefined,
           memberType,
+          gender,
+          studentId,
+          school,
+          className,
           expireDate: row["ExpireDate"] ? new Date(String(row["ExpireDate"])) : undefined,
         },
       });
@@ -61,8 +75,9 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   const { exportToExcel } = await import("@/lib/excel");
   const template = [
-    { Name: "Sok Dara", Email: "sokdara@example.com", Phone: "012345678", Address: "Phnom Penh", Type: "STUDENT", ExpireDate: "2025-12-31" },
-    { Name: "Kim Sreyleak", Email: "", Phone: "", Address: "", Type: "TEACHER", ExpireDate: "" },
+    { Name: "Sok Dara",    Email: "sokdara@example.com", Phone: "012345678", Address: "Phnom Penh", Type: "STUDENT", Gender: "MALE",   StudentID: "STU-2024-001", School: "Hun Sen High School", Class: "12A", ExpireDate: "2025-12-31" },
+    { Name: "Kim Sreyleak", Email: "",                   Phone: "",          Address: "",            Type: "STUDENT", Gender: "FEMALE", StudentID: "STU-2024-002", School: "Hun Sen High School", Class: "11B", ExpireDate: "2025-12-31" },
+    { Name: "Chan Piseth",  Email: "piseth@example.com", Phone: "",          Address: "",            Type: "TEACHER", Gender: "MALE",   StudentID: "",             School: "",                   Class: "",    ExpireDate: "" },
   ];
   const buf = exportToExcel(template as Record<string, unknown>[], "Members", "template");
   return new NextResponse(new Uint8Array(buf), {

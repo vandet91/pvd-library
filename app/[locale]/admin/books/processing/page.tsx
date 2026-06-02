@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import {
@@ -110,6 +110,7 @@ export default function ProcessingQueuePage() {
   /* "Needs Label" tab state */
   const [labeling,    setLabeling]    = useState<Set<string>>(new Set()); // copy IDs being labeled
   const [labelFilter, setLabelFilter] = useState("");
+  const [selected,    setSelected]    = useState<Set<string>>(new Set()); // copy IDs checked for printing
 
   /* "In Baskets" tab state */
   const [expandedBaskets, setExpandedBaskets] = useState<Set<string>>(new Set());
@@ -296,6 +297,33 @@ export default function ProcessingQueuePage() {
     }
   }
 
+  /* ── Selection helpers ──────────────────────────────────────────────────── */
+  function toggleCopy(id: string) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function toggleBook(bookId: string, copyIds: string[]) {
+    const allSelected = copyIds.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (allSelected) copyIds.forEach((id) => n.delete(id));
+      else             copyIds.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+
+  function toggleAll() {
+    const visibleIds = filteredNeedsLabel.filter((i) => i.barcode).map((i) => i.id);
+    const allSelected = visibleIds.every((id) => selected.has(id));
+    setSelected(allSelected ? new Set() : new Set(visibleIds));
+  }
+
+  function clearSelection() { setSelected(new Set()); }
+
   /* ── Derived ────────────────────────────────────────────────────────────── */
   const filteredNeedsLabel = (data?.needsLabel ?? []).filter((item) =>
     !labelFilter ||
@@ -303,6 +331,18 @@ export default function ProcessingQueuePage() {
     item.book.isbn?.includes(labelFilter) ||
     item.barcode?.includes(labelFilter),
   );
+
+  // Group filtered copies by book for the selection UI
+  const needsLabelByBook = (() => {
+    const map = new Map<string, { bookId: string; title: string; author: string | null; isbn: string | null; copies: NeedsLabelItem[] }>();
+    for (const item of filteredNeedsLabel) {
+      if (!map.has(item.book.id)) {
+        map.set(item.book.id, { bookId: item.book.id, title: item.book.title, author: item.book.author?.name ?? null, isbn: item.book.isbn, copies: [] });
+      }
+      map.get(item.book.id)!.copies.push(item);
+    }
+    return [...map.values()];
+  })();
 
   const groupedByBasket = (() => {
     if (!data) return [];
@@ -616,14 +656,14 @@ export default function ProcessingQueuePage() {
             </div>
           ) : (
             <>
-              {/* Filter + bulk action */}
+              {/* ── Toolbar ── */}
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative flex-1 max-w-sm">
                   <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
                     value={labelFilter}
-                    onChange={(e) => setLabelFilter(e.target.value)}
+                    onChange={(e) => { setLabelFilter(e.target.value); clearSelection(); }}
                     placeholder="Filter by title, barcode, or ISBN…"
                     className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
@@ -632,13 +672,33 @@ export default function ProcessingQueuePage() {
                   {filteredNeedsLabel.length} of {needsLabelCount} shown
                   {needsLabelCount > 200 && " (limited to 200)"}
                 </span>
-                {filteredNeedsLabel.length > 0 && (
+
+                {/* Print Selected — shown when anything is checked */}
+                {selected.size > 0 && (
+                  <>
+                    <button
+                      onClick={() => { printLabels(locale, [...selected]); }}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Print Selected ({selected.size})
+                    </button>
+                    <button
+                      onClick={clearSelection}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <X className="w-3 h-3" /> Clear
+                    </button>
+                  </>
+                )}
+
+                {filteredNeedsLabel.length > 0 && selected.size === 0 && (
                   <>
                     <button
                       onClick={() => printLabels(locale, filteredNeedsLabel.map((i) => i.id))}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                     >
-                      <Printer className="w-3.5 h-3.5" /> Print All Labels
+                      <Printer className="w-3.5 h-3.5" /> Print All
                     </button>
                     <button
                       onClick={markAllVisible}
@@ -654,78 +714,163 @@ export default function ProcessingQueuePage() {
                 )}
               </div>
 
-              {/* Table */}
+              {/* ── Grouped table ── */}
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                {/* Table header */}
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
-                      <th className="px-4 py-2 text-left">Book</th>
-                      <th className="px-4 py-2 text-center w-16">Copy#</th>
-                      <th className="px-4 py-2 text-left w-36">Barcode</th>
-                      <th className="px-4 py-2 text-left w-24">Condition</th>
-                      <th className="px-4 py-2 text-left w-36">Basket</th>
-                      <th className="px-4 py-2 text-right w-36">Actions</th>
+                    <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-2.5 w-8">
+                        {/* Select-all checkbox (only selects copies with barcodes) */}
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredNeedsLabel.filter((i) => i.barcode).length > 0 &&
+                            filteredNeedsLabel.filter((i) => i.barcode).every((i) => selected.has(i.id))
+                          }
+                          onChange={toggleAll}
+                          className="w-3.5 h-3.5 rounded accent-indigo-600"
+                          title="Select all printable copies"
+                        />
+                      </th>
+                      <th className="px-4 py-2.5 text-left">Book / Copy</th>
+                      <th className="px-4 py-2.5 text-left w-36">Barcode</th>
+                      <th className="px-4 py-2.5 text-left w-24">Condition</th>
+                      <th className="px-4 py-2.5 text-left w-32">Basket</th>
+                      <th className="px-4 py-2.5 text-right w-32">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filteredNeedsLabel.map((item) => {
-                      const bi = item.basketItems[0] ?? null;
+                  <tbody>
+                    {needsLabelByBook.map((group) => {
+                      const printableIds = group.copies.filter((c) => c.barcode).map((c) => c.id);
+                      const allBookSelected = printableIds.length > 0 && printableIds.every((id) => selected.has(id));
+                      const someBookSelected = printableIds.some((id) => selected.has(id));
+
                       return (
-                        <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <p className="font-medium text-gray-800 text-sm">{item.book.title}</p>
-                            {item.book.author && (
-                              <p className="text-xs text-gray-400">{item.book.author.name}</p>
-                            )}
-                            {item.book.isbn && (
-                              <p className="text-xs font-mono text-gray-400">ISBN: {item.book.isbn}</p>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className="text-sm font-mono text-gray-700">#{item.copyNumber}</span>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {item.barcode
-                              ? <span className="text-xs font-mono text-gray-600">{item.barcode}</span>
-                              : <span className="text-xs text-gray-300 italic">—</span>}
-                          </td>
-                          <td className="px-4 py-2.5">{conditionBadge(item.condition)}</td>
-                          <td className="px-4 py-2.5">
-                            {bi ? (
-                              <Link
-                                href={`/${locale}/admin/baskets/${bi.basketId}`}
-                                className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
+                        <React.Fragment key={group.bookId}>
+                          {/* ── Book group header row ── */}
+                          {group.copies.length > 1 && (
+                            <tr
+                              key={`book-${group.bookId}`}
+                              className="bg-indigo-50/60 border-t border-indigo-100 cursor-pointer hover:bg-indigo-50 transition-colors"
+                              onClick={() => printableIds.length > 0 && toggleBook(group.bookId, printableIds)}
+                            >
+                              <td className="px-4 py-2">
+                                {printableIds.length > 0 && (
+                                  <input
+                                    type="checkbox"
+                                    checked={allBookSelected}
+                                    ref={(el) => { if (el) el.indeterminate = someBookSelected && !allBookSelected; }}
+                                    onChange={() => toggleBook(group.bookId, printableIds)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-3.5 h-3.5 rounded accent-indigo-600"
+                                  />
+                                )}
+                              </td>
+                              <td className="px-4 py-2" colSpan={5}>
+                                <div className="flex items-center gap-2">
+                                  <BookOpen className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                                  <span className="text-xs font-semibold text-indigo-800">{group.title}</span>
+                                  {group.author && <span className="text-xs text-indigo-400">— {group.author}</span>}
+                                  {group.isbn   && <span className="text-xs font-mono text-indigo-300">{group.isbn}</span>}
+                                  <span className="ml-auto text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
+                                    {group.copies.length} copies
+                                  </span>
+                                  {printableIds.length > 0 && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); printLabels(locale, printableIds); }}
+                                      className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 px-2 py-0.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                    >
+                                      <Printer className="w-3 h-3" /> Print this book
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
+                          {/* ── Copy rows ── */}
+                          {group.copies.map((item) => {
+                            const bi = item.basketItems[0] ?? null;
+                            const isSelected = selected.has(item.id);
+                            return (
+                              <tr
+                                key={item.id}
+                                onClick={() => item.barcode && toggleCopy(item.id)}
+                                className={`border-t border-gray-50 transition-colors ${
+                                  item.barcode ? "cursor-pointer" : ""
+                                } ${isSelected ? "bg-indigo-50" : "hover:bg-gray-50"}`}
                               >
-                                <ShoppingBasket className="w-3 h-3" />
-                                {bi.basket.name}
-                              </Link>
-                            ) : (
-                              <span className="text-xs text-gray-300">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-1.5 justify-end">
-                              <button
-                                onClick={() => printLabels(locale, [item.id])}
-                                disabled={!item.barcode}
-                                title={item.barcode ? "Print spine label" : "No barcode — assign one first"}
-                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 transition-colors"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => markLabelPrinted(item)}
-                                disabled={labeling.has(item.id)}
-                                className="flex items-center gap-1 text-xs px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-50 transition-colors"
-                              >
-                                {labeling.has(item.id)
-                                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                                  : <CheckCircle2 className="w-3 h-3" />}
-                                Labeled
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                                <td className="px-4 py-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={!item.barcode}
+                                    onChange={() => toggleCopy(item.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-3.5 h-3.5 rounded accent-indigo-600 disabled:opacity-30"
+                                    title={item.barcode ? "Select for printing" : "No barcode — cannot print"}
+                                  />
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {/* Only show book info if single copy (no group header) */}
+                                  {group.copies.length === 1 && (
+                                    <>
+                                      <p className="font-medium text-gray-800 text-sm">{item.book.title}</p>
+                                      {item.book.author && <p className="text-xs text-gray-400">{item.book.author.name}</p>}
+                                      {item.book.isbn   && <p className="text-xs font-mono text-gray-400">ISBN: {item.book.isbn}</p>}
+                                    </>
+                                  )}
+                                  <span className={`text-xs font-mono ${group.copies.length > 1 ? "text-gray-500 ml-2" : "text-gray-600 mt-0.5 block"}`}>
+                                    Copy #{item.copyNumber}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {item.barcode
+                                    ? <span className="text-xs font-mono text-gray-600">{item.barcode}</span>
+                                    : <span className="text-xs text-gray-300 italic">No barcode</span>}
+                                </td>
+                                <td className="px-4 py-2.5">{conditionBadge(item.condition)}</td>
+                                <td className="px-4 py-2.5">
+                                  {bi ? (
+                                    <Link
+                                      href={`/${locale}/admin/baskets/${bi.basketId}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
+                                    >
+                                      <ShoppingBasket className="w-3 h-3" />
+                                      {bi.basket.name}
+                                    </Link>
+                                  ) : (
+                                    <span className="text-xs text-gray-300">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-1.5 justify-end" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      onClick={() => printLabels(locale, [item.id])}
+                                      disabled={!item.barcode}
+                                      title={item.barcode ? "Print this copy's label" : "No barcode — assign one first"}
+                                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 transition-colors"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => markLabelPrinted(item)}
+                                      disabled={labeling.has(item.id)}
+                                      className="flex items-center gap-1 text-xs px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-50 transition-colors"
+                                    >
+                                      {labeling.has(item.id)
+                                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                                        : <CheckCircle2 className="w-3 h-3" />}
+                                      Labeled
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>

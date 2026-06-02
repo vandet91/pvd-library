@@ -1,6 +1,20 @@
 "use client";
 
 import { ExternalLink, Music, Download } from "lucide-react";
+import dynamic from "next/dynamic";
+
+// Lazy-load the heavy PDF reader (pdf.js) only when needed
+const PdfReader = dynamic(() => import("@/components/shared/PdfReader"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[calc(100vh-52px)] flex items-center justify-center bg-gray-950">
+      <div className="flex flex-col items-center gap-3 text-white/50">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm">Loading reader…</span>
+      </div>
+    </div>
+  ),
+});
 
 interface EbookViewerProps {
   type:  string;
@@ -12,33 +26,7 @@ export default function EbookViewer({ type, url, title }: EbookViewerProps) {
 
   // ── PDF ────────────────────────────────────────────────────────
   if (type === "PDF") {
-    // Local/uploaded files (relative paths) → use native browser PDF renderer.
-    // Google Docs Viewer cannot reach localhost or private servers.
-    // External URLs → Google Docs Viewer (handles Drive/Dropbox links nicely).
-    const isLocal = url.startsWith("/") || url.startsWith("blob:");
-    const viewerUrl = isLocal
-      ? url
-      : url.startsWith("https://drive.google.com")
-        ? url.replace("/view", "/preview")
-        : `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
-
-    return (
-      <div className="h-[calc(100vh-52px)] flex flex-col">
-        <iframe
-          src={viewerUrl}
-          title={title}
-          className="flex-1 w-full border-0"
-          allowFullScreen
-        />
-        <div className="bg-gray-800 py-2 px-4 text-center">
-          <a href={url} download target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-xs text-white/60 hover:text-white transition-colors">
-            <Download className="w-3.5 h-3.5" />
-            Download PDF
-          </a>
-        </div>
-      </div>
-    );
+    return <PdfReader url={url} title={title} downloadUrl={url} />;
   }
 
   // ── EPUB ───────────────────────────────────────────────────────

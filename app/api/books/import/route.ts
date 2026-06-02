@@ -100,6 +100,12 @@ export async function POST(request: NextRequest) {
         ? (rawMaterialType as typeof VALID_MATERIAL_TYPES[number])
         : "BOOK";
 
+      const VALID_AUDIENCE_LEVELS = ["CHILDREN","YOUTH","ADULTS","UNSPECIFIED"] as const;
+      const rawAudienceLevel = String(row["AudienceLevel"] ?? "").trim().toUpperCase();
+      const audienceLevel = (VALID_AUDIENCE_LEVELS as readonly string[]).includes(rawAudienceLevel)
+        ? (rawAudienceLevel as typeof VALID_AUDIENCE_LEVELS[number])
+        : "UNSPECIFIED";
+
       // Resolve co-authors (semicolon-separated list, e.g. "Jane Doe; John Smith")
       const coAuthorsRaw = String(row["CoAuthors"] ?? "").trim();
       const coAuthorIds: string[] = [];
@@ -137,6 +143,7 @@ export async function POST(request: NextRequest) {
             availableCopies: totalCopies,
             price,
             materialType,
+            audienceLevel,
             authorId,
             categoryId,
             publisherId,

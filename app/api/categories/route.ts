@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const category = await prisma.category.create({ data: parsed.data });
   return NextResponse.json(category, { status: 201 });

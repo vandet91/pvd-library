@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAudienceLabels, AUDIENCE_VALUES } from "@/hooks/useAudienceLabels";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
 import {
   Plus, Search, Edit, Trash2, BookOpen, BookMarked, Upload, Download,
   CheckSquare, X, FileText, ShoppingBasket, Loader2, ChevronRight,
-  Printer, Barcode, Image,
+  Printer, Barcode, Image, ArrowUpDown, SlidersHorizontal, Sparkles, ImageOff, ShieldAlert,
 } from "lucide-react";
+import Pagination from "@/components/shared/Pagination";
 
 /* ── Material type badge ────────────────────────────────────────── */
 const MAT: Record<string, { label: string; cls: string }> = {
@@ -34,9 +36,11 @@ interface Book {
   barcode:         string | null;
   availableCopies: number;
   totalCopies:     number;
+  callNumber:      string | null;
   location:        string | null;
   shelfLocation:   { name: string; description?: string | null } | null;
   materialType:    string;
+  audienceLevel:   string;
   author:          { name: string } | null;
   coAuthors:       { id: string; name: string }[];
   category:        { name: string } | null;
@@ -55,10 +59,11 @@ function authorList(book: Pick<Book, "author" | "coAuthors">): string {
 }
 
 interface BasketSummary {
-  id:       string;
-  name:     string;
-  total:    number;
-  tagged:   number;
+  id:         string;
+  name:       string;
+  total:      number;
+  tagged:     number;
+  basketType: string;
 }
 
 interface CopyRow { id: string; copyNumber: number; barcode: string | null; condition: string; status: string; }
@@ -69,14 +74,7 @@ function AddToBasketModal({ bookIds, onClose, locale }: {
   onClose: () => void;
   locale:  string;
 }) {
-  const isBulk = bookIds.length > 1;
-
-  /* Step 1 — copy picker (single book only) */
-  const [copies,      setCopies]      = useState<CopyRow[]>([]);
-  const [copiesLoading, setCopiesLoading] = useState(!isBulk);
-  const [selected,    setSelected]    = useState<Set<string>>(new Set());
-
-  /* Step 2 — basket picker */
+  /* Basket picker */
   const [baskets,    setBaskets]    = useState<BasketSummary[]>([]);
   const [baskLoading, setBaskLoading] = useState(true);
   const [busy,        setBusy]       = useState<string | null>(null);
@@ -86,55 +84,27 @@ function AddToBasketModal({ bookIds, onClose, locale }: {
   const [createBusy,  setCreateBusy] = useState(false);
   const [error,       setError]      = useState<string | null>(null);
 
-  /* Load copies for single-book mode */
-  useEffect(() => {
-    if (isBulk) return;
-    fetch(`/api/books/${bookIds[0]}/copies`)
-      .then((r) => r.json())
-      .then((data: CopyRow[]) => {
-        setCopies(data);
-        const available = data.filter((c) => c.status === "AVAILABLE");
-        setSelected(new Set(available.map((c) => c.id)));
-      })
-      .catch(() => setCopies([]))
-      .finally(() => setCopiesLoading(false));
-  }, [bookIds, isBulk]);
-
-  /* Load baskets */
+  /* Load baskets — ITEM type only */
   useEffect(() => {
     fetch("/api/baskets")
       .then((r) => r.json())
-      .then((d) => setBaskets(Array.isArray(d) ? d : []))
+      .then((d) => setBaskets(Array.isArray(d) ? d.filter((b: BasketSummary) => b.basketType === "ITEM") : []))
       .catch(() => setBaskets([]))
       .finally(() => setBaskLoading(false));
   }, []);
 
-  function toggleCopy(id: string) {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  }
-  function selectAllAvailable() {
-    setSelected(new Set(copies.filter((c) => c.status === "AVAILABLE").map((c) => c.id)));
-  }
-
   async function addToBasket(basketId: string, basketName: string) {
     setBusy(basketId);
     setError(null);
-    let body: Record<string, unknown>;
-    if (isBulk) {
-      body = { bookIds, mode: "all-available" };
-    } else {
-      if (selected.size === 0) { setBusy(null); return; }
-      body = { copyIds: [...selected] };
-    }
     const res = await fetch(`/api/baskets/${basketId}/items`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(body),
+      body:    JSON.stringify({ bookIds, mode: "all-available" }),
     });
     setBusy(null);
     if (res.ok) {
       const data = await res.json() as { added?: number };
-      setDone({ basketId, basketName, count: data.added ?? selected.size });
+      setDone({ basketId, basketName, count: data.added ?? 0 });
     } else {
       const errData = await res.json().catch(() => ({})) as { error?: string };
       setError(errData.error ?? "Failed to add to basket");
@@ -147,7 +117,7 @@ function AddToBasketModal({ bookIds, onClose, locale }: {
     const res = await fetch("/api/baskets", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ name: newName.trim() }),
+      body:    JSON.stringify({ name: newName.trim(), basketType: "ITEM" }),
     });
     if (res.ok) {
       const basket = await res.json() as BasketSummary;
@@ -190,50 +160,9 @@ function AddToBasketModal({ bookIds, onClose, locale }: {
         ) : (
           <div className="px-6 pb-6 space-y-4">
 
-            {/* Copy picker — single book only */}
-            {!isBulk && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-gray-700">Select copies to add:</p>
-                  <button onClick={selectAllAvailable} className="text-xs text-indigo-600 hover:underline">Select all available</button>
-                </div>
-                {copiesLoading ? (
-                  <div className="flex items-center gap-2 py-4 text-gray-400 text-sm justify-center">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Loading copies…
-                  </div>
-                ) : copies.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-3">No physical copies found for this book.</p>
-                ) : (
-                  <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50 max-h-52 overflow-y-auto">
-                    {copies.map((c) => {
-                      const avail = c.status === "AVAILABLE";
-                      return (
-                        <label key={c.id} className={`flex items-center gap-3 px-4 py-2.5 ${avail ? "cursor-pointer hover:bg-indigo-50" : "opacity-50 cursor-not-allowed"}`}>
-                          <input type="checkbox" checked={selected.has(c.id)} disabled={!avail}
-                            onChange={() => toggleCopy(c.id)}
-                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
-                          <span className="text-xs font-bold text-indigo-700 w-6">#{c.copyNumber}</span>
-                          <span className="text-xs font-mono text-gray-700 flex-1 truncate">{c.barcode ?? "—"}</span>
-                          <span className="text-xs text-gray-500">{c.condition}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${avail ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                            {c.status}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-                {selected.size > 0 && (
-                  <p className="text-xs text-indigo-600 mt-1.5">{selected.size} cop{selected.size !== 1 ? "ies" : "y"} selected</p>
-                )}
-              </div>
-            )}
-
-            {isBulk && (
-              <p className="text-sm text-gray-500 bg-indigo-50 rounded-lg px-4 py-3">
-                All <span className="font-semibold text-indigo-700">available copies</span> of the {bookIds.length} selected books will be added.
-              </p>
-            )}
+            <p className="text-sm text-gray-500 bg-indigo-50 rounded-lg px-4 py-3">
+              All <span className="font-semibold text-indigo-700">available copies</span> of {bookIds.length === 1 ? "this book" : `${bookIds.length} books`} will be added.
+            </p>
 
             {error && (
               <p className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{error}</p>
@@ -252,7 +181,7 @@ function AddToBasketModal({ bookIds, onClose, locale }: {
                 <div className="divide-y divide-gray-50 border border-gray-100 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                   {baskets.map((basket) => (
                     <button key={basket.id} onClick={() => addToBasket(basket.id, basket.name)}
-                      disabled={!!busy || (!isBulk && selected.size === 0)}
+                      disabled={!!busy}
                       className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 transition-colors text-left disabled:opacity-50">
                       <ShoppingBasket className="w-4 h-4 text-indigo-400 shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -298,20 +227,37 @@ export default function BooksPage() {
   const t      = useTranslations("books");
   const tc     = useTranslations("common");
   const locale = useLocale();
+  const audienceLabels = useAudienceLabels();
 
   const [books,        setBooks]        = useState<Book[]>([]);
+  const [total,        setTotal]        = useState(0);
+  const [page,         setPage]         = useState(1);
+  const [pages,        setPages]        = useState(1);
+  const PAGE_SIZE = 50;
+
   const [query,        setQuery]        = useState("");
+  const [sort,         setSort]         = useState("newest");
   const [materialType, setMaterialType] = useState("");
+  const [audienceLevel,setAudienceLevel]= useState("");
+  const [categoryId,   setCategoryId]   = useState("");
+  const [language,     setLanguage]     = useState("");
+  const [availableOnly,setAvailableOnly]= useState(false);
   const [branchFilter, setBranchFilter] = useState("");
-  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([]);
+  const [branchOptions,  setBranchOptions]  = useState<BranchOption[]>([]);
+  const [categoryOptions,setCategoryOptions]= useState<{ id: string; name: string }[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
+  const [showFilters,  setShowFilters]  = useState(false);
 
-  // Load branch list for the filter dropdown
+  // Load branches + categories for filter dropdowns
   useEffect(() => {
     fetch("/api/branches")
       .then((r) => r.ok ? r.json() : [])
       .then((brs: BranchOption[]) => { if (Array.isArray(brs)) setBranchOptions(brs.filter((b) => b.isActive)); })
+      .catch(() => {});
+    fetch("/api/categories")
+      .then((r) => r.ok ? r.json() : [])
+      .then((cats: { id: string; name: string }[]) => { if (Array.isArray(cats)) setCategoryOptions(cats); })
       .catch(() => {});
   }, []);
 
@@ -328,19 +274,36 @@ export default function BooksPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (query)        params.set("q", query);
-      if (materialType) params.set("materialType", materialType);
-      if (branchFilter) params.set("branchId", branchFilter);
+      params.set("page",  String(page));
+      params.set("limit", String(PAGE_SIZE));
+      if (query)        params.set("q",            query);
+      if (sort)         params.set("sort",          sort);
+      if (materialType)  params.set("materialType",  materialType);
+      if (audienceLevel) params.set("audienceLevel", audienceLevel);
+      if (categoryId)    params.set("categoryId",    categoryId);
+      if (language)     params.set("language",      language);
+      if (availableOnly) params.set("available",    "true");
+      if (branchFilter) params.set("branchId",      branchFilter);
       const res  = await fetch(`/api/books?${params}`);
       if (!res.ok) { setBooks([]); return; }
-      const data = await res.json().catch(() => []);
-      setBooks(Array.isArray(data) ? data : []);
+      const data = await res.json().catch(() => ({}));
+      // API returns { books, total, page, pages } when paginating
+      if (data && Array.isArray(data.books)) {
+        setBooks(data.books);
+        setTotal(data.total ?? 0);
+        setPages(data.pages ?? 1);
+      } else {
+        setBooks(Array.isArray(data) ? data : []);
+      }
     } catch {
       setBooks([]);
     } finally {
       setLoading(false);
     }
-  }, [query, materialType, branchFilter]);
+  }, [query, sort, materialType, audienceLevel, categoryId, language, availableOnly, branchFilter, page]);
+
+  // Reset to page 1 when any filter/sort changes (but not when page itself changes)
+  useEffect(() => { setPage(1); }, [query, sort, materialType, audienceLevel, categoryId, language, availableOnly, branchFilter]);
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
 
@@ -423,6 +386,27 @@ export default function BooksPage() {
           </Link>
 
           <Link
+            href={`/${locale}/admin/books/enrich`}
+            className="flex items-center gap-1.5 px-3 py-2 border border-violet-200 bg-violet-50 text-violet-700 rounded-lg text-sm font-medium hover:bg-violet-100 transition-colors"
+          >
+            <Sparkles className="w-4 h-4" /> ISBN Auto-Fill
+          </Link>
+
+          <Link
+            href={`/${locale}/admin/books/covers`}
+            className="flex items-center gap-1.5 px-3 py-2 border border-rose-200 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition-colors"
+          >
+            <ImageOff className="w-4 h-4" /> Cover Audit
+          </Link>
+
+          <Link
+            href={`/${locale}/admin/books/quality`}
+            className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors"
+          >
+            <ShieldAlert className="w-4 h-4" /> Data Quality
+          </Link>
+
+          <Link
             href={`/${locale}/admin/baskets`}
             className="flex items-center gap-1.5 px-3 py-2 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
           >
@@ -438,75 +422,155 @@ export default function BooksPage() {
         </div>
       </div>
 
-      {/* Search + type filter */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`${tc("search")} ${t("title").toLowerCase()}...`}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {/* Search + sort + filters */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+        {/* Row 1: search + sort + filter toggle */}
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder={`${tc("search")} ${t("title").toLowerCase()}...`}
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          {/* Sort */}
+          <div className="flex items-center gap-1.5">
+            <ArrowUpDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <select value={sort} onChange={(e) => setSort(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="title">Title A → Z</option>
+              <option value="title_z">Title Z → A</option>
+              <option value="year">Year (newest)</option>
+              <option value="year_asc">Year (oldest)</option>
+              <option value="avail">Most available</option>
+            </select>
+          </div>
+
+          {/* Filter toggle */}
+          <button onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              showFilters || materialType || audienceLevel || categoryId || language || availableOnly || branchFilter
+                ? "bg-blue-50 border-blue-300 text-blue-700"
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}>
+            <SlidersHorizontal className="w-4 h-4" />
+            Filters
+            {(materialType || audienceLevel || categoryId || language || availableOnly || branchFilter) && (
+              <span className="inline-flex items-center justify-center w-4 h-4 bg-blue-600 text-white text-[10px] rounded-full font-bold">
+                {[materialType, audienceLevel, categoryId, language, availableOnly, branchFilter].filter(Boolean).length}
+              </span>
+            )}
+          </button>
+
+          {/* Clear all filters */}
+          {(materialType || audienceLevel || categoryId || language || availableOnly || branchFilter) && (
+            <button onClick={() => { setMaterialType(""); setAudienceLevel(""); setCategoryId(""); setLanguage(""); setAvailableOnly(false); setBranchFilter(""); }}
+              className="flex items-center gap-1 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+              <X className="w-3.5 h-3.5" /> Clear filters
+            </button>
+          )}
         </div>
-        <select
-          value={materialType}
-          onChange={(e) => setMaterialType(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-        >
-          <option value="">{t("materialType")} — All</option>
-          <option value="BOOK">{t("materialBook")}</option>
-          <option value="MAGAZINE">{t("materialMagazine")}</option>
-          <option value="JOURNAL">{t("materialJournal")}</option>
-          <option value="NEWSPAPER">{t("materialNewspaper")}</option>
-          <option value="DVD">{t("materialDvd")}</option>
-          <option value="AUDIO_CD">{t("materialAudioCd")}</option>
-          <option value="THESIS">{t("materialThesis")}</option>
-          <option value="MAP">{t("materialMap")}</option>
-          <option value="OTHER">{t("materialOther")}</option>
-        </select>
-        {branchOptions.length > 0 && (
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          >
-            <option value="">{t("allBranches")}</option>
-            {branchOptions.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+
+        {/* Row 2: extra filters (collapsible) */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-3 pt-2 border-t border-gray-100">
+            {/* Material type */}
+            <select value={materialType} onChange={(e) => setMaterialType(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="">{t("materialType")} — All</option>
+              <option value="BOOK">{t("materialBook")}</option>
+              <option value="MAGAZINE">{t("materialMagazine")}</option>
+              <option value="JOURNAL">{t("materialJournal")}</option>
+              <option value="NEWSPAPER">{t("materialNewspaper")}</option>
+              <option value="DVD">{t("materialDvd")}</option>
+              <option value="AUDIO_CD">{t("materialAudioCd")}</option>
+              <option value="THESIS">{t("materialThesis")}</option>
+              <option value="MAP">{t("materialMap")}</option>
+              <option value="OTHER">{t("materialOther")}</option>
+            </select>
+
+            {/* Audience level */}
+            <select value={audienceLevel} onChange={(e) => setAudienceLevel(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="">Audience — All</option>
+              {AUDIENCE_VALUES.map((v) => (
+                <option key={v} value={v}>{audienceLabels[v] ?? v}</option>
+              ))}
+            </select>
+
+            {/* Category */}
+            {categoryOptions.length > 0 && (
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white max-w-[200px]">
+                <option value="">{t("category")} — All</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Language */}
+            <select value={language} onChange={(e) => setLanguage(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="">Language — All</option>
+              <option value="en">English</option>
+              <option value="km">Khmer</option>
+              <option value="fr">French</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="th">Thai</option>
+              <option value="vi">Vietnamese</option>
+            </select>
+
+            {/* Availability */}
+            <label className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm cursor-pointer hover:bg-gray-50 transition-colors">
+              <input type="checkbox" checked={availableOnly} onChange={(e) => setAvailableOnly(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              Available only
+            </label>
+
+            {/* Branch */}
+            {branchOptions.length > 0 && (
+              <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="">{t("allBranches")}</option>
+                {branchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
         )}
       </div>
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-950 border border-white/10 px-5 py-3 rounded-2xl shadow-2xl">
           <CheckSquare className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-medium">{selected.size} selected</span>
+          <span className="text-sm font-semibold text-white">{selected.size} selected</span>
           <div className="h-4 w-px bg-white/20" />
-          {/* Add to basket */}
           <button
             onClick={() => setBasketTargetIds([...selected])}
-            className="flex items-center gap-1 text-sm text-indigo-300 hover:text-indigo-200 transition-colors"
+            className="flex items-center gap-1.5 text-sm font-semibold text-white hover:text-indigo-300 transition-colors"
           >
-            <ShoppingBasket className="w-3.5 h-3.5" /> Add to basket
+            <ShoppingBasket className="w-3.5 h-3.5 text-indigo-400" /> Add to basket
           </button>
           <div className="h-4 w-px bg-white/20" />
-          {/* Print labels */}
           <Link
             href={`/${locale}/admin/books/labels?ids=${[...selected].join(",")}`}
-            className="flex items-center gap-1 text-sm text-green-300 hover:text-green-200 transition-colors"
+            className="flex items-center gap-1.5 text-sm font-semibold text-white hover:text-green-300 transition-colors"
           >
-            <Printer className="w-3.5 h-3.5" /> Print labels
+            <Printer className="w-3.5 h-3.5 text-green-400" /> Print labels
           </Link>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={() => handleBulkExport("xlsx")} className="text-sm hover:text-blue-300 transition-colors">Excel</button>
-          <button onClick={() => handleBulkExport("csv")}  className="text-sm hover:text-blue-300 transition-colors">CSV</button>
+          <button onClick={() => handleBulkExport("xlsx")} className="text-sm font-semibold text-white hover:text-sky-300 transition-colors">Excel</button>
+          <button onClick={() => handleBulkExport("csv")}  className="text-sm font-semibold text-white hover:text-sky-300 transition-colors">CSV</button>
           <div className="h-4 w-px bg-white/20" />
-          <button onClick={handleBulkDelete} className="text-sm text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
-          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 hover:bg-white/10 rounded-lg transition-colors">
+          <button onClick={handleBulkDelete} className="text-sm font-semibold text-red-400 hover:text-red-300 transition-colors">{tc("delete")}</button>
+          <button onClick={() => setSelected(new Set())} className="ml-1 p-1 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -588,14 +652,27 @@ export default function BooksPage() {
                                   </span>
                                 );
                               })()}
+                              {book.audienceLevel && book.audienceLevel !== "UNSPECIFIED" && (() => {
+                                const AUD_CLS: Record<string, string> = {
+                                  CHILDREN: "bg-pink-50 text-pink-700",
+                                  YOUTH:    "bg-purple-50 text-purple-700",
+                                  ADULTS:   "bg-blue-50 text-blue-700",
+                                };
+                                const cls = AUD_CLS[book.audienceLevel];
+                                return cls ? (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${cls}`}>
+                                    {audienceLabels[book.audienceLevel] ?? book.audienceLevel}
+                                  </span>
+                                ) : null;
+                              })()}
                               {(book._count?.ebooks ?? 0) > 0 && (
                                 <span title="Linked to e-resource" className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded font-medium border border-teal-100">
                                   <BookMarked className="w-2.5 h-2.5" /> E-Link
                                 </span>
                               )}
                             </div>
-                            {(book.shelfLocation?.name ?? book.location) && (
-                              <p className="text-xs text-gray-400 mt-0.5">{book.shelfLocation?.name ?? book.location}</p>
+                            {(book.shelfLocation?.name ?? book.callNumber ?? book.location) && (
+                              <p className="text-xs text-gray-400 mt-0.5">{book.shelfLocation?.name ?? book.callNumber ?? book.location}</p>
                             )}
                           </div>
                         </div>
@@ -672,6 +749,19 @@ export default function BooksPage() {
             </table>
           </div>
         )}
+
+        {/* Pagination footer */}
+        {total > 0 && (
+          <div className="px-4 py-3 border-t border-gray-100">
+            <Pagination
+              page={page}
+              pages={pages}
+              total={total}
+              limit={PAGE_SIZE}
+              onPage={setPage}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Add to Basket Modal ─────────────────────────────────────── */}
@@ -697,7 +787,7 @@ export default function BooksPage() {
             {!importResult ? (
               <div className="space-y-4">
                 <p className="text-sm text-gray-500">
-                  Upload an Excel (.xlsx) or CSV file. Columns: Title, TitleKm, ISBN, Author, Category, Publisher, PublishYear, Pages, Language, Location, TotalCopies, Description
+                  Upload an Excel (.xlsx) or CSV file. Columns: Title, TitleKm, ISBN, Author, Category, Publisher, PublishYear, Pages, Language, CallNumber, Location, TotalCopies, Description
                 </p>
                 <a href="/api/books/import" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
                   <Download className="w-4 h-4" /> Download template

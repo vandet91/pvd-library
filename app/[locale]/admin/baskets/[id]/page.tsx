@@ -7,8 +7,9 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   ShoppingBasket, ArrowLeft, Barcode, Search, Tag, CheckSquare,
   Square, Loader2, X, AlertTriangle, CheckCircle2, Trash2, BookOpen,
-  MapPin, Wrench, Archive, RotateCcw, BookX, BookCheck, AlignLeft,
-  Package, Download, Star, ChevronDown,
+  Wrench, Archive, RotateCcw, BookX, BookCheck, AlignLeft,
+  Package, Download, Star, ChevronDown, BookMarked, UserCheck, UserX,
+  CalendarPlus, MapPin, Building2,
 } from "lucide-react";
 import { BookCondition } from "@prisma/client";
 
@@ -32,14 +33,20 @@ interface BasketBook {
 }
 
 interface BasketItem {
-  id:      string;
+  id:       string;
   basketId: string;
-  bookId:  string;
-  copyId:  string;
-  tagged:  boolean;
-  addedAt: string;
-  book:    BasketBook;
-  copy:    { id: string; copyNumber: number; barcode: string | null; condition: string };
+  bookId:   string | null;
+  copyId:   string | null;
+  ebookId:  string | null;
+  authorId: string | null;
+  memberId: string | null;
+  tagged:   boolean;
+  addedAt:  string;
+  book:     BasketBook | null;
+  copy:     { id: string; copyNumber: number; barcode: string | null; condition: string } | null;
+  ebook:    { id: string; title: string; ebookType: string; language: string | null; coverImage: string | null; author: { name: string } | null } | null;
+  author:   { id: string; name: string; _count: { books: number } } | null;
+  member:   { id: string; memberId: string; name: string; memberType: string; isActive: boolean; gender: string; school: string | null; className: string | null } | null;
 }
 
 interface CopyPickerRow {
@@ -47,13 +54,16 @@ interface CopyPickerRow {
   condition: string; status: string;
 }
 
+type BasketType = "ITEM" | "EBOOK" | "AUTHOR" | "MEMBER";
+
 interface Basket {
-  id:        string;
-  name:      string;
-  notes:     string | null;
-  createdAt: string;
-  updatedAt: string;
-  items:     BasketItem[];
+  id:         string;
+  name:       string;
+  basketType: BasketType;
+  notes:      string | null;
+  createdAt:  string;
+  updatedAt:  string;
+  items:      BasketItem[];
 }
 
 interface BookSearch {
@@ -117,7 +127,7 @@ export default function BasketDetailPage() {
   const [loading,   setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("collection");
 
-  /* ── Collection: scan / search ── */
+  /* ── Collection: scan / search (ITEM baskets) ── */
   const [scanQuery,   setScanQuery]   = useState("");
   const [scanBusy,    setScanBusy]    = useState(false);
   const [scanMsg,     setScanMsg]     = useState<{ text: string; ok: boolean } | null>(null);
@@ -125,6 +135,14 @@ export default function BasketDetailPage() {
   const [searchRes,   setSearchRes]   = useState<BookSearch[]>([]);
   const [searchBusy,  setSearchBusy]  = useState(false);
   const [searchQ,     setSearchQ]     = useState("");
+
+  /* ── Entity search (AUTHOR / MEMBER / EBOOK baskets) ── */
+  const [entityQ,       setEntityQ]       = useState("");
+  const [entityBusy,    setEntityBusy]    = useState(false);
+  const [entityResults, setEntityResults] = useState<{ id: string; label: string; sub: string }[]>([]);
+  const [addingId,      setAddingId]      = useState<string | null>(null);
+  const [entityMsg,     setEntityMsg]     = useState<{ text: string; ok: boolean } | null>(null);
+  const inBasketEntityIds = new Set(basket?.items.flatMap(i => [i.ebookId, i.authorId, i.memberId]).filter(Boolean) as string[]);
   const scanRef = useRef<HTMLInputElement>(null);
 
   /* ── Copy picker for search results ── */
@@ -136,7 +154,9 @@ export default function BasketDetailPage() {
   const [pickerBusy,     setPickerBusy]     = useState(false);
 
   /* ── Actions ── */
-  const [actionTab,   setActionTab]   = useState<string>("location");
+  const defaultActionTab = (type: BasketType) =>
+    type === "ITEM" ? "condition" : type === "EBOOK" ? "toggle-public" : type === "MEMBER" ? "activate" : "export";
+  const [actionTab,   setActionTab]   = useState<string>("condition");
   const [actionBusy,  setActionBusy]  = useState(false);
   const [actionMsg,   setActionMsg]   = useState<{ text: string; ok: boolean } | null>(null);
   /* Action payloads */
@@ -144,6 +164,11 @@ export default function BasketDetailPage() {
   const [condValue,   setCondValue]   = useState<string>("");
   const [reasonVal,   setReasonVal]   = useState("");
   const [scope,       setScope]       = useState<"tagged" | "all">("tagged");
+  /* Location / branch pickers */
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [branches,  setBranches]  = useState<{ id: string; name: string }[]>([]);
+  const [moveLocId, setMoveLocId] = useState("");
+  const [moveBranchId, setMoveBranchId] = useState("");
 
   /* ── Toast ── */
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -158,14 +183,25 @@ export default function BasketDetailPage() {
     setLoading(true);
     try {
       const res  = await fetch(`/api/baskets/${basketId}`);
-      if (!res.ok) { setLoading(false); return; }
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "(no body)");
+        console.error("[basket] API error", res.status, errBody);
+        setLoading(false); return;
+      }
       const data = await safeJson<Basket | null>(res, null);
-      if (data) setBasket(data);
-    } catch (e) { console.error(e); }
+      if (data) { setBasket(data); setActionTab(defaultActionTab(data.basketType)); }
+      else console.error("[basket] safeJson returned null");
+    } catch (e) { console.error("[basket] fetch threw:", e); }
     finally { setLoading(false); }
   }, [basketId]);
 
   useEffect(() => { fetchBasket(); }, [fetchBasket]);
+
+  useEffect(() => {
+    if (!basket || basket.basketType !== "ITEM") return;
+    fetch("/api/locations").then(r => r.json()).then(d => setLocations(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/branches").then(r => r.json()).then(d => setBranches(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [basket?.basketType]);
 
   /* ── Scan book by ISBN / ID ── */
   async function handleScan() {
@@ -213,11 +249,12 @@ export default function BasketDetailPage() {
 
 
   /* ── Toggle tagged (by copyId) ── */
-  async function toggleTag(copyId: string, tagged: boolean) {
+  async function toggleTag(copyIdOrItemId: string, tagged: boolean) {
+    const isItem = basket?.basketType !== "ITEM";
     const res = await fetch(`/api/baskets/${basketId}/items`, {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ copyId, tagged }),
+      body:    JSON.stringify(isItem ? { itemId: copyIdOrItemId, tagged } : { copyId: copyIdOrItemId, tagged }),
     });
     if (res.ok) fetchBasket();
   }
@@ -230,6 +267,66 @@ export default function BasketDetailPage() {
       body:    JSON.stringify({ all: mode }),
     });
     if (res.ok) fetchBasket();
+  }
+
+  /* ── Live entity search — debounced ── */
+  useEffect(() => {
+    if (!entityQ.trim() || !basket || basket.basketType === "ITEM") {
+      setEntityResults([]);
+      return;
+    }
+    const timer = setTimeout(() => handleEntitySearch(), 300);
+    return () => clearTimeout(timer);
+  }, [entityQ]); // eslint-disable-line
+
+  /* ── Entity search (AUTHOR / MEMBER / EBOOK) ── */
+  async function handleEntitySearch() {
+    if (!entityQ.trim() || !basket) return;
+    setEntityBusy(true); setEntityResults([]); setEntityMsg(null);
+    const q = entityQ.trim();
+    try {
+      if (basket.basketType === "AUTHOR") {
+        const data: { id: string; name: string; _count?: { books: number } }[] = await fetch("/api/authors").then(r => r.json());
+        const filtered = data.filter(a => a.name.toLowerCase().includes(q.toLowerCase()));
+        setEntityResults(filtered.map(a => ({ id: a.id, label: a.name, sub: `${a._count?.books ?? 0} books` })));
+      } else if (basket.basketType === "MEMBER") {
+        const data: { members: { id: string; name: string; memberId: string; memberType: string }[] } =
+          await fetch(`/api/members?q=${encodeURIComponent(q)}&limit=20`).then(r => r.json());
+        setEntityResults((data.members ?? []).map(m => ({ id: m.id, label: m.name, sub: `${m.memberId} · ${m.memberType}` })));
+      } else if (basket.basketType === "EBOOK") {
+        const data: { id: string; title: string; ebookType: string }[] =
+          await fetch(`/api/ebooks?q=${encodeURIComponent(q)}`).then(r => r.json());
+        setEntityResults((data ?? []).map(e => ({ id: e.id, label: e.title, sub: e.ebookType })));
+      }
+    } catch { setEntityMsg({ text: "Search failed", ok: false }); }
+    finally { setEntityBusy(false); }
+  }
+
+  async function addEntity(entityId: string) {
+    if (!basket) return;
+    setAddingId(entityId); setEntityMsg(null);
+    const fieldMap: Record<string, string> = { AUTHOR: "authorId", MEMBER: "memberId", EBOOK: "ebookId" };
+    const field = fieldMap[basket.basketType];
+    try {
+      const res = await fetch(`/api/baskets/${basketId}/items`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: entityId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setEntityMsg({ text: data.error ?? "Failed to add", ok: false }); return; }
+      setEntityMsg({ text: "Added successfully", ok: true });
+      fetchBasket();
+      setTimeout(() => setEntityMsg(null), 2000);
+    } catch { setEntityMsg({ text: "Network error", ok: false }); }
+    finally { setAddingId(null); }
+  }
+
+  async function removeEntity(field: string, entityId: string) {
+    await fetch(`/api/baskets/${basketId}/items`, {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: entityId }),
+    });
+    fetchBasket();
   }
 
   /* ── Remove a single copy from basket ── */
@@ -263,8 +360,8 @@ export default function BasketDetailPage() {
       const res  = await fetch(`/api/books/${bookId}/copies`);
       const data = await res.json() as CopyPickerRow[];
       setPickerCopies(data);
-      const inBasket = new Set(basket?.items.map((i) => i.copy.id) ?? []);
-      setPickerSel(new Set(data.filter((c) => c.status === "AVAILABLE" && !inBasket.has(c.id)).map((c) => c.id)));
+      const inBasket = new Set(basket?.items.map((i) => i.copy?.id) ?? []);
+      setPickerSel(new Set(data.filter((c) => (c.status === "AVAILABLE" || c.status === "STOCK") && !inBasket.has(c.id)).map((c) => c.id)));
     } catch { setPickerCopies([]); }
     setPickerLoading(false);
   }
@@ -286,12 +383,12 @@ export default function BasketDetailPage() {
   }
 
   /* ── Run an action ── */
-  async function runAction(action: string) {
+  async function runAction(action: string, extraPayload: Record<string, string> = {}) {
     setActionBusy(true); setActionMsg(null);
-    const payload: Record<string, string> = {};
-    if (action === "location") payload.location = locValue;
+    const payload: Record<string, string> = { ...extraPayload };
     if (action === "condition") payload.condition = condValue;
     if (["withdraw", "archive", "repair"].includes(action)) payload.reason = reasonVal;
+    if (action === "extend-expiry") payload.expireDate = locValue;
 
     try {
       const res  = await fetch(`/api/baskets/${basketId}/actions`, {
@@ -304,7 +401,7 @@ export default function BasketDetailPage() {
         const count = data.updated ?? data.deleted ?? 0;
         setActionMsg({ text: t("doneUpdated", { count }), ok: true });
         fetchBasket();
-        setLocValue(""); setCondValue(""); setReasonVal("");
+        setLocValue(""); setCondValue(""); setReasonVal(""); setMoveLocId(""); setMoveBranchId("");
       } else {
         setActionMsg({ text: data.error ?? t("actionFailed"), ok: false });
       }
@@ -316,13 +413,13 @@ export default function BasketDetailPage() {
   function exportCSV() {
     if (!basket) return;
     const rows = basket.items.map((i) => [
-      `"${i.book.title.replace(/"/g, '""')}"`,
-      i.book.materialType,
-      i.copy.barcode ?? "",
-      `Copy #${i.copy.copyNumber}`,
-      i.book.isbn ?? "",
-      i.book.shelfLocation?.name ?? i.book.location ?? "",
-      i.copy.condition,
+      `"${i.book?.title.replace(/"/g, '""')}"`,
+      i.book?.materialType,
+      i.copy?.barcode ?? "",
+      `Copy #${i.copy?.copyNumber}`,
+      i.book?.isbn ?? "",
+      i.book?.shelfLocation?.name ?? i.book?.location ?? "",
+      i.copy?.condition,
       i.tagged ? "TAGGED" : "UNTAGGED",
       new Date(i.addedAt).toLocaleDateString(),
     ].join(","));
@@ -356,8 +453,8 @@ export default function BasketDetailPage() {
   const taggedCount    = basket.items.filter((i) => i.tagged).length;
   const untaggedCount  = basket.items.filter((i) => !i.tagged).length;
   const totalCount     = basket.items.length;
-  const inBasketCopyIds = new Set(basket.items.map((i) => i.copy.id));
-  const inBasketBookIds = new Set(basket.items.map((i) => i.bookId));
+  const inBasketCopyIds = new Set(basket.items.map((i) => i.copy?.id).filter(Boolean) as string[]);
+  const inBasketBookIds = new Set(basket.items.map((i) => i.bookId).filter(Boolean) as string[]);
 
   return (
     <div className="space-y-5">
@@ -417,8 +514,65 @@ export default function BasketDetailPage() {
       {activeTab === "collection" && (
         <div className="space-y-5">
 
-          {/* Scan by barcode */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          {/* ── AUTHOR / MEMBER / EBOOK: entity search panel ── */}
+          {basket.basketType !== "ITEM" && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Search className="w-4 h-4 text-indigo-500" />
+                {basket.basketType === "AUTHOR" ? "Search by author name" :
+                 basket.basketType === "MEMBER" ? "Search by member ID or name" :
+                 "Search by ebook title"}
+              </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input type="text" value={entityQ}
+                  onChange={e => setEntityQ(e.target.value)}
+                  placeholder={
+                    basket.basketType === "MEMBER" ? "Member ID or name…" :
+                    basket.basketType === "AUTHOR" ? "Author name…" : "Ebook title…"
+                  }
+                  className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  autoFocus
+                />
+                {entityBusy && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />}
+              </div>
+
+              {entityMsg && (
+                <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${entityMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                  {entityMsg.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                  {entityMsg.text}
+                </div>
+              )}
+
+              {entityResults.length > 0 && (
+                <div className="border border-gray-100 rounded-lg divide-y divide-gray-50 max-h-64 overflow-y-auto">
+                  {entityResults.map(r => {
+                    const already = inBasketEntityIds.has(r.id);
+                    return (
+                      <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{r.label}</p>
+                          <p className="text-xs text-gray-400">{r.sub}</p>
+                        </div>
+                        <button onClick={() => !already && addEntity(r.id)}
+                          disabled={already || addingId === r.id}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                            already ? "bg-gray-100 text-gray-400 cursor-default" :
+                            "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                          }`}>
+                          {addingId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          {already ? "In basket" : "Add"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── ITEM: Scan by barcode ── */}
+          {basket.basketType === "ITEM" && <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <Barcode className="w-4 h-4 text-indigo-500" /> {t("addByBarcode")}
               <span className="text-xs font-normal text-gray-400">{t("addByBarcodeHint")}</span>
@@ -462,10 +616,10 @@ export default function BasketDetailPage() {
                 {scanMsg.text}
               </div>
             )}
-          </div>
+          </div>}
 
-          {/* Search & add */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          {/* ── ITEM: Book title search ── */}
+          {basket.basketType === "ITEM" && <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <Search className="w-4 h-4 text-indigo-500" /> {t("addBySearch")}
             </h2>
@@ -526,7 +680,7 @@ export default function BasketDetailPage() {
                             <>
                               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                                 {pickerCopies.map((c) => {
-                                  const avail   = c.status === "AVAILABLE";
+                                  const avail   = c.status === "AVAILABLE" || c.status === "STOCK";
                                   const inBskt  = inBasketCopyIds.has(c.id);
                                   const disabled = !avail || inBskt;
                                   return (
@@ -553,7 +707,7 @@ export default function BasketDetailPage() {
                                   Add {pickerSel.size > 0 ? pickerSel.size : ""} cop{pickerSel.size !== 1 ? "ies" : "y"}
                                 </button>
                                 <button onClick={() => {
-                                  setPickerSel(new Set(pickerCopies.filter((c) => c.status === "AVAILABLE" && !inBasketCopyIds.has(c.id)).map((c) => c.id)));
+                                  setPickerSel(new Set(pickerCopies.filter((c) => (c.status === "AVAILABLE" || c.status === "STOCK") && !inBasketCopyIds.has(c.id)).map((c) => c.id)));
                                 }} className="text-xs text-indigo-600 hover:underline">{t("allAvailable")}</button>
                                 <button
                                   onClick={() => setPickerTagged(!pickerTagged)}
@@ -577,13 +731,16 @@ export default function BasketDetailPage() {
                 })}
               </div>
             )}
-          </div>
+          </div>}
 
-          {/* Current basket copies */}
+          {/* ── Items list (type-aware) ── */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="font-semibold text-gray-800">
-                {t("copiesInBasket", { count: totalCount })}
+                {basket.basketType === "ITEM"   ? t("copiesInBasket", { count: totalCount }) :
+                 basket.basketType === "AUTHOR" ? `Authors in basket (${totalCount})` :
+                 basket.basketType === "MEMBER" ? `Members in basket (${totalCount})` :
+                 `E-books in basket (${totalCount})`}
               </h2>
             </div>
             {totalCount === 0 ? (
@@ -596,27 +753,62 @@ export default function BasketDetailPage() {
                 {basket.items.map((item) => (
                   <div key={item.id} className="flex items-center gap-3 px-5 py-2.5">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${item.tagged ? "bg-indigo-500" : "bg-gray-300"}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-medium text-gray-800 truncate">{item.book.title}</p>
-                        <MatBadge type={item.book.materialType} />
+
+                    {/* ITEM */}
+                    {basket.basketType === "ITEM" && (
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-medium text-gray-800 truncate">{item.book?.title}</p>
+                          <MatBadge type={item.book?.materialType ?? ""} />
+                        </div>
+                        <p className="text-xs font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="text-indigo-600 font-semibold">{item.copy?.barcode ?? "—"}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wide">
+                            Copy #{item.copy?.copyNumber}
+                          </span>
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {(item.book?.shelfLocation?.name ?? item.book?.location) ? `${item.book?.shelfLocation?.name ?? item.book?.location} · ` : ""}
+                          {item.book?.author?.name ?? ""}
+                        </p>
                       </div>
-                      <p className="text-xs font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span className="text-indigo-600 font-semibold">{item.copy.barcode ?? "—"}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wide">
-                          Copy #{item.copy.copyNumber}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {(item.book.shelfLocation?.name ?? item.book.location) ? `${item.book.shelfLocation?.name ?? item.book.location} · ` : ""}
-                        {item.book.author?.name ?? ""}
-                      </p>
-                    </div>
-                    <CondBadge cond={item.copy.condition} />
-                    <span className={`text-xs font-medium ${item.tagged ? "text-indigo-600" : "text-gray-400"}`}>
-                      {item.tagged ? t("tagged") : t("untagged")}
-                    </span>
-                    <button onClick={() => removeCopy(item.copy.id)}
+                    )}
+
+                    {/* AUTHOR */}
+                    {basket.basketType === "AUTHOR" && (
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{item.author?.name ?? "—"}</p>
+                        <p className="text-xs text-gray-400">{item.author?._count?.books ?? 0} books</p>
+                      </div>
+                    )}
+
+                    {/* MEMBER */}
+                    {basket.basketType === "MEMBER" && (
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{item.member?.name ?? "—"}</p>
+                        <p className="text-xs text-gray-400 font-mono">
+                          {item.member?.memberId ?? "—"}
+                          {item.member?.memberType && <span className="ml-2 normal-case font-sans">{item.member.memberType}</span>}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* EBOOK */}
+                    {basket.basketType === "EBOOK" && (
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{item.ebook?.title ?? "—"}</p>
+                        <p className="text-xs text-gray-400">{item.ebook?.ebookType ?? ""}</p>
+                      </div>
+                    )}
+
+                    {basket.basketType === "ITEM" && <CondBadge cond={item.copy?.condition ?? ""} />}
+                    <button
+                      onClick={() => {
+                        if (basket.basketType === "ITEM")   removeCopy(item.copy?.id ?? "");
+                        else if (basket.basketType === "AUTHOR") removeEntity("authorId", item.authorId ?? "");
+                        else if (basket.basketType === "MEMBER") removeEntity("memberId", item.memberId ?? "");
+                        else if (basket.basketType === "EBOOK")  removeEntity("ebookId",  item.ebookId  ?? "");
+                      }}
                       className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0">
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -655,7 +847,7 @@ export default function BasketDetailPage() {
               {basket.items.map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => toggleTag(item.copy.id, !item.tagged)}
+                  onClick={() => toggleTag(item.copy?.id ?? item.id, !item.tagged)}
                   className="flex items-center gap-4 px-5 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
                 >
                   {item.tagged
@@ -663,22 +855,24 @@ export default function BasketDetailPage() {
                     : <Square      className="w-5 h-5 text-gray-300 shrink-0" />
                   }
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-sm font-medium text-gray-800 truncate">{item.book.title}</p>
-                      <MatBadge type={item.book.materialType} />
-                    </div>
-                    <p className="text-xs font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="text-indigo-600 font-semibold">{item.copy.barcode ?? "—"}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wide">
-                        Copy #{item.copy.copyNumber}
-                      </span>
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {(item.book.shelfLocation?.name ?? item.book.location) ? `${item.book.shelfLocation?.name ?? item.book.location} · ` : ""}
-                      {item.book.author?.name ?? ""}
-                    </p>
+                    {basket.basketType === "ITEM" && <>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-medium text-gray-800 truncate">{item.book?.title}</p>
+                        <MatBadge type={item.book?.materialType ?? ""} />
+                      </div>
+                      <p className="text-xs font-mono mt-0.5 flex items-center gap-1.5">
+                        <span className="text-indigo-600 font-semibold">{item.copy?.barcode ?? "—"}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wide">Copy #{item.copy?.copyNumber}</span>
+                      </p>
+                    </>}
+                    {basket.basketType === "AUTHOR" && <p className="text-sm font-medium text-gray-800">{item.author?.name ?? "—"}</p>}
+                    {basket.basketType === "MEMBER" && <>
+                      <p className="text-sm font-medium text-gray-800">{item.member?.name ?? "—"}</p>
+                      <p className="text-xs text-gray-400 font-mono">{item.member?.memberId ?? ""}</p>
+                    </>}
+                    {basket.basketType === "EBOOK" && <p className="text-sm font-medium text-gray-800">{item.ebook?.title ?? "—"}</p>}
                   </div>
-                  <CondBadge cond={item.copy.condition} />
+                  {basket.basketType === "ITEM" && <CondBadge cond={item.copy?.condition ?? ""} />}
                   <span className={`text-xs font-semibold ${item.tagged ? "text-indigo-600" : "text-gray-400"}`}>
                     {item.tagged ? t("taggedCap") : t("untaggedCap")}
                   </span>
@@ -698,70 +892,55 @@ export default function BasketDetailPage() {
             <p className="text-sm font-semibold text-gray-700 mb-3">{t("applyActionsTo")}</p>
             <div className="flex gap-2">
               {(["tagged", "all"] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScope(s)}
+                <button key={s} onClick={() => setScope(s)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    scope === s
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
+                    scope === s ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}>
                   {s === "tagged" ? t("taggedOnly", { count: taggedCount }) : t("allInBasket", { count: totalCount })}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Action sub-tabs */}
+          {/* Action sub-tabs — filtered per basket type */}
           <div className="flex gap-2 flex-wrap">
             {[
-              { id: "location",       tKey: "moveLocation"    as const, icon: MapPin    },
-              { id: "condition",      tKey: "setCondition"    as const, icon: Star      },
-              { id: "repair",         tKey: "sendRepair"      as const, icon: Wrench    },
-              { id: "withdraw",       tKey: "withdraw"        as const, icon: BookX     },
-              { id: "archive",        tKey: "archive"         as const, icon: Archive   },
-              { id: "restore",        tKey: "restore"         as const, icon: RotateCcw },
-              { id: "inventory-mark", tKey: "markInventoried" as const, icon: BookCheck },
-              { id: "export",         tKey: "exportList"      as const, icon: Download  },
-            ].map(({ id, tKey, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => { setActionTab(id); setActionMsg(null); }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  actionTab === id
-                    ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {t(tKey)}
-              </button>
-            ))}
+              // ITEM only
+              { id: "condition",      label: t("setCondition"),    icon: Star,        types: ["ITEM"] },
+              { id: "move-location",  label: "Move Location",      icon: MapPin,      types: ["ITEM"] },
+              { id: "move-branch",    label: "Move Branch",        icon: Building2,   types: ["ITEM"] },
+              { id: "repair",         label: t("sendRepair"),      icon: Wrench,      types: ["ITEM"] },
+              { id: "withdraw",       label: t("withdraw"),        icon: BookX,       types: ["ITEM"] },
+              { id: "archive",        label: t("archive"),         icon: Archive,     types: ["ITEM"] },
+              { id: "restore",        label: t("restore"),         icon: RotateCcw,   types: ["ITEM"] },
+              { id: "inventory-mark", label: t("markInventoried"), icon: BookCheck,   types: ["ITEM"] },
+              // EBOOK only
+              { id: "toggle-public",  label: "Set Public/Private", icon: BookMarked,  types: ["EBOOK"] },
+              // MEMBER only
+              { id: "activate",       label: "Activate",           icon: UserCheck,   types: ["MEMBER"] },
+              { id: "deactivate",     label: "Deactivate",         icon: UserX,       types: ["MEMBER"] },
+              { id: "extend-expiry",  label: "Extend Expiry",      icon: CalendarPlus, types: ["MEMBER"] },
+              // Delete — not for ITEM (books are deleted individually or via withdraw/archive)
+              { id: "delete",         label: "Delete",             icon: Trash2,      types: ["AUTHOR","MEMBER","EBOOK"] },
+              // All types
+              { id: "export",         label: t("exportList"),      icon: Download,    types: ["ITEM","EBOOK","AUTHOR","MEMBER"] },
+            ]
+              .filter(a => a.types.includes(basket.basketType))
+              .map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => { setActionTab(id); setActionMsg(null); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    actionTab === id ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
           </div>
 
           {/* Action panel */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
 
-            {actionTab === "location" && (
-              <>
-                <p className="text-sm text-gray-600">{t("locationDesc")}</p>
-                <input
-                  type="text"
-                  value={locValue}
-                  onChange={(e) => setLocValue(e.target.value)}
-                  placeholder={t("locationPlaceholder")}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-                <button onClick={() => runAction("location")} disabled={actionBusy || !locValue.trim()}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <MapPin className="w-4 h-4" /> {t("applyLocation")}
-                </button>
-              </>
-            )}
-
-            {actionTab === "condition" && (
+            {actionTab === "condition" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("conditionDesc")}</p>
                 <select
@@ -782,7 +961,7 @@ export default function BasketDetailPage() {
               </>
             )}
 
-            {actionTab === "repair" && (
+            {actionTab === "repair" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("repairDesc")}</p>
                 <input
@@ -800,7 +979,7 @@ export default function BasketDetailPage() {
               </>
             )}
 
-            {actionTab === "withdraw" && (
+            {actionTab === "withdraw" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("withdrawDesc")}</p>
                 <input
@@ -818,7 +997,7 @@ export default function BasketDetailPage() {
               </>
             )}
 
-            {actionTab === "archive" && (
+            {actionTab === "archive" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("archiveDesc")}</p>
                 <input
@@ -836,7 +1015,7 @@ export default function BasketDetailPage() {
               </>
             )}
 
-            {actionTab === "restore" && (
+            {actionTab === "restore" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("restoreDesc")}</p>
                 <button onClick={() => runAction("restore")} disabled={actionBusy}
@@ -847,7 +1026,7 @@ export default function BasketDetailPage() {
               </>
             )}
 
-            {actionTab === "inventory-mark" && (
+            {actionTab === "inventory-mark" && basket.basketType === "ITEM" && (
               <>
                 <p className="text-sm text-gray-600">{t("inventoryDesc")}</p>
                 <button onClick={() => runAction("inventory-mark")} disabled={actionBusy}
@@ -858,12 +1037,122 @@ export default function BasketDetailPage() {
               </>
             )}
 
+            {actionTab === "move-location" && basket.basketType === "ITEM" && (
+              <>
+                <p className="text-sm text-gray-600">Move selected books to a different shelf location.</p>
+                <select value={moveLocId} onChange={e => setMoveLocId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="">Select shelf location…</option>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button onClick={() => runAction("move-location", { locationId: moveLocId })} disabled={actionBusy || !moveLocId}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <MapPin className="w-4 h-4" /> Move Location
+                </button>
+              </>
+            )}
+
+            {actionTab === "move-branch" && basket.basketType === "ITEM" && (
+              <>
+                <p className="text-sm text-gray-600">Transfer selected copies to a different branch.</p>
+                <select value={moveBranchId} onChange={e => setMoveBranchId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="">Select branch…</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <button onClick={() => runAction("move-branch", { branchId: moveBranchId })} disabled={actionBusy || !moveBranchId}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <Building2 className="w-4 h-4" /> Move Branch
+                </button>
+              </>
+            )}
+
+            {actionTab === "delete" && basket.basketType !== "ITEM" && (
+              <>
+                <p className="text-sm text-gray-600">
+                  Permanently delete all {scope === "tagged" ? "tagged" : ""}{" "}
+                  {basket.basketType === "AUTHOR" ? "authors" : basket.basketType === "MEMBER" ? "members" : "e-books"} in this basket.
+                  <span className="ml-1 font-semibold text-red-600">This cannot be undone.</span>
+                </p>
+                <button
+                  onClick={() => {
+                    const label = basket.basketType === "AUTHOR" ? "authors" : basket.basketType === "MEMBER" ? "members" : "e-books";
+                    if (confirm(`Delete all ${scope} ${label}? This is permanent.`)) runAction("delete");
+                  }}
+                  disabled={actionBusy}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-60 transition-colors">
+                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <Trash2 className="w-4 h-4" /> Delete permanently
+                </button>
+              </>
+            )}
+
             {actionTab === "export" && (
               <>
                 <p className="text-sm text-gray-600">{t("exportDesc")}</p>
                 <button onClick={exportCSV}
                   className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-colors">
                   <Download className="w-4 h-4" /> {t("downloadCSV")}
+                </button>
+              </>
+            )}
+
+            {/* ── EBOOK: Toggle public/private ── */}
+            {actionTab === "toggle-public" && (
+              <>
+                <p className="text-sm text-gray-600">
+                  Set all {scope === "tagged" ? "tagged" : ""} e-books in this basket to public or private.
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => runAction("set-public", { isPublic: "true" })} disabled={actionBusy}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-60 transition-colors">
+                    {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <BookMarked className="w-4 h-4" /> Set Public
+                  </button>
+                  <button onClick={() => runAction("set-public", { isPublic: "false" })} disabled={actionBusy}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-60 transition-colors">
+                    {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <BookMarked className="w-4 h-4" /> Set Private
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── MEMBER: Activate / Deactivate ── */}
+            {(actionTab === "activate" || actionTab === "deactivate") && (
+              <>
+                <p className="text-sm text-gray-600">
+                  {actionTab === "activate"
+                    ? `Activate all ${scope === "tagged" ? "tagged" : ""} members in this basket.`
+                    : `Deactivate all ${scope === "tagged" ? "tagged" : ""} members in this basket.`}
+                </p>
+                <button onClick={() => runAction(actionTab)} disabled={actionBusy}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-60 transition-colors ${
+                    actionTab === "activate" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                  }`}>
+                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {actionTab === "activate" ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                  {actionTab === "activate" ? "Activate members" : "Deactivate members"}
+                </button>
+              </>
+            )}
+
+            {/* ── MEMBER: Extend expiry ── */}
+            {actionTab === "extend-expiry" && (
+              <>
+                <p className="text-sm text-gray-600">
+                  Set a new expiry date for all {scope === "tagged" ? "tagged" : ""} members in this basket.
+                </p>
+                <input type="date" value={locValue} onChange={e => setLocValue(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <button onClick={() => runAction("extend-expiry", { expireDate: locValue })} disabled={actionBusy || !locValue}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors">
+                  {actionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <CalendarPlus className="w-4 h-4" /> Apply expiry date
                 </button>
               </>
             )}

@@ -1,43 +1,76 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/shop/books
- * Public — returns all copies with status = FOR_SALE with book info.
+ * Public — returns FOR_SALE copies when the sale feature is enabled.
+ * Supports ?page=&limit=&q= for server-side pagination and search.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
   const saleSetting = await prisma.settings.findUnique({ where: { key: "BOOK_SALE_ENABLED" } });
-  if (saleSetting?.value !== "true") return NextResponse.json([]);
+  const saleEnabled = saleSetting?.value === "true";
 
-  const copies = await prisma.bookCopy.findMany({
-    where: { status: "FOR_SALE" },
-    include: {
-      book: {
-        select: {
-          id: true, title: true, isbn: true, coverImage: true,
-          price:    true,                     // fallback when copy has no price
-          author:   { select: { name: true } },
-          category: { select: { name: true } },
+  const q        = (searchParams.get("q") || "").trim();
+  const paginate = searchParams.has("page");
+  const pageParam = parseInt(searchParams.get("page") || "1", 10) || 1;
+  const limitParam = parseInt(searchParams.get("limit") || "20", 10);
+  const limit    = Math.min(limitParam, 100);
+
+  if (!saleEnabled) return NextResponse.json({ saleEnabled: false, forSale: [], total: 0, page: 1, pages: 1 });
+
+  // Paginate at the BOOK level (not copy level) so limit means "N books per page"
+  const bookWhere = {
+    copies: { some: { status: "FOR_SALE" as const } },
+    ...(q && {
+      OR: [
+        { title:  { contains: q, mode: "insensitive" as const } },
+        { isbn:   { contains: q, mode: "insensitive" as const } },
+        { author: { name: { contains: q, mode: "insensitive" as const } } },
+      ],
+    }),
+  };
+
+  const [bookPage, total] = await Promise.all([
+    prisma.book.findMany({
+      where: bookWhere,
+      select: {
+        id: true, title: true, isbn: true, coverImage: true, price: true,
+        author:   { select: { name: true } },
+        category: { select: { name: true } },
+        copies: {
+          where:   { status: "FOR_SALE" },
+          select:  { id: true, copyNumber: true, barcode: true, condition: true, price: true },
+          orderBy: { copyNumber: "asc" },
         },
       },
-    },
-    orderBy: [{ book: { title: "asc" } }, { copyNumber: "asc" }],
-  });
+      orderBy: { title: "asc" },
+      ...(paginate ? { take: limit, skip: (pageParam - 1) * limit } : {}),
+    }),
+    paginate ? prisma.book.count({ where: bookWhere }) : Promise.resolve(0),
+  ]);
 
-  return NextResponse.json(
-    copies.map((c) => ({
+  const forSale = bookPage.flatMap((book) =>
+    book.copies.map((c) => ({
       copyId:     c.id,
       copyNumber: c.copyNumber,
       barcode:    c.barcode,
       condition:  c.condition,
-      // Copy price takes priority; fall back to book-level default price
-      price:      c.price ?? c.book.price,
-      id:         c.book.id,
-      title:      c.book.title,
-      isbn:       c.book.isbn,
-      coverImage: c.book.coverImage,
-      author:     c.book.author,
-      category:   c.book.category,
-    })),
+      price:      c.price ?? book.price,
+      id:         book.id,
+      title:      book.title,
+      isbn:       book.isbn,
+      coverImage: book.coverImage,
+      author:     book.author,
+      category:   book.category,
+    }))
   );
+
+  return NextResponse.json({
+    saleEnabled,
+    forSale,
+    total,
+    page:  pageParam,
+    pages: paginate ? Math.ceil(total / limit) || 1 : 1,
+  });
 }

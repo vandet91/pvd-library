@@ -30,32 +30,27 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   };
   const { action, payload = {}, scope = "tagged" } = body;
 
-  /* Resolve which book / copy IDs to act on */
-  const items = await prisma.basketItem.findMany({
-    where: {
-      basketId,
-      ...(scope === "tagged" ? { tagged: true } : {}),
-    },
-    select: { bookId: true, copyId: true, book: { select: { totalCopies: true } } },
-  });
+  /* Resolve which IDs to act on — fetch raw SQL to avoid stale engine issues */
+  const rawItems = await prisma.$queryRawUnsafe<{
+    bookId: string | null; copyId: string | null;
+    ebookId: string | null; memberId: string | null; authorId: string | null; totalCopies?: number;
+  }[]>(
+    `SELECT bi."bookId", bi."copyId", bi."ebookId", bi."memberId", bi."authorId",
+            b."totalCopies"
+     FROM "BasketItem" bi
+     LEFT JOIN "Book" b ON b.id = bi."bookId"
+     WHERE bi."basketId" = $1 ${scope === "tagged" ? 'AND bi.tagged = true' : ''}`,
+    basketId,
+  );
+  const items = rawItems;
 
   if (items.length === 0)
-    return NextResponse.json({ error: "No books selected (none tagged)" }, { status: 400 });
+    return NextResponse.json({ error: "No items selected (none tagged)" }, { status: 400 });
 
-  const bookIds = [...new Set(items.map((i) => i.bookId))];
-  const copyIds = [...new Set(items.map((i) => i.copyId))];
+  const bookIds = [...new Set(items.map((i) => i.bookId).filter(Boolean))] as string[];
+  const copyIds = [...new Set(items.map((i) => i.copyId).filter(Boolean))] as string[];
 
   switch (action) {
-    case "location": {
-      if (!payload.location?.trim())
-        return NextResponse.json({ error: "location is required" }, { status: 400 });
-      const result = await prisma.book.updateMany({
-        where: { id: { in: bookIds } },
-        data:  { location: payload.location.trim() },
-      });
-      return NextResponse.json({ updated: result.count });
-    }
-
     case "condition": {
       const cond = payload.condition as BookCondition | undefined;
       if (!cond || !(cond in BookCondition))
@@ -103,7 +98,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
               condition:       BookCondition.GOOD,
               withdrawnAt:     null,
               withdrawnReason: null,
-              availableCopies: item.book.totalCopies,
+              availableCopies: item.totalCopies ?? 1,
             },
           })
         )
@@ -131,11 +126,89 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       return NextResponse.json({ updated: result.count });
     }
 
+    case "move-location": {
+      if (!payload.locationId) return NextResponse.json({ error: "locationId is required" }, { status: 400 });
+      const result = await prisma.book.updateMany({
+        where: { id: { in: bookIds } },
+        data:  { locationId: payload.locationId },
+      });
+      return NextResponse.json({ updated: result.count });
+    }
+
+    case "move-branch": {
+      if (!payload.branchId) return NextResponse.json({ error: "branchId is required" }, { status: 400 });
+      const result = await prisma.bookCopy.updateMany({
+        where: { id: { in: copyIds } },
+        data:  { branchId: payload.branchId },
+      });
+      return NextResponse.json({ updated: result.count });
+    }
+
     case "delete": {
-      /* Remove from basket first, then delete the book records */
-      await prisma.basketItem.deleteMany({ where: { basketId, bookId: { in: bookIds } } });
-      const result = await prisma.book.deleteMany({ where: { id: { in: bookIds } } });
-      return NextResponse.json({ deleted: result.count });
+      /* For ITEM baskets: delete the book records */
+      if (bookIds.length) {
+        await prisma.basketItem.deleteMany({ where: { basketId, bookId: { in: bookIds } } });
+        const result = await prisma.book.deleteMany({ where: { id: { in: bookIds } } });
+        return NextResponse.json({ deleted: result.count });
+      }
+      /* For AUTHOR baskets */
+      const authorIds = items.map((i) => i.authorId).filter(Boolean) as string[];
+      if (authorIds.length) {
+        await prisma.basketItem.deleteMany({ where: { basketId, authorId: { in: authorIds } } });
+        const result = await prisma.author.deleteMany({ where: { id: { in: authorIds } } });
+        return NextResponse.json({ deleted: result.count });
+      }
+      /* For MEMBER baskets */
+      const memberIdsD = items.map((i) => (i as Record<string, unknown>).memberId as string).filter(Boolean);
+      if (memberIdsD.length) {
+        await prisma.basketItem.deleteMany({ where: { basketId, memberId: { in: memberIdsD } } });
+        const result = await prisma.member.deleteMany({ where: { id: { in: memberIdsD } } });
+        return NextResponse.json({ deleted: result.count });
+      }
+      /* For EBOOK baskets */
+      const ebookIdsD = items.map((i) => (i as Record<string, unknown>).ebookId as string).filter(Boolean);
+      if (ebookIdsD.length) {
+        await prisma.basketItem.deleteMany({ where: { basketId, ebookId: { in: ebookIdsD } } });
+        const result = await prisma.ebook.deleteMany({ where: { id: { in: ebookIdsD } } });
+        return NextResponse.json({ deleted: result.count });
+      }
+      return NextResponse.json({ error: "Nothing to delete" }, { status: 400 });
+    }
+
+    // ── EBOOK: set public / private ───────────────────────────────────────
+    case "set-public": {
+      const isPublic = payload.isPublic === "true";
+      const ebookIds = items.map((i) => (i as Record<string, unknown>).ebookId as string).filter(Boolean);
+      if (!ebookIds.length) return NextResponse.json({ error: "No e-books in scope" }, { status: 400 });
+      const result = await prisma.ebook.updateMany({
+        where: { id: { in: ebookIds } },
+        data:  { isPublic },
+      });
+      return NextResponse.json({ updated: result.count });
+    }
+
+    // ── MEMBER: activate / deactivate ─────────────────────────────────────
+    case "activate":
+    case "deactivate": {
+      const memberIds = items.map((i) => (i as Record<string, unknown>).memberId as string).filter(Boolean);
+      if (!memberIds.length) return NextResponse.json({ error: "No members in scope" }, { status: 400 });
+      const result = await prisma.member.updateMany({
+        where: { id: { in: memberIds } },
+        data:  { isActive: action === "activate" },
+      });
+      return NextResponse.json({ updated: result.count });
+    }
+
+    // ── MEMBER: extend expiry ─────────────────────────────────────────────
+    case "extend-expiry": {
+      if (!payload.expireDate) return NextResponse.json({ error: "expireDate is required" }, { status: 400 });
+      const memberIds = items.map((i) => (i as Record<string, unknown>).memberId as string).filter(Boolean);
+      if (!memberIds.length) return NextResponse.json({ error: "No members in scope" }, { status: 400 });
+      const result = await prisma.member.updateMany({
+        where: { id: { in: memberIds } },
+        data:  { expireDate: new Date(payload.expireDate), isActive: true },
+      });
+      return NextResponse.json({ updated: result.count });
     }
 
     default:

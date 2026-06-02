@@ -5,7 +5,6 @@ import { cookies, headers } from "next/headers";
 import Providers from "@/components/Providers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ALL_LOCALES } from "@/lib/locales";
 import { getEnabledLocales } from "@/lib/get-enabled-locales";
 import "./globals.css";
 
@@ -13,8 +12,8 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const notoKhmer = Noto_Sans_Khmer({
   subsets: ["khmer"],
   variable: "--font-khmer",
-  weight: ["400", "500", "600", "700"],
-  display: "block", // "block" = invisible until loaded → no swap-flash
+  weight: "variable", // variable font — one file covers all weights; preload covers everything
+  display: "block",
   preload: true,
 });
 
@@ -52,10 +51,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     theme = (VALID_THEMES.includes(raw as ThemeName) ? raw : "ocean") as ThemeName;
   }
 
-  // Read locale set by next-intl middleware (X-NEXT-INTL-LOCALE request header)
-  // so we can set lang on <html> server-side — eliminates FOUT on hard refresh.
+  // Locale for the <html lang=""> attribute — set by proxy.ts as a request header.
   const headersList = await headers();
-  const locale = headersList.get("X-NEXT-INTL-LOCALE") ?? "en";
+  const locale      = headersList.get("X-NEXT-INTL-LOCALE") ?? "en";
 
   // Fetch library name + logo from DB so they're available to all client components
   // without any additional client-side fetch.
@@ -67,8 +65,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const libraryLogo = libLogoRow?.value ?? "";
 
   // Fetch the enabled-locales list so LanguageToggle only shows active locales.
-  const enabledCodes = await getEnabledLocales();
-  const enabledLocales = ALL_LOCALES.filter((l) => enabledCodes.includes(l.code));
+  const enabledLocales = await getEnabledLocales();
 
   return (
     <html
@@ -77,7 +74,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${geist.variable} ${notoKhmer.variable} h-full`}
       suppressHydrationWarning
     >
-      <body className="min-h-full antialiased" suppressHydrationWarning>
+      <body className={`min-h-full antialiased ${locale === "km" ? "font-khmer" : "font-sans"}`} suppressHydrationWarning>
         <Providers
           session={session}
           libraryName={libraryName}

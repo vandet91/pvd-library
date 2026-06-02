@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { notifyMember, tg } from "@/lib/telegram";
+import { notifyMember, notifyAdmin, tg } from "@/lib/telegram";
 
 const schema = z.object({
-  paymentProof: z.string().url("Must be a valid image URL"),
+  paymentProof: z.string().min(1, "Payment proof is required"),
   paymentRef:   z.string().optional(),
 });
 
@@ -39,7 +39,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) {
+    const msg = parsed.error.errors.map((e) => e.message).join(", ");
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
 
   const updated = await prisma.saleOrder.update({
     where: { id },
@@ -48,10 +51,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       paymentProof: parsed.data.paymentProof,
       paymentRef:   parsed.data.paymentRef ?? null,
     },
+    include: {
+      branch: { select: { id: true, name: true, address: true, phone: true } },
+      items: {
+        include: {
+          book: {
+            select: {
+              id: true, title: true, coverImage: true, isbn: true,
+              author: { select: { name: true } },
+            },
+          },
+          copy: { select: { id: true, copyNumber: true, barcode: true, condition: true } },
+        },
+      },
+    },
   });
 
-  // Notify member that proof was received
+  // Notify member that proof was received + alert admin to confirm payment
   notifyMember(member.id, tg.salePaymentSubmitted(member.name, order.orderNumber)).catch(() => {});
+  notifyAdmin(tg.adminPaymentProof(member.name, order.orderNumber)).catch(() => {});
 
   return NextResponse.json(updated);
 }

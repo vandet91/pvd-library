@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   try {
     const location = await prisma.location.create({ data: parsed.data });

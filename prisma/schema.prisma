@@ -21,9 +21,11 @@ model User {
   authMethods   String    @default("[\"password\",\"google\",\"magic\"]")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  member        Member?
-  accounts      Account[]
-  sessions      Session[]
+  member           Member?
+  accounts         Account[]
+  sessions         Session[]
+  assignedTasks    StaffTask[]     @relation("TaskAssignee")
+  queryTemplates   QueryTemplate[] @relation("QueryTemplateAuthor")
 }
 
 model Account {
@@ -69,6 +71,7 @@ model Member {
   phone        String?
   address      String?
   memberType   MemberType    @default(STUDENT)
+  gender       Gender        @default(UNSPECIFIED)
   joinDate     DateTime      @default(now())
   expireDate   DateTime?
   isActive            Boolean            @default(true)
@@ -79,6 +82,9 @@ model Member {
   restrictedAt        DateTime?
   restrictedBy        String?            // staff name who applied it
   restrictionExpiry   DateTime?          // null = permanent; set for timed suspensions
+  studentId           String?
+  school              String?
+  className           String?
   telegramChatId      String?       @unique
   telegramLinkedAt    DateTime?
   telegramLinkCode    String?       @unique
@@ -92,6 +98,7 @@ model Member {
   bookRequests        BookRequest[]
   ratings             Rating[]
   incidents           MemberIncident[]
+  basketItems         BasketItem[]
   saleCart            SaleCart?
   saleOrders          SaleOrder[]
 
@@ -114,6 +121,7 @@ model Author {
   books           Book[]
   coAuthoredBooks Book[]   @relation("BookCoAuthors")
   ebooks          Ebook[]
+  basketItems     BasketItem[]
 }
 
 model Publisher {
@@ -162,10 +170,13 @@ model Book {
   publishYear     Int?
   pages           Int?
   language        String?       @default("en")
+  callNumber      String?
   location        String?
+  pmbNoticeId     Int?          // temporary: PMB notice_id for loan migration
   totalCopies     Int           @default(1)
   availableCopies Int           @default(1)
   materialType    MaterialType  @default(BOOK)
+  audienceLevel   AudienceLevel @default(UNSPECIFIED)
   condition       BookCondition @default(GOOD)
   price           Float?
   referenceOnly   Boolean       @default(false)  // title-level: all copies are in-library only
@@ -238,6 +249,8 @@ model BookCopy {
   copyNumber  Int           // 1, 2, 3, ... unique per book
   barcode      String?       @unique
   rfid         String?       @unique
+  pmbId              Int?     // PMB exemplaire_id
+  pmbOriginalBarcode String?  // original PMB expl_cb — for lookup when member returns with old label
   condition    BookCondition @default(GOOD)
   status       CopyStatus    @default(AVAILABLE)
   loanable     Boolean       @default(true)   // false = in-library only (reference, rare, etc.)
@@ -359,6 +372,7 @@ model Ebook {
   author      Author?   @relation(fields: [authorId], references: [id])
   book        Book?     @relation(fields: [bookId], references: [id])
   ratings     Rating[]
+  basketItems BasketItem[]
 
   @@index([categoryId])
   @@index([authorId])
@@ -447,6 +461,12 @@ enum MemberType {
   PUBLIC
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  UNSPECIFIED
+}
+
 enum LoanStatus {
   ACTIVE
   RETURNED
@@ -527,6 +547,13 @@ enum BookRequestStatus {
   APPROVED
   REJECTED
   FULFILLED
+}
+
+enum AudienceLevel {
+  CHILDREN
+  YOUTH
+  ADULTS
+  UNSPECIFIED
 }
 
 enum MaterialType {
@@ -634,28 +661,57 @@ model ActivityLog {
   @@index([createdAt])
 }
 
+enum BasketType {
+  ITEM    // physical book copies
+  EBOOK   // digital resources / e-books
+  AUTHOR  // author records
+  MEMBER  // member records
+}
+
 model Basket {
-  id        String       @id @default(cuid())
-  name      String
-  notes     String?      @db.Text
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  items     BasketItem[]
+  id         String     @id @default(cuid())
+  name       String
+  basketType BasketType @default(ITEM)
+  notes      String?    @db.Text
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  items      BasketItem[]
 }
 
 model BasketItem {
   id       String    @id @default(cuid())
   basketId String
-  bookId   String
-  copyId   String    // always a specific physical copy — no title-level items
   tagged   Boolean   @default(false)
   addedAt  DateTime  @default(now())
+
+  // ITEM basket — physical copy (both required together)
+  bookId   String?
+  copyId   String?
+
+  // EBOOK basket
+  ebookId  String?
+
+  // AUTHOR basket
+  authorId String?
+
+  // MEMBER basket
+  memberId String?
+
   basket   Basket    @relation(fields: [basketId], references: [id], onDelete: Cascade)
-  book     Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  copy     BookCopy  @relation(fields: [copyId], references: [id], onDelete: Cascade)
+  book     Book?     @relation(fields: [bookId],   references: [id], onDelete: Cascade)
+  copy     BookCopy? @relation(fields: [copyId],   references: [id], onDelete: Cascade)
+  ebook    Ebook?    @relation(fields: [ebookId],  references: [id], onDelete: Cascade)
+  author   Author?   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  member   Member?   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([basketId, copyId])
+  @@unique([basketId, ebookId])
+  @@unique([basketId, authorId])
+  @@unique([basketId, memberId])
   @@index([bookId])
+  @@index([ebookId])
+  @@index([authorId])
+  @@index([memberId])
 }
 
 // ─── Sale / Bookshop ─────────────────────────────────────────────────────────
@@ -687,16 +743,21 @@ model SaleCartItem {
 model SaleOrder {
   id            String           @id @default(cuid())
   orderNumber   String           @unique  // e.g. "SO-2025-0001"
-  memberId      String
+  memberId      String?                   // null for walk-in / counter sales
   status        SaleOrderStatus  @default(PENDING_PAYMENT)
   deliveryType  SaleDeliveryType @default(PICKUP)
+
+  // Sale channel
+  saleChannel   String  @default("ONLINE")  // "ONLINE" | "COUNTER"
+  walkInName    String?                      // customer name for counter sales
+  walkInPhone   String?                      // customer phone for counter sales
 
   // Delivery / pickup
   deliveryAddress String?  @db.Text  // filled when DELIVERY
   branchId        String?            // filled when PICKUP
 
   // Payment
-  paymentMethod String?   // "qr" | "card" | "cash_on_pickup"
+  paymentMethod String?   // "qr" | "card" | "cash_on_pickup" | "cash" | "card_counter"
   paymentProof  String?   // uploaded image URL (screenshot of QR payment)
   paymentRef    String?   // transaction / reference ID from payment
   paidAt        DateTime?
@@ -704,6 +765,7 @@ model SaleOrder {
   // Financials (snapshot at checkout time)
   subtotal    Float
   shippingFee Float  @default(0)
+  taxAmount   Float  @default(0)
   total       Float
   currency    String @default("USD")
 
@@ -726,11 +788,12 @@ model SaleOrder {
   updatedAt DateTime @updatedAt
 
   branch    Branch?        @relation("SaleOrderBranch", fields: [branchId], references: [id])
-  memberRel Member         @relation(fields: [memberId], references: [id])
+  memberRel Member?        @relation(fields: [memberId], references: [id])
   items     SaleOrderItem[]
 
   @@index([memberId])
   @@index([status])
+  @@index([saleChannel])
   @@index([createdAt])
 }
 
@@ -771,3 +834,57 @@ enum SaleDeliveryType {
   PICKUP    // member collects at a branch
   DELIVERY  // shipped to member's address
 }
+
+// ─── Staff Task Board ─────────────────────────────────────────────────────────
+
+model StaffTask {
+  id           String       @id @default(cuid())
+  title        String                           // short, imperative verb phrase
+  description  String?      @db.Text
+  priority     TaskPriority @default(MEDIUM)
+  status       TaskStatus   @default(PENDING)
+  category     String?                          // overdue | reservations | acquisition | processing | members | other
+  dueDate      DateTime?
+  relatedId    String?                          // ID of linked entity (member, book, loan…)
+  relatedType  String?                          // "member" | "book" | "loan" | "reservation"
+  createdByAI  Boolean      @default(false)
+  aiContext    String?      @db.Text            // AI message that spawned the task
+  assignedToId String?
+  assignedTo   User?        @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([createdByAI])
+  @@index([createdAt])
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model QueryTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  sql         String   @db.Text
+  createdById String?
+  createdBy   User?    @relation("QueryTemplateAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}
+

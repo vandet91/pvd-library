@@ -154,6 +154,23 @@ export async function GET(request: NextRequest) {
       // silently omit
     }
 
+    // ── Audience level distribution ───────────────────────────────
+    let audienceLevelDistribution: { name: string; count: number }[] = [];
+    try {
+      const audGroups = await prisma.book.groupBy({
+        by:      ["audienceLevel"],
+        where:   { ...branchWhere },
+        _count:  { id: true },
+        orderBy: { _count: { id: "desc" } },
+      });
+      audienceLevelDistribution = audGroups
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((g: any) => ({ name: String(g.audienceLevel), count: Number(g._count.id) }))
+        .filter((g: { count: number }) => g.count > 0);
+    } catch {
+      // silently omit
+    }
+
     // ── Collection inventory ───────────────────────────────────────
     let totalBooks      = 0;
     let totalCopies     = 0;
@@ -243,6 +260,7 @@ export async function GET(request: NextRequest) {
       monthlyLoans,
       categoryDistribution,
       materialTypeDistribution,
+      audienceLevelDistribution,
       topMembers,
       finesByMonth,
     });

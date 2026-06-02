@@ -1018,6 +1018,194 @@ async function buildReport(
       };
     }
 
+    // ── Sales: All Orders ──────────────────────────────────────────
+    case "sales-orders": {
+      const orders = await prisma.saleOrder.findMany({
+        where: {
+          ...(from && to && { createdAt: { gte: from, lte: to } }),
+        },
+        include: {
+          memberRel: { select: { name: true, memberId: true } },
+          items: { select: { id: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 2000,
+      });
+      const rows: Row[] = orders.map((o) => ({
+        OrderNumber:   o.orderNumber,
+        Member:        o.memberRel.name,
+        MemberID:      o.memberRel.memberId,
+        Items:         o.items.length,
+        Subtotal:      o.subtotal,
+        Tax:           o.taxAmount,
+        Shipping:      o.shippingFee,
+        Total:         o.total,
+        Currency:      o.currency,
+        Status:        o.status.replace(/_/g, " "),
+        PaymentMethod: o.paymentMethod ?? "",
+        DeliveryType:  o.deliveryType,
+        Date:          fmtDate(o.createdAt),
+      }));
+      return {
+        count: rows.length,
+        columns: [
+          { key: "OrderNumber",   label: "Order #" },
+          { key: "Member",        label: "Member" },
+          { key: "MemberID",      label: "Member ID" },
+          { key: "Items",         label: "Items" },
+          { key: "Subtotal",      label: "Subtotal" },
+          { key: "Tax",           label: "Tax" },
+          { key: "Shipping",      label: "Shipping" },
+          { key: "Total",         label: "Total" },
+          { key: "Currency",      label: "Currency" },
+          { key: "Status",        label: "Status" },
+          { key: "PaymentMethod", label: "Payment" },
+          { key: "DeliveryType",  label: "Delivery" },
+          { key: "Date",          label: "Date" },
+        ],
+        rows,
+      };
+    }
+
+    // ── Sales: Best-Selling Books ──────────────────────────────────
+    case "best-selling": {
+      const items = await prisma.saleOrderItem.groupBy({
+        by:      ["bookId"],
+        _count:  { id: true },
+        _sum:    { unitPrice: true },
+        orderBy: { _count: { id: "desc" } },
+        take:    50,
+      });
+      const bookIds  = items.map((i) => i.bookId);
+      const books    = await prisma.book.findMany({
+        where:  { id: { in: bookIds } },
+        select: { id: true, title: true, isbn: true, author: { select: { name: true } } },
+      });
+      const bookMap  = Object.fromEntries(books.map((b) => [b.id, b]));
+      const rows: Row[] = items.map((item, idx) => {
+        const b = bookMap[item.bookId];
+        return {
+          Rank:       idx + 1,
+          Title:      b?.title ?? item.bookId,
+          Author:     b?.author?.name ?? "",
+          ISBN:       b?.isbn ?? "",
+          CopiesSold: item._count.id,
+          Revenue:    item._sum.unitPrice ?? 0,
+        };
+      });
+      return {
+        count: rows.length,
+        columns: [
+          { key: "Rank",       label: "Rank" },
+          { key: "Title",      label: "Title" },
+          { key: "Author",     label: "Author" },
+          { key: "ISBN",       label: "ISBN" },
+          { key: "CopiesSold", label: "Copies Sold" },
+          { key: "Revenue",    label: "Revenue" },
+        ],
+        rows,
+      };
+    }
+
+    // ── Sales: Revenue by Month ────────────────────────────────────
+    case "sales-revenue": {
+      const twelveMonthsAgo = subMonths(now, 11);
+      twelveMonthsAgo.setDate(1);
+      twelveMonthsAgo.setHours(0, 0, 0, 0);
+      const orders = await prisma.saleOrder.findMany({
+        where: {
+          createdAt: { gte: twelveMonthsAgo },
+          status: { in: ["PAYMENT_CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "SHIPPED", "COMPLETED"] },
+        },
+        select: { createdAt: true, total: true, currency: true },
+      });
+      const byMonth: Record<string, { revenue: number; orders: number; currency: string }> = {};
+      for (const o of orders) {
+        const key = format(o.createdAt, "yyyy-MM");
+        if (!byMonth[key]) byMonth[key] = { revenue: 0, orders: 0, currency: o.currency };
+        byMonth[key].revenue += o.total;
+        byMonth[key].orders  += 1;
+      }
+      const rows: Row[] = Object.entries(byMonth)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, d]) => ({
+          Month:    month,
+          Revenue:  Math.round(d.revenue * 100) / 100,
+          Orders:   d.orders,
+          Currency: d.currency,
+        }));
+      return {
+        count: rows.length,
+        columns: [
+          { key: "Month",    label: "Month" },
+          { key: "Orders",   label: "Orders" },
+          { key: "Revenue",  label: "Revenue" },
+          { key: "Currency", label: "Currency" },
+        ],
+        rows,
+      };
+    }
+
+    // ── Sales: Payment Methods ─────────────────────────────────────
+    case "payment-methods": {
+      const orders = await prisma.saleOrder.groupBy({
+        by:      ["paymentMethod"],
+        _count:  { id: true },
+        _sum:    { total: true },
+      });
+      const rows: Row[] = orders.map((o) => ({
+        Method:  o.paymentMethod ?? "unknown",
+        Orders:  o._count.id,
+        Revenue: Math.round((o._sum.total ?? 0) * 100) / 100,
+      }));
+      return {
+        count: rows.length,
+        columns: [
+          { key: "Method",  label: "Payment Method" },
+          { key: "Orders",  label: "Orders" },
+          { key: "Revenue", label: "Revenue" },
+        ],
+        rows,
+      };
+    }
+
+    // ── Sales: Tax Collected ───────────────────────────────────────
+    case "tax-collected": {
+      const orders = await prisma.saleOrder.findMany({
+        where: {
+          taxAmount: { gt: 0 },
+          status: { in: ["PAYMENT_CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "SHIPPED", "COMPLETED"] },
+          ...(from && to && { createdAt: { gte: from, lte: to } }),
+        },
+        select: { orderNumber: true, createdAt: true, subtotal: true, taxAmount: true, total: true, currency: true },
+        orderBy: { createdAt: "desc" },
+      });
+      const totalTax = orders.reduce((s, o) => s + o.taxAmount, 0);
+      const rows: Row[] = [
+        ...orders.map((o) => ({
+          OrderNumber: o.orderNumber,
+          Date:        fmtDate(o.createdAt),
+          Subtotal:    o.subtotal,
+          TaxAmount:   o.taxAmount,
+          Total:       o.total,
+          Currency:    o.currency,
+        })),
+        { OrderNumber: "TOTAL", Date: "", Subtotal: null, TaxAmount: Math.round(totalTax * 100) / 100, Total: null, Currency: "" },
+      ];
+      return {
+        count: orders.length,
+        columns: [
+          { key: "OrderNumber", label: "Order #" },
+          { key: "Date",        label: "Date" },
+          { key: "Subtotal",    label: "Subtotal" },
+          { key: "TaxAmount",   label: "Tax Amount" },
+          { key: "Total",       label: "Total" },
+          { key: "Currency",    label: "Currency" },
+        ],
+        rows,
+      };
+    }
+
     default:
       return { count: 0, columns: [], rows: [] };
   }

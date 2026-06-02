@@ -37,6 +37,7 @@ Available tools:
 - get_fine_report: Fine collection summary — total unpaid, by member, or largest amounts. Use for "fines", "unpaid fines", "how much owed", "fine collection"
 - get_idle_members: Active members who haven't borrowed in N months. Use for "inactive members", "dormant members", "who hasn't visited"
 - get_low_stock_alert: Books with very few available copies — helps prioritise acquisition. Use for "low stock", "unavailable books", "need more copies", "popular unavailable"
+- create_staff_task: Create an actionable to-do item for the library staff task board. Use whenever the user or data implies something that needs to be done later — e.g. "remind me to follow up", "add this to our list", "track this", or when you find issues worth flagging (overdue members to contact, books to process, etc.)
 
 Be concise, professional, and actionable.
 Format results as clean lists with key details.
@@ -289,6 +290,26 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           limit:     { type: "number", description: "Max results. Default 20." },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_staff_task",
+      description: "Create an actionable to-do item on the staff task board. Call this when the user says 'add to tasks', 'remind me', 'track this', 'create a task', or when you proactively identify something that needs staff follow-up (e.g. members to contact, books to process, items to order).",
+      parameters: {
+        type: "object",
+        properties: {
+          title:       { type: "string",  description: "Short, imperative task title — starts with a verb. E.g. 'Contact overdue member John Doe', 'Order 2 more copies of Harry Potter'" },
+          description: { type: "string",  description: "More detail about what needs to be done and why (optional but recommended)" },
+          priority:    { type: "string",  enum: ["LOW", "MEDIUM", "HIGH", "URGENT"], description: "Task urgency. Default MEDIUM. Use URGENT only for time-sensitive issues." },
+          category:    { type: "string",  description: "Category: 'overdue' | 'reservations' | 'acquisition' | 'processing' | 'members' | 'fines' | 'other'" },
+          dueDate:     { type: "string",  description: "ISO 8601 due date (optional). E.g. '2025-06-01T00:00:00Z'" },
+          relatedId:   { type: "string",  description: "ID of the related entity (member ID, book ID, loan ID, etc.) — optional" },
+          relatedType: { type: "string",  description: "Type: 'member' | 'book' | 'loan' | 'reservation' — optional" },
+        },
+        required: ["title"],
       },
     },
   },
@@ -1050,6 +1071,40 @@ async function runGetLowStockAlert(args: Record<string, unknown>) {
   };
 }
 
+async function runCreateStaffTask(args: Record<string, unknown>, actorId?: string | null) {
+  const title       = (args.title       as string)?.trim();
+  const description = (args.description as string)?.trim() || undefined;
+  const priority    = (args.priority    as string) || "MEDIUM";
+  const category    = (args.category    as string) || undefined;
+  const dueDate     = (args.dueDate     as string) || undefined;
+  const relatedId   = (args.relatedId   as string) || undefined;
+  const relatedType = (args.relatedType as string) || undefined;
+
+  if (!title) return { error: "title is required" };
+
+  const task = await prisma.staffTask.create({
+    data: {
+      title,
+      description,
+      priority:    priority as never,
+      category,
+      dueDate:     dueDate ? new Date(dueDate) : undefined,
+      relatedId,
+      relatedType,
+      createdByAI: true,
+      aiContext:   `Created by AI assistant${actorId ? ` for user ${actorId}` : ""}`,
+    },
+  });
+
+  return {
+    success:  true,
+    taskId:   task.id,
+    title:    task.title,
+    priority: task.priority,
+    message:  `✅ Task created: "${task.title}"`,
+  };
+}
+
 /* ── Retry helper ─────────────────────────────────────────────────────────── */
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseMs = 2000): Promise<T> {
   for (let i = 0; i < retries; i++) {
@@ -1072,6 +1127,64 @@ function safeArgs(raw: string | null | undefined): Record<string, unknown> {
     const p = JSON.parse(raw);
     return p && typeof p === "object" ? p : {};
   } catch { return {}; }
+}
+
+/**
+ * DeepSeek (and some other models) emit tool calls as raw text in message.content
+ * instead of the structured tool_calls field when using the OpenAI-compatible API.
+ *
+ * Two formats seen in the wild:
+ *
+ * Format A – XML tags:
+ *   <｜｜DSML｜｜tool_calls>
+ *   <｜｜DSML｜｜invoke name="tool_name">
+ *   <param>value</param>
+ *   </｜｜DSML｜｜invoke>
+ *   </｜｜DSML｜｜tool_calls>
+ *
+ * Format B – JSON inside <tool_call>…</tool_call>:
+ *   <tool_call>{"name":"tool_name","arguments":{…}}</tool_call>
+ *
+ * Returns synthesised tool_calls array in OpenAI format, or null if none found.
+ */
+function parseDeepSeekToolCalls(
+  content: string | null | undefined,
+): { id: string; function: { name: string; arguments: string } }[] | null {
+  if (!content) return null;
+  const results: { id: string; function: { name: string; arguments: string } }[] = [];
+
+  // Format B — <tool_call>{"name":…,"arguments":…}</tool_call>
+  const jsonRe = /<tool_call>([\s\S]*?)<\/tool_call>/g;
+  let m: RegExpExecArray | null;
+  while ((m = jsonRe.exec(content)) !== null) {
+    try {
+      const obj = JSON.parse(m[1].trim());
+      if (obj?.name) {
+        results.push({
+          id: `tc_${Math.random().toString(36).slice(2)}`,
+          function: { name: obj.name, arguments: JSON.stringify(obj.arguments ?? obj.parameters ?? {}) },
+        });
+      }
+    } catch { /* skip malformed */ }
+  }
+  if (results.length) return results;
+
+  // Format A — <｜｜DSML｜｜invoke name="…">…</｜｜DSML｜｜invoke>
+  const dsmlRe = /<[｜|]{2}DSML[｜|]{2}invoke\s+name="([^"]+)">([\s\S]*?)<\/[｜|]{2}DSML[｜|]{2}invoke>/g;
+  while ((m = dsmlRe.exec(content)) !== null) {
+    const name   = m[1];
+    const body   = m[2];
+    const params: Record<string, string> = {};
+    // Each child tag is a parameter: <tagname>value</tagname>
+    const paramRe = /<(\w+)>([\s\S]*?)<\/\1>/g;
+    let p: RegExpExecArray | null;
+    while ((p = paramRe.exec(body)) !== null) params[p[1]] = p[2].trim();
+    results.push({
+      id: `tc_${Math.random().toString(36).slice(2)}`,
+      function: { name, arguments: JSON.stringify(params) },
+    });
+  }
+  return results.length ? results : null;
 }
 
 /* ── POST /api/admin/assistant ───────────────────────────────────────────── */
@@ -1116,15 +1229,25 @@ export async function POST(request: NextRequest) {
     const m1  = r1.choices[0]?.message;
     if (!m1) throw new Error("Empty AI response");
 
-    if (!m1.tool_calls?.length) {
-      return NextResponse.json({ reply: m1.content ?? "", data: null });
+    // Some models (DeepSeek) return tool calls as raw text rather than structured tool_calls
+    const effectiveToolCalls =
+      (m1.tool_calls?.length ? m1.tool_calls : null) ??
+      parseDeepSeekToolCalls(m1.content);
+
+    if (!effectiveToolCalls?.length) {
+      // Strip any raw tool-call markup from the reply before returning
+      const cleanReply = (m1.content ?? "")
+        .replace(/<[｜|]{2}DSML[｜|]{2}tool_calls>[\s\S]*?<\/[｜|]{2}DSML[｜|]{2}tool_calls>/g, "")
+        .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+        .trim();
+      return NextResponse.json({ reply: cleanReply, data: null });
     }
 
     // ── Execute tools ────────────────────────────────────────────────────────
     const toolMsgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [m1 as never];
     const collectedData: Record<string, unknown> = {};
 
-    for (const tc of m1.tool_calls as { id: string; function: { name: string; arguments: string } }[]) {
+    for (const tc of effectiveToolCalls as { id: string; function: { name: string; arguments: string } }[]) {
       const args = safeArgs(tc.function.arguments);
       let result: unknown;
 
@@ -1144,7 +1267,8 @@ export async function POST(request: NextRequest) {
         case "get_reservation_pipeline":  result = await runGetReservationPipeline(args);  break;
         case "get_fine_report":           result = await runGetFineReport(args);           break;
         case "get_idle_members":          result = await runGetIdleMembers(args);          break;
-        case "get_low_stock_alert":       result = await runGetLowStockAlert(args);        break;
+        case "get_low_stock_alert":       result = await runGetLowStockAlert(args);                              break;
+        case "create_staff_task":         result = await runCreateStaffTask(args, session.user?.id ?? null);  break;
         default:                          result = { error: "Unknown tool" };
       }
 

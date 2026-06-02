@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
-import { ShoppingCart, BookOpen, Trash2, CheckCircle, Clock, BookMarked, Package, MapPin } from "lucide-react";
+import { BookOpen, Trash2, CheckCircle, Clock, BookMarked, Package, MapPin, ShoppingBasket } from "lucide-react";
 import MemberHeader from "@/components/shared/MemberHeader";
 import { useLibraryName } from "@/context/library-name";
 
@@ -83,7 +83,7 @@ export default function BasketPage() {
               <BookOpen className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("discover")}</span>
             </Link>
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-500/25 ring-1 ring-blue-400/30 cursor-default">
-              <ShoppingCart className="w-3.5 h-3.5 text-blue-300" /><span className="hidden sm:inline">{t("basket")}</span>
+              <ShoppingBasket className="w-3.5 h-3.5 text-blue-300" /><span className="hidden sm:inline">{t("basket")}</span>
             </span>
             <Link href={`/${locale}/ebooks`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors">
               <BookMarked className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("eLibrary")}</span>
@@ -98,7 +98,7 @@ export default function BasketPage() {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center flex-shrink-0">
-              <ShoppingCart className="w-6 h-6" />
+              <ShoppingBasket className="w-6 h-6" />
             </div>
             <div>
               <h1 className="text-lg font-bold leading-tight">{t("basket")}</h1>
@@ -113,7 +113,7 @@ export default function BasketPage() {
           <div className="text-center text-gray-400 py-16">{tc("loading")}</div>
         ) : error ? (
           <div className="text-center py-16">
-            <ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <ShoppingBasket className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 mb-4">{error}</p>
             <Link href={`/${locale}/member/login`}
               className="inline-flex items-center gap-2 bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors">
@@ -122,7 +122,7 @@ export default function BasketPage() {
           </div>
         ) : active.length === 0 && history.length === 0 ? (
           <div className="text-center py-16">
-            <ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <ShoppingBasket className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-400 mb-2">{t("emptyBasket")}</p>
             <Link href={`/${locale}/discover`}
               className="inline-flex items-center gap-2 bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors">

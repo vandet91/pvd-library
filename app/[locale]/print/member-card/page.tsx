@@ -59,13 +59,6 @@ export default function MemberCardPage() {
     });
   }, [id]);
 
-  // Auto-print once loaded
-  useEffect(() => {
-    if (!loading && members.length > 0) {
-      setTimeout(() => window.print(), 500);
-    }
-  }, [loading, members]);
-
   if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading…</div>;
   if (error)   return <div className="flex items-center justify-center min-h-screen text-red-500">{error}</div>;
 
@@ -174,6 +167,11 @@ function CardPreview({ member }: { member: MemberCard }) {
           {member.email && (
             <p style={{ margin: "0.5mm 0 0", fontSize: "7.5pt", color: "#666", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
               {member.email}
+            </p>
+          )}
+          {member.phone && (
+            <p style={{ margin: "0.5mm 0 0", fontSize: "7.5pt", color: "#666", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+              📞 {member.phone}
             </p>
           )}
           {expireLabel && (

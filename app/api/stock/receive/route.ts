@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { copyIds, source, reference, unitCost, currency, notes } = parsed.data;
 
@@ -51,8 +51,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Resolve barcodes → IDs: anything that isn't a UUID-shaped string is treated as a barcode
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids: string[]      = copyIds.filter(s => uuidRe.test(s));
+  const barcodes: string[] = copyIds.filter(s => !uuidRe.test(s));
+
+  if (barcodes.length > 0) {
+    const byBarcode = await prisma.bookCopy.findMany({
+      where:  { barcode: { in: barcodes } },
+      select: { id: true },
+    });
+    ids.push(...byBarcode.map(c => c.id));
+  }
+
   const copies = await prisma.bookCopy.findMany({
-    where:   { id: { in: copyIds } },
+    where:   { id: { in: ids } },
     include: { book: { select: { id: true, title: true } } },
   });
 

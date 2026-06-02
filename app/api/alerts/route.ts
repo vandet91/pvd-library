@@ -28,6 +28,7 @@ export async function GET() {
     loansOverdue,
     finesUnpaid,
     processingUntagged,
+    pendingTasks,
   ] = await Promise.all([
     prisma.reservation.count({ where: { status: "PENDING"  } }),
     prisma.reservation.count({ where: { status: "APPROVED" } }),
@@ -37,6 +38,8 @@ export async function GET() {
     prisma.fine.count({        where: { status: "UNPAID"    } }),
     // Count copies that still need a physical spine label — primary processing signal
     prisma.bookCopy.count({    where: { labelPrinted: false  } }),
+    // Active staff tasks (PENDING + IN_PROGRESS)
+    prisma.staffTask.count({   where: { status: { in: ["PENDING", "IN_PROGRESS"] } } }),
   ]);
 
   return NextResponse.json({
@@ -47,5 +50,6 @@ export async function GET() {
     overdue:      loansOverdue,
     fines:        finesUnpaid,
     processing:   processingUntagged,     // basket items needing physical labeling
+    pendingTasks,                         // active staff tasks
   });
 }

@@ -10,6 +10,7 @@ const schema = z.object({
   targetStatus: z.enum(["AVAILABLE", "FOR_SALE"]),
   branchId:     z.string().min(1, "Branch is required"),
   notes:        z.string().optional(),
+  price:        z.number().min(0).optional(),  // bulk price applied to all FOR_SALE copies
 });
 
 /**
@@ -25,9 +26,9 @@ export async function POST(request: NextRequest) {
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
 
-  const { copyIds, targetStatus, branchId, notes } = parsed.data;
+  const { copyIds, targetStatus, branchId, notes, price } = parsed.data;
 
   // Verify branch exists
   const branch = await prisma.branch.findUnique({
@@ -63,7 +64,12 @@ export async function POST(request: NextRequest) {
       // Update copy status + assign to branch
       const updated = await tx.bookCopy.update({
         where: { id: copy.id },
-        data:  { status: targetStatus, branchId },
+        data:  {
+          status: targetStatus,
+          branchId,
+          // Apply bulk price when deploying FOR_SALE (only if provided)
+          ...(targetStatus === "FOR_SALE" && price !== undefined && { price }),
+        },
       });
 
       // If deploying as AVAILABLE, increment the book's availableCopies counter

@@ -9,12 +9,14 @@ export type OpacThemeKey = "royal" | "forest" | "sunset";
 export interface OpacTheme {
   // ── Navigation bar ──────────────────────────────────────────────────────
   navBg:       string;   // full backdrop class e.g. "bg-[#0f1e4a]/95"
+  navCss:      string;   // raw CSS value for --m-nav-bg (no flash on transitions)
   navBrandBg:  string;   // icon square background
   navBrandIcon:string;   // icon color
   navActiveTab:string;   // active page tab classes
 
   // ── Hero section ────────────────────────────────────────────────────────
   heroBg:      string;   // full gradient background class string
+  heroCss:     string;   // raw CSS value for --m-hero-bg (no flash on transitions)
   heroGlow1:   string;   // blob 1 color
   heroGlow2:   string;   // blob 2 color
 
@@ -38,11 +40,13 @@ export const OPAC_THEMES: Record<OpacThemeKey, OpacTheme> = {
   /* ── Royal Blue (default) ─────────────────────────────────────────────── */
   royal: {
     navBg:       "bg-[#0f1e4a]/95",
+    navCss:      "rgba(15,30,74,0.95)",
     navBrandBg:  "bg-indigo-500/30",
     navBrandIcon:"text-indigo-300",
     navActiveTab:"bg-indigo-500/25 ring-1 ring-indigo-400/30",
 
     heroBg:      "bg-gradient-to-br from-blue-900 via-indigo-900 to-indigo-800",
+    heroCss:     "linear-gradient(to bottom right,#1e3a8a,#312e81,#3730a3)",
     heroGlow1:   "bg-indigo-500/10",
     heroGlow2:   "bg-blue-400/10",
 
@@ -61,11 +65,13 @@ export const OPAC_THEMES: Record<OpacThemeKey, OpacTheme> = {
   /* ── Forest Green ─────────────────────────────────────────────────────── */
   forest: {
     navBg:       "bg-[#052e16]/95",
+    navCss:      "rgba(5,46,22,0.95)",
     navBrandBg:  "bg-emerald-500/30",
     navBrandIcon:"text-emerald-300",
     navActiveTab:"bg-emerald-500/25 ring-1 ring-emerald-400/30",
 
     heroBg:      "bg-gradient-to-br from-green-900 via-emerald-900 to-teal-800",
+    heroCss:     "linear-gradient(to bottom right,#14532d,#064e3b,#115e59)",
     heroGlow1:   "bg-emerald-500/10",
     heroGlow2:   "bg-teal-400/10",
 
@@ -84,11 +90,13 @@ export const OPAC_THEMES: Record<OpacThemeKey, OpacTheme> = {
   /* ── Sunset (Rose / Violet) ───────────────────────────────────────────── */
   sunset: {
     navBg:       "bg-[#2d0f2e]/95",
+    navCss:      "rgba(45,15,46,0.95)",
     navBrandBg:  "bg-rose-500/30",
     navBrandIcon:"text-rose-300",
     navActiveTab:"bg-rose-500/25 ring-1 ring-rose-400/30",
 
     heroBg:      "bg-gradient-to-br from-rose-900 via-purple-900 to-violet-800",
+    heroCss:     "linear-gradient(to bottom right,#881337,#581c87,#5b21b6)",
     heroGlow1:   "bg-rose-500/10",
     heroGlow2:   "bg-violet-400/10",
 

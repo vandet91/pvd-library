@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -9,8 +11,11 @@ import {
   Printer, ChevronRight, CheckCircle2,
   TrendingUp, TrendingDown, Minus,
   BookCheck, RefreshCcw, UserCheck, CalendarCheck,
+  ShoppingBag, DollarSign, Package, Landmark,
+  BadgeDollarSign, Users2,
 } from "lucide-react";
 import DashboardLoanChart from "@/components/admin/DashboardLoanChart";
+import { formatPrice } from "@/lib/price-format";
 
 async function getStats() {
   const now  = new Date();
@@ -75,11 +80,83 @@ async function getStats() {
     prisma.loan.count({ where: { createdAt: { gte: weekAgo } } }),
   ]);
 
+  // Available vs total copies
+  const copyStats = await prisma.bookCopy.aggregate({
+    _count: { id: true },
+    where:  { status: "AVAILABLE" },
+  });
+  const totalCopies     = await prisma.bookCopy.count();
+  const availableCopies = copyStats._count.id;
+
+  // Unpaid fines
+  const unpaidFines = await prisma.fine.aggregate({
+    where: { status: "UNPAID" },
+    _sum:   { amount: true },
+    _count: { id: true },
+  });
+
+  // Audience level distribution
+  const audienceDist = await prisma.book.groupBy({
+    by:      ["audienceLevel"],
+    _count:  { id: true },
+    orderBy: { _count: { id: "desc" } },
+  });
+
+  // Branch copy distribution (top 5)
+  const branchCopies = await prisma.bookCopy.groupBy({
+    by:      ["branchId"],
+    where:   { branchId: { not: null } },
+    _count:  { id: true },
+    orderBy: { _count: { id: "desc" } },
+    take:    5,
+  });
+  const branchIds = branchCopies.map((b) => b.branchId!).filter(Boolean);
+  const branchNames = branchIds.length > 0
+    ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } })
+    : [];
+
   let pendingRequests = 0;
   try {
     pendingRequests = await (prisma as unknown as { bookRequest: { count: (a: unknown) => Promise<number> } })
       .bookRequest.count({ where: { status: "PENDING" } });
   } catch { /* model not yet in cached client */ }
+
+  // ── Bookstore stats (only when sale enabled) ────────────────────────────
+  const saleSetting = await prisma.settings.findUnique({ where: { key: "BOOK_SALE_ENABLED" } });
+  const saleEnabled = saleSetting?.value === "true";
+  const currencySetting = await prisma.settings.findUnique({ where: { key: "STOCK_CURRENCY" } });
+  const saleCurrency = currencySetting?.value ?? "USD";
+
+  let pendingPaymentOrders = 0;
+  let revenueThisMonth     = 0;
+  let ordersToday          = 0;
+  let revenueTodayAmount   = 0;
+  let recentOrders: { id: string; orderNumber: string; status: string; total: number; currency: string; memberRel: { name: string } }[] = [];
+
+  if (saleEnabled) {
+    const [pendingAgg, revenueAgg, ordersTodayCount, revTodayAgg, latestOrders] = await Promise.all([
+      prisma.saleOrder.count({ where: { status: "PAYMENT_SUBMITTED" } }),
+      prisma.saleOrder.aggregate({
+        where:   { status: { in: ["PAYMENT_CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "SHIPPED", "COMPLETED"] }, createdAt: { gte: monthStart } },
+        _sum:    { total: true },
+      }),
+      prisma.saleOrder.count({ where: { createdAt: { gte: todayStart, lt: todayEnd } } }),
+      prisma.saleOrder.aggregate({
+        where: { status: { in: ["PAYMENT_CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "SHIPPED", "COMPLETED"] }, createdAt: { gte: todayStart, lt: todayEnd } },
+        _sum:  { total: true },
+      }),
+      prisma.saleOrder.findMany({
+        take:    6,
+        orderBy: { createdAt: "desc" },
+        select:  { id: true, orderNumber: true, status: true, total: true, currency: true, memberRel: { select: { name: true } } },
+      }),
+    ]);
+    pendingPaymentOrders = pendingAgg;
+    revenueThisMonth     = revenueAgg._sum.total ?? 0;
+    ordersToday          = ordersTodayCount;
+    revenueTodayAmount   = revTodayAgg._sum.total ?? 0;
+    recentOrders         = latestOrders;
+  }
 
   const recentLoans = await prisma.loan.findMany({
     take: 8,
@@ -127,6 +204,23 @@ async function getStats() {
     issuedToday, returnedToday, newMembersToday, reservationsToday,
     booksThisMonth, membersThisMonth, loansThisWeek,
     chartData,
+    // Copies
+    totalCopies, availableCopies,
+    // Fines
+    unpaidFinesAmount: unpaidFines._sum.amount ?? 0,
+    unpaidFinesCount:  unpaidFines._count.id,
+    // Audience
+    audienceDist: audienceDist.map((g) => ({ level: String(g.audienceLevel), count: g._count.id })),
+    // Branches
+    branchCopyDist: branchCopies.map((b) => ({
+      branchId:   b.branchId!,
+      branchName: branchNames.find((n) => n.id === b.branchId)?.name ?? "Unknown",
+      count:      b._count.id,
+    })),
+    // Bookstore
+    saleEnabled, saleCurrency,
+    pendingPaymentOrders, revenueThisMonth,
+    ordersToday, revenueTodayAmount, recentOrders,
   };
 }
 
@@ -213,6 +307,28 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     },
   ];
 
+  const availabilityPct = s.totalCopies > 0
+    ? Math.round((s.availableCopies / s.totalCopies) * 100)
+    : 0;
+
+  const AUDIENCE_COLORS: Record<string, string> = {
+    CHILDREN:    "bg-pink-400",
+    YOUTH:       "bg-purple-400",
+    ADULTS:      "bg-blue-400",
+    UNSPECIFIED: "bg-gray-300",
+  };
+
+  const ORDER_STATUS_COLOR: Record<string, string> = {
+    PENDING_PAYMENT:   "bg-amber-100 text-amber-700",
+    PAYMENT_SUBMITTED: "bg-blue-100 text-blue-700",
+    PAYMENT_CONFIRMED: "bg-cyan-100 text-cyan-700",
+    PREPARING:         "bg-indigo-100 text-indigo-700",
+    READY_FOR_PICKUP:  "bg-purple-100 text-purple-700",
+    SHIPPED:           "bg-violet-100 text-violet-700",
+    COMPLETED:         "bg-green-100 text-green-700",
+    CANCELLED:         "bg-red-100 text-red-700",
+  };
+
   const quickActions = [
     { label: t("borrowBook"),     href: `/${locale}/admin/circulation`,    icon: ArrowLeftRight, color: "bg-blue-50   text-blue-700   hover:bg-blue-100" },
     { label: t("returnBook"),     href: `/${locale}/admin/circulation`,    icon: RotateCcw,      color: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" },
@@ -221,6 +337,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     { label: t("baskets"),        href: `/${locale}/admin/baskets`,        icon: ShoppingBasket, color: "bg-indigo-50 text-indigo-700  hover:bg-indigo-100" },
     { label: t("printLabels"),    href: `/${locale}/admin/books/labels`,   icon: Printer,        color: "bg-teal-50   text-teal-700    hover:bg-teal-100" },
     { label: t("pendingRequests"),href: `/${locale}/admin/book-requests`,  icon: Clock,          color: "bg-pink-50   text-pink-700    hover:bg-pink-100" },
+    ...(s.saleEnabled ? [{ label: "View Orders", href: `/${locale}/admin/orders`, icon: ShoppingBag, color: "bg-amber-50  text-amber-700  hover:bg-amber-100" }] : []),
   ];
 
   const todayStats = [
@@ -241,13 +358,29 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">{dateStr}</p>
         </div>
-        {s.overdueLoans > 0 && (
-          <Link href={`/${locale}/admin/circulation`}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {t("overdueCount", { count: s.overdueLoans })}
-          </Link>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {s.overdueLoans > 0 && (
+            <Link href={`/${locale}/admin/circulation`}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {t("overdueCount", { count: s.overdueLoans })}
+            </Link>
+          )}
+          {s.unpaidFinesCount > 0 && (
+            <Link href={`/${locale}/admin/fines`}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-orange-50 text-orange-700 rounded-full hover:bg-orange-100 transition-colors">
+              <BadgeDollarSign className="w-3.5 h-3.5" />
+              ${s.unpaidFinesAmount.toFixed(2)} unpaid fines ({s.unpaidFinesCount})
+            </Link>
+          )}
+          {s.saleEnabled && s.pendingPaymentOrders > 0 && (
+            <Link href={`/${locale}/admin/orders`}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full hover:bg-amber-100 transition-colors animate-pulse">
+              <ShoppingBag className="w-3.5 h-3.5" />
+              {s.pendingPaymentOrders} order{s.pendingPaymentOrders !== 1 ? "s" : ""} need payment review
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* ── Primary stat cards ── */}
@@ -287,6 +420,61 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         ))}
       </div>
 
+      {/* ── Bookstore KPI strip (when enabled) ── */}
+      {s.saleEnabled && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Link href={`/${locale}/admin/orders`}
+            className={`rounded-xl p-4 shadow-sm border flex items-center gap-3 hover:shadow-md transition-shadow ${
+              s.pendingPaymentOrders > 0 ? "bg-amber-50 border-amber-200" : "bg-white border-gray-100"
+            }`}>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              s.pendingPaymentOrders > 0 ? "bg-amber-500" : "bg-gray-300"
+            }`}>
+              <ShoppingBag className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className={`text-lg font-bold ${s.pendingPaymentOrders > 0 ? "text-amber-700" : "text-gray-900"}`}>
+                {s.pendingPaymentOrders}
+              </p>
+              <p className="text-xs text-gray-500 truncate">Pending Payment Review</p>
+            </div>
+          </Link>
+
+          <Link href={`/${locale}/admin/orders`}
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex items-center gap-3">
+            <div className="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <DollarSign className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-gray-900 truncate">{formatPrice(s.revenueThisMonth, s.saleCurrency)}</p>
+              <p className="text-xs text-gray-500 truncate">Revenue This Month</p>
+            </div>
+          </Link>
+
+          <Link href={`/${locale}/admin/orders`}
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Package className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-gray-900">{s.ordersToday}</p>
+              <p className="text-xs text-gray-500 truncate">Orders Today</p>
+            </div>
+          </Link>
+
+          <Link href={`/${locale}/admin/orders`}
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex items-center gap-3">
+            <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-gray-900 truncate">{formatPrice(s.revenueTodayAmount, s.saleCurrency)}</p>
+              <p className="text-xs text-gray-500 truncate">Revenue Today</p>
+            </div>
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* ── Left: Chart + Recent Activity ── */}
@@ -302,6 +490,38 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
               dayLabel={t("day")}
             />
           </div>
+
+          {/* Recent Sales Orders (when enabled) */}
+          {s.saleEnabled && s.recentOrders.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-amber-500" />
+                  Recent Sale Orders
+                </h2>
+                <Link href={`/${locale}/admin/orders`} className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1">
+                  View all <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {s.recentOrders.map((order) => (
+                  <Link key={order.id} href={`/${locale}/admin/orders`}
+                    className="flex items-center justify-between py-2.5 hover:bg-gray-50/50 -mx-2 px-2 rounded-lg transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-mono font-semibold text-gray-800">{order.orderNumber}</p>
+                      <p className="text-xs text-gray-400 truncate">{order.memberRel.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${ORDER_STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-600"}`}>
+                        {order.status.replace(/_/g, " ")}
+                      </span>
+                      <p className="text-xs font-bold text-amber-600">{formatPrice(order.total, order.currency)}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Recent Activity */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -366,6 +586,72 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
                   <p className="text-[11px] text-gray-500 leading-tight">{label}</p>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Copy Availability */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-blue-500" /> Collection Health
+            </h2>
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Available copies</span>
+                  <span className="font-semibold text-gray-800">{s.availableCopies} / {s.totalCopies} ({availabilityPct}%)</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-400 rounded-full transition-all"
+                    style={{ width: `${availabilityPct}%` }} />
+                </div>
+              </div>
+              {/* Audience breakdown */}
+              {s.audienceDist.length > 0 && (
+                <div className="pt-2 border-t border-gray-50">
+                  <p className="text-xs text-gray-400 mb-2">Audience Level</p>
+                  <div className="space-y-1.5">
+                    {s.audienceDist.map((g) => {
+                      const pct = s.totalBooks > 0 ? Math.round((g.count / s.totalBooks) * 100) : 0;
+                      return (
+                        <div key={g.level}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-gray-600 capitalize">{g.level.charAt(0) + g.level.slice(1).toLowerCase()}</span>
+                            <span className="text-gray-500">{g.count} ({pct}%)</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${AUDIENCE_COLORS[g.level] ?? "bg-gray-300"}`}
+                              style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Branch breakdown */}
+              {s.branchCopyDist.length > 0 && (
+                <div className="pt-2 border-t border-gray-50">
+                  <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                    <Landmark className="w-3 h-3" /> Copies by Branch
+                  </p>
+                  <div className="space-y-1.5">
+                    {s.branchCopyDist.map((b) => {
+                      const pct = s.totalCopies > 0 ? Math.round((b.count / s.totalCopies) * 100) : 0;
+                      return (
+                        <div key={b.branchId}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-gray-600 truncate max-w-[140px]">{b.branchName}</span>
+                            <span className="text-gray-500">{b.count} ({pct}%)</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

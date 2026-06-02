@@ -7,6 +7,7 @@ import {
   ArrowRightLeft, ScanLine, CheckCheck, Clock, AlertTriangle, X,
   RefreshCw, Loader2, Barcode, BookOpen, User, Plus, Trash2,
   ShoppingBasket, RotateCcw, Calendar, PackageX, DollarSign, Home, BookMarked, Landmark,
+  Wand2, ShieldAlert,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -50,7 +51,16 @@ const MAT_CLS: Record<string, string> = {
   OTHER:     "bg-gray-100  text-gray-600",
 };
 
-type Tab = "active" | "borrow" | "return";
+type Tab = "active" | "borrow" | "return" | "risk";
+
+interface LoanRisk {
+  loan:   { id: string; status: string; borrowDate: string; dueDate: string; renewalCount: number };
+  member: { id: string; name: string; memberId: string };
+  book:   { id: string; title: string; category: string | null };
+  score:  number;
+  daysUntilDue: number;
+  aiSummary:    string | null;
+}
 
 /* ── Reusable member autocomplete ────────────────────────────────── */
 function MemberSearch({
@@ -161,6 +171,25 @@ export default function CirculationPage() {
   const isLibrarian = authSession?.user?.role === "LIBRARIAN" || authSession?.user?.role === "ADMIN";
 
   const [tab, setTab] = useState<Tab>("active");
+
+  // At-Risk tab state
+  const [riskData,    setRiskData]    = useState<{ highRisk: LoanRisk[]; mediumRisk: LoanRisk[] } | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError,   setRiskError]   = useState<string | null>(null);
+
+  async function loadRisk() {
+    setRiskLoading(true); setRiskError(null);
+    let res: Response | undefined;
+    try {
+      res = await fetch("/api/loans/risk");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setRiskData(data);
+    } catch (e) {
+      const { friendlyAiError } = await import("@/lib/ai-error");
+      setRiskError(friendlyAiError(e, res));
+    } finally { setRiskLoading(false); }
+  }
 
   /* Quota + loan duration from settings */
   const [maxLoans, setMaxLoans] = useState(3);
@@ -672,6 +701,7 @@ export default function CirculationPage() {
           ["active", t("activeLoans"),   <Clock key="c"          className="w-4 h-4" />],
           ["borrow", t("borrowBook"),    <ArrowRightLeft key="a" className="w-4 h-4" />],
           ["return", t("returnBook"),    <RotateCcw key="r"      className="w-4 h-4" />],
+          ["risk",   "At Risk",          <ShieldAlert key="s"    className="w-4 h-4" />],
         ] as [Tab, string, React.ReactNode][]).map(([key, label, icon]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -1183,6 +1213,74 @@ export default function CirculationPage() {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          AT RISK TAB
+          ════════════════════════════════════════════════════════ */}
+      {tab === "risk" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">AI-assessed loans that may be returned late or have risk factors.</p>
+            <button onClick={loadRisk} disabled={riskLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {riskLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+              {riskLoading ? "Analysing…" : "Analyse Risk"}
+            </button>
+          </div>
+
+          {riskError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+              {riskError}
+            </div>
+          )}
+
+          {!riskData && !riskLoading && !riskError && (
+            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
+              <ShieldAlert className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+              <p className="text-sm text-gray-400">Click "Analyse Risk" to scan active loans with AI.</p>
+            </div>
+          )}
+
+          {riskData && (
+            <div className="space-y-6">
+              {/* High risk */}
+              {riskData.highRisk.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-red-600 mb-2 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                    High Risk ({riskData.highRisk.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {riskData.highRisk.map((item) => (
+                      <RiskCard key={item.loan.id} item={item} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Medium risk */}
+              {riskData.mediumRisk.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                    Medium Risk ({riskData.mediumRisk.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {riskData.mediumRisk.map((item) => (
+                      <RiskCard key={item.loan.id} item={item} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {riskData.highRisk.length === 0 && riskData.mediumRisk.length === 0 && (
+                <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
+                  <CheckCheck className="w-10 h-10 text-green-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-600 font-medium">No at-risk loans detected</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1791,6 +1889,45 @@ export default function CirculationPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Risk card helper ────────────────────────────────────────────── */
+function RiskCard({ item }: { item: LoanRisk }) {
+  const isOverdue = item.loan.status === "OVERDUE";
+  const scoreColor =
+    item.score >= 7 ? "bg-red-100 text-red-700 border-red-200" :
+    item.score >= 4 ? "bg-orange-100 text-orange-700 border-orange-200" :
+    "bg-amber-50 text-amber-700 border-amber-200";
+
+  return (
+    <div className={`flex items-start gap-3 p-4 rounded-xl border ${isOverdue ? "bg-red-50 border-red-200" : "bg-white border-gray-200"}`}>
+      <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm border ${scoreColor}`}>
+        {item.score.toFixed(1)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-gray-800 truncate">{item.book.title}</p>
+          {isOverdue && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold uppercase tracking-wide">Overdue</span>
+          )}
+          {item.book.category && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{item.book.category}</span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5">
+          {item.member.name} · <span className="font-mono">{item.member.memberId}</span>
+          &nbsp;· Due {new Date(item.loan.dueDate).toLocaleDateString()}
+          {item.loan.renewalCount > 0 && ` · ${item.loan.renewalCount}× renewed`}
+        </p>
+        {item.aiSummary && (
+          <p className="text-xs text-violet-700 mt-1 italic flex items-start gap-1">
+            <Wand2 className="w-3 h-3 shrink-0 mt-0.5" />
+            {item.aiSummary}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

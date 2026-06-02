@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertTriangle, XCircle, Loader2,
   RefreshCw, ChevronDown, ChevronUp, FileSpreadsheet,
   Clock, History, Package, Trash2, RotateCcw, AlertOctagon,
+  ShoppingBag, Flame,
 } from "lucide-react";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
@@ -133,6 +134,13 @@ export default function DatabasePage() {
   const [exportTable, setExportTable]   = useState("all");
   const [exportStatus, setExportStatus] = useState<Status>("idle");
 
+  /* ── Sale reset ── */
+  const [saleResetConfirm, setSaleResetConfirm] = useState(false);
+  const [saleResetInput,   setSaleResetInput]   = useState("");
+  const [saleResetBusy,    setSaleResetBusy]    = useState(false);
+  const [saleResetResult,  setSaleResetResult]  = useState<{ ordersDeleted: number; cartsDeleted: number; copiesReset: number; copiesLeft: number; completedKept: number } | null>(null);
+  const [saleResetErr,     setSaleResetErr]     = useState("");
+
   /* ── Auto-run health check on mount ── */
   useEffect(() => { runHealth(); loadHistory(); }, []); // eslint-disable-line
 
@@ -238,6 +246,26 @@ export default function DatabasePage() {
         setBackupHistory((prev) => prev.filter((b) => b.timestamp !== timestamp));
       }
     } finally { setDelBusy(null); }
+  }
+
+  async function runSaleReset() {
+    if (saleResetInput !== "RESET SALES") return;
+    setSaleResetBusy(true);
+    setSaleResetErr("");
+    setSaleResetResult(null);
+    try {
+      const res  = await fetch("/api/admin/db/reset-sales", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Reset failed");
+      setSaleResetResult(data);
+      setSaleResetConfirm(false);
+      setSaleResetInput("");
+      runHealth();
+    } catch (e: unknown) {
+      setSaleResetErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setSaleResetBusy(false);
+    }
   }
 
   async function runExport() {
@@ -662,6 +690,121 @@ export default function DatabasePage() {
           ))}
         </div>
       </Card>
+
+      {/* ── ☠️ Danger Zone — Sale Data Reset ────────────────────────────── */}
+      <Card className="border-red-100">
+        <div className="flex items-center gap-2 pb-4 border-b border-red-100 mb-4">
+          <Flame className="w-4 h-4 text-red-500" />
+          <h2 className="text-base font-semibold text-red-700">Danger Zone</h2>
+        </div>
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center flex-shrink-0">
+              <ShoppingBag className="w-4 h-4 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Reset All Sale Data</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Permanently deletes all sale orders, carts, and order items.
+                Resets every <code className="bg-gray-100 px-1 rounded">SOLD</code> copy back to{" "}
+                <code className="bg-gray-100 px-1 rounded">STOCK</code>. This cannot be undone.
+              </p>
+              {saleResetResult && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                    ✓ {saleResetResult.ordersDeleted} orders deleted
+                  </span>
+                  <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                    ✓ {saleResetResult.cartsDeleted} carts cleared
+                  </span>
+                  <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                    ✓ {saleResetResult.copiesReset} copies → STOCK
+                  </span>
+                  {saleResetResult.copiesLeft > 0 && (
+                    <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                      ⚠ {saleResetResult.copiesLeft} copies left as SOLD (completed orders — physically gone)
+                    </span>
+                  )}
+                </div>
+              )}
+              {saleResetErr && (
+                <p className="mt-1 text-xs text-red-600">{saleResetErr}</p>
+              )}
+            </div>
+          </div>
+
+          <Btn
+            onClick={() => { setSaleResetConfirm(true); setSaleResetInput(""); setSaleResetErr(""); }}
+            variant="danger"
+            size="sm"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Reset Sales
+          </Btn>
+        </div>
+      </Card>
+
+      {/* ── Sale reset confirmation modal ────────────────────────────────── */}
+      {saleResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Flame className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900">Reset all sale data?</h2>
+                <p className="text-xs text-red-600 font-medium">This action is irreversible</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800 space-y-1">
+              <p>The following will be <strong>permanently deleted</strong>:</p>
+              <ul className="list-disc list-inside text-xs space-y-0.5 mt-1 text-red-700">
+                <li>All sale orders and order items</li>
+                <li>All member carts</li>
+                <li>Sale-related stock movements</li>
+              </ul>
+              <p className="mt-1.5">
+                Copies from <strong>incomplete</strong> orders → reset to <code className="bg-red-100 px-1 rounded">STOCK</code>.<br/>
+                Copies from <strong>completed/delivered</strong> orders → stay <code className="bg-red-100 px-1 rounded">SOLD</code> (buyer already has them).
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700">
+                Type <span className="font-mono text-red-600">RESET SALES</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={saleResetInput}
+                onChange={(e) => setSaleResetInput(e.target.value)}
+                placeholder="RESET SALES"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400"
+              />
+            </div>
+
+            {saleResetErr && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saleResetErr}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Btn onClick={() => setSaleResetConfirm(false)} variant="secondary" disabled={saleResetBusy}>
+                Cancel
+              </Btn>
+              <Btn
+                onClick={runSaleReset}
+                variant="danger"
+                disabled={saleResetInput !== "RESET SALES" || saleResetBusy}
+              >
+                {saleResetBusy
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resetting…</>
+                  : <><Flame className="w-3.5 h-3.5" /> Confirm Reset</>}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Restore confirmation modal ───────────────────────────────────── */}
       {restoreConfirm && (
