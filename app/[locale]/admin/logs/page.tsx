@@ -319,7 +319,7 @@ export default function LogsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <div className="p-10 flex items-center justify-center text-gray-400 gap-2">
             <Loader2 className="w-5 h-5 animate-spin" /> {t("loadingLogs")}

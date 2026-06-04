@@ -57,7 +57,7 @@ function registerLocale(code: string): boolean {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || !can(session.user?.role, "ADMIN"))
+  if (!session || !can(session.user?.role, "LIBRARIAN"))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { locale, enabled }: { locale: string; enabled: boolean } = await req.json();

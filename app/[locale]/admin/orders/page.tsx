@@ -398,10 +398,10 @@ export default function AdminOrdersPage() {
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                  <tr>
                     {["Order", "Customer", "Items", "Total", "Status", "Date", ""].map((h) => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>

@@ -20,6 +20,8 @@ export async function GET() {
     data:  { status: "EXPIRED" },
   });
 
+  const soonDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
   const [
     reservationsPending,
     reservationsApproved,
@@ -29,6 +31,12 @@ export async function GET() {
     finesUnpaid,
     processingUntagged,
     pendingTasks,
+    pendingMembers,
+    salePaymentSubmitted,
+    saleReturnRequested,
+    serialIssuesMissing,
+    subscriptionsExpiring,
+    ordersAwaitingReceive,
   ] = await Promise.all([
     prisma.reservation.count({ where: { status: "PENDING"  } }),
     prisma.reservation.count({ where: { status: "APPROVED" } }),
@@ -36,20 +44,36 @@ export async function GET() {
     prisma.bookRequest.count({ where: { status: "PENDING"  } }),
     prisma.loan.count({        where: { status: "OVERDUE"   } }),
     prisma.fine.count({        where: { status: "UNPAID"    } }),
-    // Count copies that still need a physical spine label — primary processing signal
-    prisma.bookCopy.count({    where: { labelPrinted: false  } }),
-    // Active staff tasks (PENDING + IN_PROGRESS)
+    prisma.bookCopy.count({    where: { labelPrinted: false } }),
     prisma.staffTask.count({   where: { status: { in: ["PENDING", "IN_PROGRESS"] } } }),
+    // Members awaiting staff approval after self-registration
+    prisma.member.count({ where: { pendingApproval: true } }),
+    // Sale orders: member uploaded payment proof, needs staff confirmation
+    prisma.saleOrder.count({ where: { status: "PAYMENT_SUBMITTED" } }),
+    // Sale orders: member requested a return
+    prisma.saleOrder.count({ where: { status: "RETURN_REQUESTED" } }),
+    // Serial issues: overdue / missing and not resolved
+    prisma.serialIssue.count({ where: { status: { in: ["MISSING", "CLAIMED"] } } }),
+    // Serial subscriptions expiring within 30 days
+    prisma.subscription.count({ where: { status: "ACTIVE", endDate: { lte: soonDate, gte: new Date() } } }),
+    // Purchase orders sent to vendor but not fully received yet
+    prisma.purchaseOrder.count({ where: { status: { in: ["SENT", "PARTIAL"] } } }),
   ]);
 
   return NextResponse.json({
-    reservations: reservationsPending,    // pending approval
-    approved:     reservationsApproved,   // approved — book needs to be pulled from shelf
-    readyPickup:  reservationsReady,      // book on hold shelf, awaiting member pickup
-    bookRequests: bookRequestsPending,
-    overdue:      loansOverdue,
-    fines:        finesUnpaid,
-    processing:   processingUntagged,     // basket items needing physical labeling
-    pendingTasks,                         // active staff tasks
+    reservations:          reservationsPending,
+    approved:              reservationsApproved,
+    readyPickup:           reservationsReady,
+    bookRequests:          bookRequestsPending,
+    overdue:               loansOverdue,
+    fines:                 finesUnpaid,
+    processing:            processingUntagged,
+    pendingTasks,
+    pendingMembers,
+    salePaymentSubmitted,
+    saleReturnRequested,
+    serialIssuesMissing,
+    subscriptionsExpiring,
+    ordersAwaitingReceive,
   });
 }

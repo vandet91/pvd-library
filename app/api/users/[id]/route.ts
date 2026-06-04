@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { generateMemberId } from "@/lib/utils";
+import { generateMemberIdFromSettings } from "@/lib/member-id";
 
 const patchSchema = z.object({
   role:        z.enum(["ADMIN", "LIBRARIAN", "STAFF", "MEMBER"]).optional(),
@@ -84,7 +84,7 @@ export async function PATCH(
         try {
           const created = await prisma.member.create({
             data: {
-              memberId:   generateMemberId(),
+              memberId:   await generateMemberIdFromSettings(),
               userId:     id,
               name:       memberName,
               email:      user.email,

@@ -32,7 +32,7 @@ interface Loan {
   id: string; status: string; borrowDate: string; dueDate: string; returnDate: string | null;
   renewalCount: number;
   book: { title: string; isbn: string | null; author: { name: string } | null };
-  fine: { amount: number; status: string } | null;
+  fines: { id: string; amount: number; status: string; type: string }[];
 }
 
 interface Fine {
@@ -883,11 +883,11 @@ function LoanRow({ loan }: { loan: Loan }) {
               <RefreshCw className="w-3 h-3" /> {loan.renewalCount}×
             </span>
           )}
-          {loan.fine && (
-            <span className={`px-1.5 py-0.5 rounded-full ${fineStatusStyle[loan.fine.status] ?? "bg-gray-100"}`}>
-              ${loan.fine.amount.toFixed(2)} fine
+          {loan.fines?.map((f: { id: string; amount: number; status: string; type: string }) => (
+            <span key={f.id} className={`px-1.5 py-0.5 rounded-full ${fineStatusStyle[f.status] ?? "bg-gray-100"}`}>
+              {f.type === "REPLACEMENT" ? "Replace" : "Fine"}: ${f.amount.toFixed(2)}
             </span>
-          )}
+          ))}
         </div>
       </div>
       <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${loanStatusStyle[loan.status] ?? "bg-gray-100 text-gray-600"}`}>

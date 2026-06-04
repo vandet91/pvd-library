@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { LOCALE_CODES, DEFAULT_LOCALE } from "@/lib/locales";
+import { LOCALE_META } from "@/lib/locale-meta";
 
 /** Default values seeded when a key has never been saved. */
 const DEFAULTS: Record<string, string> = {
@@ -57,12 +58,17 @@ const DEFAULTS: Record<string, string> = {
   // Member self-registration
   MEMBER_SELF_REGISTER:              "false",
   MEMBER_SELF_REGISTER_AUTO_APPROVE: "false",
+  // Member ID format
+  MEMBER_ID_FORMAT:                  "MEM-{YYYY}-{RAND4}",
+  MEMBER_ID_COUNTER:                 "0",
   // Public catalog (Discover + E-Library) theme
   OPAC_THEME:                        "royal",
   // Full-width layout for Discover, E-Library and Shop (false = max-w-6xl centered)
   OPAC_FULL_WIDTH:                   "false",
   OPAC_PAGE_BG:                      "light",  // "light" | "white" | "dark"
   OPAC_FONT:                         "default", // Google Fonts family name, "default", or a custom font name
+  OPAC_FONT_EN:                      "default", // Font for English / Latin text
+  OPAC_FONT_KM:                      "default", // Font for Khmer text
   OPAC_CUSTOM_FONTS:                 "[]",      // JSON: [{name:string, url:string}]
   // Public footer — contact info shown on Discover, E-Library, Bookstore
   PUBLIC_FOOTER_ENABLED:             "false",
@@ -107,12 +113,12 @@ export async function PUT(request: NextRequest) {
       let safe = String(value);
 
       // ENABLED_LOCALES: ensure the default locale is always present and
-      // the list contains only known locale codes.
+      // the list contains only known locale codes (LOCALE_META covers all 40+ supported languages).
       if (key === "ENABLED_LOCALES") {
         try {
           const arr = JSON.parse(safe);
           const valid = (Array.isArray(arr) ? arr : [])
-            .filter((c: unknown): c is string => (LOCALE_CODES as readonly string[]).includes(c as string));
+            .filter((c: unknown): c is string => typeof c === "string" && c in LOCALE_META);
           if (!valid.includes(DEFAULT_LOCALE)) valid.unshift(DEFAULT_LOCALE);
           safe = JSON.stringify(valid.length > 0 ? valid : [DEFAULT_LOCALE]);
         } catch {

@@ -3,7 +3,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? "";
-const CODE_TTL_MS  = 10 * 60 * 1000; // 10 minutes
+const CODE_TTL_MS  = 30 * 60 * 1000; // 30 minutes
+
+async function isMemberLinkEnabled(): Promise<boolean> {
+  const row = await prisma.settings.findUnique({ where: { key: "TELEGRAM_LINK_MEMBER" } });
+  return row?.value !== "false";
+}
 
 /* ── GET — check current link status ───────────────────────────────────── */
 export async function GET() {
@@ -13,13 +18,13 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const member = await prisma.member.findFirst({
-      where:  { user: { email: session.user.email } },
-      select: {
-        telegramChatId:   true,
-        telegramLinkedAt: true,
-      },
-    });
+    const [member, enabled] = await Promise.all([
+      prisma.member.findFirst({
+        where:  { user: { email: session.user.email } },
+        select: { telegramChatId: true, telegramLinkedAt: true },
+      }),
+      isMemberLinkEnabled(),
+    ]);
 
     if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
@@ -27,6 +32,7 @@ export async function GET() {
       linked:      !!member.telegramChatId,
       linkedAt:    member.telegramLinkedAt,
       botUsername: BOT_USERNAME,
+      enabled,
     });
   } catch (err) {
     console.error("[TelegramLink GET]", err);
@@ -40,6 +46,10 @@ export async function POST() {
     const session = await auth();
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!(await isMemberLinkEnabled())) {
+      return NextResponse.json({ error: "Telegram linking is disabled by the library." }, { status: 403 });
     }
 
     const member = await prisma.member.findFirst({

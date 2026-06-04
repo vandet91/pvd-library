@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { generateMemberId } from "@/lib/utils";
+import { generateMemberIdFromSettings } from "@/lib/member-id";
 
 export async function GET(request: NextRequest) {
   const session = await auth();
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       try {
         await prisma.member.create({
           data: {
-            memberId:   generateMemberId(),
+            memberId:   await generateMemberIdFromSettings(),
             userId:     user.id,
             name:       memberName,
             email:      email,

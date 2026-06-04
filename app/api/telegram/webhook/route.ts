@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
 
     if (!member) {
       await sendTelegram(chatId,
-        `❌ <b>Invalid or expired code.</b>\n\nPlease go to your profile page and generate a new link code.`,
+        `❌ <b>Invalid or expired code.</b>\n\nThe code may have expired (valid for 30 minutes) or was already used.\n\n` +
+        `Please go to your <b>Account page</b> on the library website, click <b>"Link Telegram Account"</b> to generate a fresh code, then send it here.\n\n` +
+        `Your chat ID: <code>${chatId}</code>`,
       );
       return;
     }

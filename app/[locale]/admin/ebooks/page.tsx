@@ -143,7 +143,7 @@ export default function AdminEbooksPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <div className="p-8 text-center text-gray-400">{tc("loading")}</div>
         ) : ebooks.length === 0 ? (

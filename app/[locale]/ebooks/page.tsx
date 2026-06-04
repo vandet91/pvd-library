@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { buildGoogleFontsUrl } from "@/lib/font-url";
 import EbooksClient from "./EbooksClient";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +12,28 @@ const FOOTER_KEYS = [
 ];
 
 export default async function EbooksPage() {
-  const keys = ["OPAC_THEME", "OPAC_FULL_WIDTH", "OPAC_PAGE_BG", "OPAC_FONT", "OPAC_CUSTOM_FONTS", "BOOK_SALE_ENABLED", "AI_SEARCH_MEMBER", "PUBLIC_PAGINATION_MODE", "PUBLIC_PAGINATION_LIMIT", ...FOOTER_KEYS];
+  const keys = ["OPAC_THEME", "OPAC_FULL_WIDTH", "OPAC_PAGE_BG", "OPAC_FONT", "OPAC_FONT_EN", "OPAC_FONT_KM", "OPAC_CUSTOM_FONTS", "BOOK_SALE_ENABLED", "AI_SEARCH_MEMBER", "PUBLIC_PAGINATION_MODE", "PUBLIC_PAGINATION_LIMIT", ...FOOTER_KEYS];
   const rows = await prisma.settings.findMany({ where: { key: { in: keys } } });
   const s = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
+  const googleFontsUrl = buildGoogleFontsUrl([s.OPAC_FONT_EN, s.OPAC_FONT_KM, s.OPAC_FONT]);
+
   return (
+    <>
+      {googleFontsUrl && (
+        <>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+          <link rel="stylesheet" href={googleFontsUrl} />
+        </>
+      )}
     <EbooksClient
       opacTheme={s.OPAC_THEME ?? "royal"}
       fullWidth={s.OPAC_FULL_WIDTH === "true"}
       pageBg={(s.OPAC_PAGE_BG ?? "light") as "light" | "white" | "dark"}
       pageFont={s.OPAC_FONT ?? "default"}
+      pageFontEn={s.OPAC_FONT_EN ?? "default"}
+      pageFontKm={s.OPAC_FONT_KM ?? "default"}
       pageCustomFonts={(() => { try { return JSON.parse(s.OPAC_CUSTOM_FONTS ?? "[]"); } catch { return []; } })()}
       initialSaleEnabled={s.BOOK_SALE_ENABLED === "true"}
       initialAiEnabled={s.AI_SEARCH_MEMBER !== "false"}
@@ -37,5 +50,6 @@ export default async function EbooksPage() {
       footerWebsite={s.LIBRARY_WEBSITE ?? ""}
       footerDescription={s.PUBLIC_FOOTER_DESCRIPTION ?? ""}
     />
+    </>
   );
 }

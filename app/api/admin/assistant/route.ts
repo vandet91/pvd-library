@@ -832,7 +832,7 @@ async function runGetOverdueReport(args: Record<string, unknown>) {
     include: {
       member: { select: { id: true, name: true, memberId: true, email: true, phone: true } },
       book:   { select: { title: true, isbn: true } },
-      fine:   { select: { amount: true, status: true } },
+      fines:  { select: { amount: true, status: true, type: true } },
     },
     orderBy: { dueDate: "asc" },
     take:    limit,
@@ -848,7 +848,8 @@ async function runGetOverdueReport(args: Record<string, unknown>) {
       book:     l.book.title,
       dueDate:  l.dueDate,
       daysLate: Math.floor((Date.now() - new Date(l.dueDate).getTime()) / 86_400_000),
-      fine:     l.fine ? { amount: l.fine.amount, status: l.fine.status } : null,
+      fines:    l.fines.map(f => ({ amount: f.amount, status: f.status, type: f.type })),
+      totalFine: l.fines.reduce((s, f) => s + f.amount, 0),
     })),
   };
 }

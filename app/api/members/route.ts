@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateMemberId } from "@/lib/utils";
+import { generateMemberIdFromSettings } from "@/lib/member-id";
 import { z } from "zod";
 import { can } from "@/lib/rbac";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     data: {
       ...rest,
       email: email || undefined,
-      memberId: generateMemberId(),
+      memberId: await generateMemberIdFromSettings(),
       expireDate: expireDate ? new Date(expireDate) : undefined,
     },
   });

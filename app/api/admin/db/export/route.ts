@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       include: {
         member: { select: { name: true, memberId: true } },
         book:   { select: { title: true, isbn: true   } },
-        fine:   { select: { amount: true, status: true } },
+        fines:  { select: { amount: true, status: true } },
       },
       orderBy: { borrowDate: "desc" },
     });
@@ -86,8 +86,8 @@ export async function GET(req: NextRequest) {
       Status:       l.status,
       LoanType:     l.loanType,
       Renewals:     l.renewalCount,
-      FineAmount:   l.fine ? `$${l.fine.amount.toFixed(2)}` : "",
-      FineStatus:   l.fine?.status ?? "",
+      FineAmount:   l.fines.length ? `$${l.fines.reduce((s, f) => s + f.amount, 0).toFixed(2)}` : "",
+      FineStatus:   l.fines.some(f => f.status === "UNPAID") ? "UNPAID" : l.fines[0]?.status ?? "",
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Loans");
   }

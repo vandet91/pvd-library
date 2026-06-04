@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { auth } from "@/lib/auth";
 import { parseExcelBuffer, parseCSVText } from "@/lib/excel";
-import { generateMemberId } from "@/lib/utils";
+import { generateMemberIdFromSettings } from "@/lib/member-id";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     try {
       await prisma.member.create({
         data: {
-          memberId:   generateMemberId(),
+          memberId:   await generateMemberIdFromSettings(),
           name,
           email:      String(row["Email"]   ?? "").trim() || undefined,
           phone:      String(row["Phone"]   ?? "").trim() || undefined,

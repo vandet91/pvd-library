@@ -28,7 +28,7 @@ async function buildReport(
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true, isbn: true } },
-          fine:   { select: { amount: true, status: true } },
+          fines:  { select: { amount: true, status: true, type: true } },
         },
         orderBy: { dueDate: "asc" },
       });
@@ -41,8 +41,8 @@ async function buildReport(
         BorrowDate:  fmtDate(l.borrowDate),
         DueDate:     fmtDate(l.dueDate),
         DaysOverdue: Math.floor((now.getTime() - l.dueDate.getTime()) / 86_400_000),
-        FineAmount:  l.fine ? l.fine.amount : null,
-        FineStatus:  l.fine?.status ?? "",
+        FineAmount:  l.fines.reduce((s, f) => s + f.amount, 0) || null,
+        FineStatus:  l.fines.some(f => f.status === "UNPAID") ? "UNPAID" : l.fines[0]?.status ?? "",
       }));
       return {
         count: rows.length,
@@ -139,7 +139,7 @@ async function buildReport(
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true } },
-          fine:   { select: { amount: true, status: true } },
+          fines:  { select: { amount: true, status: true, type: true } },
         },
         orderBy: { dueDate: "asc" },
       });
@@ -154,7 +154,7 @@ async function buildReport(
         DaysOverdue: l.status === "OVERDUE"
           ? Math.floor((now.getTime() - l.dueDate.getTime()) / 86_400_000)
           : null,
-        FineAmount:  l.fine ? l.fine.amount : null,
+        FineAmount:  l.fines.reduce((s, f) => s + f.amount, 0) || null,
       }));
       return {
         count: rows.length,
@@ -299,7 +299,7 @@ async function buildReport(
         include: {
           member: { select: { name: true, memberId: true } },
           book:   { select: { title: true } },
-          fine:   { select: { amount: true, status: true } },
+          fines:  { select: { amount: true, status: true, type: true } },
         },
         orderBy: { returnDate: "desc" },
       });
@@ -311,8 +311,8 @@ async function buildReport(
         DueDate:    fmtDate(l.dueDate),
         ReturnDate: fmtDate(l.returnDate),
         LoanType:   l.loanType,
-        FineAmount: l.fine ? l.fine.amount : null,
-        FineStatus: l.fine?.status ?? "",
+        FineAmount: l.fines.reduce((s, f) => s + f.amount, 0) || null,
+        FineStatus: l.fines.some(f => f.status === "UNPAID") ? "UNPAID" : l.fines[0]?.status ?? "",
       }));
       return {
         count: rows.length,

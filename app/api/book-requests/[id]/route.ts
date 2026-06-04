@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { auth } from "@/lib/auth";
+import { notifyMember, tg } from "@/lib/telegram";
+import { sendEmail } from "@/lib/mailer";
+import { bookRequestStatusTemplate } from "@/lib/email-templates";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -43,8 +46,31 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
       ...(status    ? { status }    : {}),
       ...(adminNote !== undefined ? { adminNote } : {}),
     },
-    include: { member: { select: { name: true, memberId: true } } },
+    include: {
+      member: { select: { name: true, memberId: true, id: true, email: true, telegramChatId: true } },
+    },
   });
+
+  /* ── Notify member on status change ─────────────────────────────────── */
+  if (status && ["APPROVED", "REJECTED", "FULFILLED"].includes(status)) {
+    const s      = status as "APPROVED" | "REJECTED" | "FULFILLED";
+    const note   = updated.adminNote ?? undefined;
+    const member = updated.member as typeof updated.member & { email: string | null; telegramChatId: string | null };
+
+    // Telegram (fire-and-forget)
+    notifyMember(member.id, s === "APPROVED"
+      ? tg.bookRequestApproved(member.name, updated.title, note)
+      : s === "REJECTED"
+        ? tg.bookRequestRejected(member.name, updated.title, note)
+        : tg.bookRequestFulfilled(member.name, updated.title, note),
+    ).catch(() => {});
+
+    // Email (fire-and-forget)
+    if (member.email) {
+      const { subject, html } = bookRequestStatusTemplate({ memberName: member.name, title: updated.title, status: s, adminNote: note });
+      sendEmail({ to: member.email, subject, html }).catch(() => {});
+    }
+  }
 
   return NextResponse.json(updated);
 }

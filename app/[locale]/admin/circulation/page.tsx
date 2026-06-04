@@ -18,7 +18,7 @@ interface Loan {
   member: { id: string; name: string; memberId: string };
   book: { title: string; isbn: string | null; barcode: string | null; price?: number | null; referenceOnly?: boolean; author: { name: string } | null };
   copy?: { id: string; copyNumber: number; barcode: string | null } | null;
-  fine?: { amount: number; status: string } | null;
+  fines: { id: string; amount: number; status: string; type: string }[];
 }
 
 interface Branch { id: string; name: string; isActive: boolean }
@@ -191,18 +191,40 @@ export default function CirculationPage() {
     } finally { setRiskLoading(false); }
   }
 
-  /* Quota + loan duration from settings */
-  const [maxLoans, setMaxLoans] = useState(3);
-  const [loanDays, setLoanDays] = useState(14);
+  /* Quota + loan duration — from settings as global fallback */
+  const [maxLoans,        setMaxLoans]        = useState(3);
+  const [defaultLoanDays, setDefaultLoanDays] = useState(14);
+  const [loanDays,        setLoanDays]        = useState(14);
+  const [loanDaysOverridden, setLoanDaysOverridden] = useState(false);
+  const [resolvedRuleName,   setResolvedRuleName]   = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((s) => {
         if (s.MAX_LOANS_PER_MEMBER) setMaxLoans(Number(s.MAX_LOANS_PER_MEMBER));
-        if (s.DEFAULT_LOAN_DAYS)    setLoanDays(Number(s.DEFAULT_LOAN_DAYS));
+        if (s.DEFAULT_LOAN_DAYS) {
+          setDefaultLoanDays(Number(s.DEFAULT_LOAN_DAYS));
+          setLoanDays(Number(s.DEFAULT_LOAN_DAYS));
+        }
       })
       .catch(() => {});
   }, []);
+
+  /* Resolve the circulation rule whenever member, book, or branch changes */
+  async function resolveRule(memberType: string | null, branchId: string | null, materialType?: string | null) {
+    try {
+      const params = new URLSearchParams();
+      if (memberType)   params.set("memberType",   memberType);
+      if (branchId)     params.set("branchId",     branchId);
+      if (materialType) params.set("materialType", materialType);
+      const res  = await fetch(`/api/circulation-rules/resolve?${params}`);
+      if (!res.ok) return;
+      const rule = await res.json();
+      setMaxLoans(rule.maxLoans);
+      if (!loanDaysOverridden) setLoanDays(rule.loanDays);
+      setResolvedRuleName(rule.isDefault ? null : rule.ruleName ?? null);
+    } catch { /* silent */ }
+  }
 
   /* Branch selector — persisted in localStorage so staff don't re-select every visit */
   const [branches,        setBranches]        = useState<Branch[]>([]);
@@ -227,6 +249,7 @@ export default function CirculationPage() {
       if (id) localStorage.setItem("pvd-circ-branch", id);
       else     localStorage.removeItem("pvd-circ-branch");
     }
+    if (borrowMember) resolveRule(borrowMember.memberType, id || null);
   }
   const currentBranch = branches.find((b) => b.id === currentBranchId);
 
@@ -237,6 +260,8 @@ export default function CirculationPage() {
   const [filterType,   setFilterType]   = useState<"ALL" | "HOME" | "IN_LIBRARY">("ALL");
   const [filterSearch, setFilterSearch] = useState("");
   const [sortBy,       setSortBy]       = useState<"dueDate" | "borrowDate" | "member" | "book">("dueDate");
+  const [activePage,   setActivePage]   = useState(1);
+  const LOANS_PAGE_SIZE = 25;
   const [renewBusy,  setRenewBusy]  = useState<string | null>(null);
   const [renewMsg,   setRenewMsg]   = useState<{ id: string; ok: boolean; text: string } | null>(null);
   const [returnBusy, setReturnBusy] = useState<string | null>(null);
@@ -409,6 +434,8 @@ export default function CirculationPage() {
   async function selectBorrowMember(m: MemberResult) {
     setBorrowMember(m); setBorrowQuery(m.memberId);
     setBookCart([]); setBorrowMsg(null); setInLibOverride(false); setHomeLoanOverride(false);
+    setLoanDaysOverridden(false);
+    resolveRule(m.memberType, currentBranchId || null);
     // Preload the books this member already has on loan so we can block re-adding
     try {
       const [active, overdue] = await Promise.all([
@@ -432,6 +459,8 @@ export default function CirculationPage() {
     setBorrowMember(null); setBorrowQuery(""); setBookCart([]); setBorrowMsg(null);
     setBorrowedIds(new Set()); setLoanType("HOME");
     setActiveInLibLoans([]); setInLibOverride(false); setHomeLoanOverride(false);
+    setLoanDaysOverridden(false); setResolvedRuleName(null);
+    setLoanDays(defaultLoanDays);
   }
   function addToCart(b: BookResult) {
     if (!canAddBook) return;
@@ -450,6 +479,10 @@ export default function CirculationPage() {
     }
     setBookCart((p) => [...p, b]);
     setBookQuery(""); setBookSuggestions([]); setShowBookDrop(false);
+    // Re-resolve rule with the first book's material type so loan days display is accurate
+    if (borrowMember && bookCart.length === 0) {
+      resolveRule(borrowMember.memberType, currentBranchId || null, b.materialType ?? null);
+    }
   }
 
   async function startScan(target: "member-b" | "book" | "member-r") {
@@ -488,8 +521,8 @@ export default function CirculationPage() {
           bookId: b.id,
           copyId: b._scannedCopy?.id,
         })),
-        loanDays,
         loanType,
+        ...(loanDaysOverridden ? { overrideLoanDays: loanDays } : {}),
         ...(currentBranchId ? { branchId: currentBranchId } : {}),
         ...(homeLoanOverride ? { overrideRestriction: true } : {}),
       }),
@@ -499,6 +532,9 @@ export default function CirculationPage() {
       const { count } = await res.json();
       setBorrowMsg({ type: "success", text: loanType === "IN_LIBRARY" ? t("issuedForInLibrary", { count }) : t("borrowedSuccess", { count }) });
       setBookCart([]); setLoanType("HOME"); setInLibOverride(false); setHomeLoanOverride(false);
+      setLoanDaysOverridden(false);
+      // Re-resolve without materialType after cart is cleared
+      if (borrowMember) resolveRule(borrowMember.memberType, currentBranchId || null);
 
       // Refresh member quota + in-library loan list (ACTIVE and OVERDUE both)
       // so the conflict warning shows the true total for the next attempt.
@@ -663,6 +699,9 @@ export default function CirculationPage() {
         default:           return 0;
       }
     });
+
+  const totalLoanPages = Math.max(1, Math.ceil(filteredLoans.length / LOANS_PAGE_SIZE));
+  const pagedLoans     = filteredLoans.slice((activePage - 1) * LOANS_PAGE_SIZE, activePage * LOANS_PAGE_SIZE);
 
   const overdueCount = loans.filter((l) => l.status === "OVERDUE").length;
   const activeCount  = loans.filter((l) => l.status === "ACTIVE").length;
@@ -1126,10 +1165,22 @@ export default function CirculationPage() {
             {/* Loan days — only for take-home loans */}
             {borrowMember && loanType === "HOME" && (
               <div>
-                <label htmlFor="circ-loan-days" className="block text-sm font-medium text-gray-700 mb-1.5">{t("loanDays")}</label>
-                <input id="circ-loan-days" type="number" value={loanDays} min={1} max={90}
-                  onChange={(e) => setLoanDays(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="circ-loan-days" className="text-sm font-medium text-gray-700">{t("loanDays")}</label>
+                  {resolvedRuleName && !loanDaysOverridden && (
+                    <span className="text-xs text-indigo-600 font-medium">Rule: {resolvedRuleName}</span>
+                  )}
+                  {loanDaysOverridden && (
+                    <button type="button" onClick={() => { setLoanDaysOverridden(false); resolveRule(borrowMember.memberType, currentBranchId || null); }}
+                      className="text-xs text-amber-600 underline hover:no-underline">Reset to rule</button>
+                  )}
+                </div>
+                <input id="circ-loan-days" type="number" value={loanDays} min={1} max={365}
+                  onChange={(e) => { setLoanDays(Number(e.target.value)); setLoanDaysOverridden(true); }}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${loanDaysOverridden ? "border-amber-400 bg-amber-50" : "border-gray-300"}`} />
+                {loanDaysOverridden && (
+                  <p className="text-xs text-amber-600 mt-1">Manual override — rule value will be ignored for this checkout</p>
+                )}
               </div>
             )}
           </div>
@@ -1630,12 +1681,12 @@ export default function CirculationPage() {
               <input
                 type="text"
                 value={filterSearch}
-                onChange={(e) => setFilterSearch(e.target.value)}
+                onChange={(e) => { setFilterSearch(e.target.value); setActivePage(1); }}
                 placeholder={t("filterSearchPlaceholder")}
                 className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {filterSearch && (
-                <button onClick={() => setFilterSearch("")}
+                <button onClick={() => { setFilterSearch(""); setActivePage(1); }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1649,7 +1700,7 @@ export default function CirculationPage() {
                 ["ACTIVE",  t("filterActive",    { count: activeCount })],
                 ["OVERDUE", t("filterOverdue",   { count: overdueCount })],
               ] as [typeof filterStatus, string][]).map(([val, label]) => (
-                <button key={val} onClick={() => setFilterStatus(val)}
+                <button key={val} onClick={() => { setFilterStatus(val); setActivePage(1); }}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     filterStatus === val
                       ? val === "OVERDUE" ? "bg-red-500 text-white shadow-sm"
@@ -1668,7 +1719,7 @@ export default function CirculationPage() {
                 ["HOME",       t("filterTakeHome")],
                 ["IN_LIBRARY", t("filterInLibrary")],
               ] as [typeof filterType, string][]).map(([val, label]) => (
-                <button key={val} onClick={() => setFilterType(val)}
+                <button key={val} onClick={() => { setFilterType(val); setActivePage(1); }}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     filterType === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                   }`}>
@@ -1678,7 +1729,7 @@ export default function CirculationPage() {
             </div>
 
             {/* Sort */}
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            <select value={sortBy} onChange={(e) => { setSortBy(e.target.value as typeof sortBy); setActivePage(1); }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="dueDate">{t("sortDueDate")}</option>
               <option value="borrowDate">{t("sortNewest")}</option>
@@ -1704,7 +1755,7 @@ export default function CirculationPage() {
                   </span>
                 )}
                 {(filterSearch || filterStatus !== "ALL" || filterType !== "ALL") && (
-                  <button onClick={() => { setFilterSearch(""); setFilterStatus("ALL"); setFilterType("ALL"); }}
+                  <button onClick={() => { setFilterSearch(""); setFilterStatus("ALL"); setFilterType("ALL"); setActivePage(1); }}
                     className="ml-auto text-xs text-indigo-600 hover:underline flex items-center gap-1">
                     <X className="w-3 h-3" /> {t("clearFilters")}
                   </button>
@@ -1723,11 +1774,12 @@ export default function CirculationPage() {
               <div className="p-8 text-center">
                 <Clock className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                 <p className="text-gray-500 font-medium">{t("noMatchFilters")}</p>
-                <button onClick={() => { setFilterSearch(""); setFilterStatus("ALL"); setFilterType("ALL"); }}
+                <button onClick={() => { setFilterSearch(""); setFilterStatus("ALL"); setFilterType("ALL"); setActivePage(1); }}
                   className="mt-2 text-sm text-indigo-600 hover:underline">{t("clearFilters")}</button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="overflow-x-auto" id="loans-table-top">
                 <table className="w-full">
                   <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
                     <tr>
@@ -1736,11 +1788,11 @@ export default function CirculationPage() {
                       <th className="px-6 py-3 text-left">{t("borrowDate")}</th>
                       <th className="px-6 py-3 text-left">{t("dueDate")}</th>
                       <th className="px-6 py-3 text-left">{tc("status")}</th>
-                      <th className="px-6 py-3 text-left">{tc("actions")}</th>
+                      <th className="px-6 py-3 text-left w-56">{tc("actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredLoans.map((loan) => (
+                    {pagedLoans.map((loan) => (
                       <tr key={loan.id} className={`hover:bg-gray-50 transition-colors ${loan.status === "OVERDUE" ? "bg-red-50/30" : ""}`}>
                         <td className="px-6 py-4">
                           <p className="text-sm font-medium text-gray-900">{loan.member.name}</p>
@@ -1778,15 +1830,13 @@ export default function CirculationPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             {loan.loanType !== "IN_LIBRARY" && (
-                              renewBusy === loan.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-                              ) : (
-                                <button onClick={() => handleRenew(loan.id)} disabled={!!returnBusy}
-                                  className="flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
-                                  <RefreshCw className="w-3.5 h-3.5" />
-                                  {t("renew")}{loan.renewalCount > 0 ? ` (${loan.renewalCount})` : ""}
-                                </button>
-                              )
+                              <button onClick={() => handleRenew(loan.id)} disabled={!!returnBusy || renewBusy === loan.id}
+                                className="flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
+                                {renewBusy === loan.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <RefreshCw className="w-3.5 h-3.5" />}
+                                {t("renew")}{loan.renewalCount > 0 ? ` (${loan.renewalCount})` : ""}
+                              </button>
                             )}
                             {returnBusy === loan.id ? (
                               <span className="flex items-center gap-1.5 text-xs text-green-600 px-3 py-1.5">
@@ -1806,10 +1856,10 @@ export default function CirculationPage() {
                             </button>
                           </div>
                           {renewMsg?.id === loan.id && (
-                            <p className={`text-xs mt-1 ${renewMsg.ok ? "text-indigo-600" : "text-red-600"}`}>{renewMsg.text}</p>
+                            <p className={`text-xs mt-1 max-w-[220px] break-words ${renewMsg.ok ? "text-indigo-600" : "text-red-600"}`}>{renewMsg.text}</p>
                           )}
                           {returnMsg?.id === loan.id && (
-                            <p className={`text-xs mt-1 ${returnMsg.ok ? "text-green-600" : "text-red-600"}`}>{returnMsg.text}</p>
+                            <p className={`text-xs mt-1 max-w-[220px] break-words ${returnMsg.ok ? "text-green-600" : "text-red-600"}`}>{returnMsg.text}</p>
                           )}
                         </td>
                       </tr>
@@ -1817,6 +1867,63 @@ export default function CirculationPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* ── Pagination ── */}
+              {totalLoanPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+                  <p className="text-xs text-gray-500">
+                    Showing {(activePage - 1) * LOANS_PAGE_SIZE + 1}–{Math.min(activePage * LOANS_PAGE_SIZE, filteredLoans.length)} of {filteredLoans.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setActivePage(1)}
+                      disabled={activePage === 1}
+                      className="px-2 py-1 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >«</button>
+                    <button
+                      onClick={() => setActivePage(p => Math.max(1, p - 1))}
+                      disabled={activePage === 1}
+                      className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >‹ Prev</button>
+
+                    {/* Page number chips */}
+                    {Array.from({ length: totalLoanPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalLoanPages || Math.abs(p - activePage) <= 1)
+                      .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                        if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) =>
+                        p === "…" ? (
+                          <span key={`ellipsis-${i}`} className="px-1.5 text-xs text-gray-400">…</span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setActivePage(p as number)}
+                            className={`w-7 h-7 text-xs rounded-lg border transition-colors ${
+                              activePage === p
+                                ? "bg-blue-900 text-white border-blue-900 font-semibold"
+                                : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                            }`}
+                          >{p}</button>
+                        )
+                      )}
+
+                    <button
+                      onClick={() => setActivePage(p => Math.min(totalLoanPages, p + 1))}
+                      disabled={activePage === totalLoanPages}
+                      className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >Next ›</button>
+                    <button
+                      onClick={() => setActivePage(totalLoanPages)}
+                      disabled={activePage === totalLoanPages}
+                      className="px-2 py-1 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >»</button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

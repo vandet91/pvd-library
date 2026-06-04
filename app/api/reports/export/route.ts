@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     include: {
       member: { select: { name: true, memberId: true } },
       book:   { select: { title: true, isbn: true } },
-      fine:   { select: { amount: true, status: true } },
+      fines:  { select: { amount: true, status: true, type: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
     DueDate:     format(l.dueDate, "yyyy-MM-dd"),
     ReturnDate:  l.returnDate ? format(l.returnDate, "yyyy-MM-dd") : "",
     Status:      l.status,
-    FineAmount:  l.fine?.amount ?? 0,
-    FineStatus:  l.fine?.status ?? "",
+    FineAmount:  l.fines.reduce((s, f) => s + f.amount, 0),
+    FineStatus:  l.fines.some(f => f.status === "UNPAID") ? "UNPAID" : l.fines[0]?.status ?? "",
   }));
 
   if (fmt === "csv") {

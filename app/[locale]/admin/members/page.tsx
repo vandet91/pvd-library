@@ -49,7 +49,7 @@ interface MemberDetail extends Member { // pendingApproval inherited from Member
   loans: Array<{
     id: string; status: string;
     book: { title: string };
-    fine?: { amount: number; paid: boolean } | null;
+    fines?: { id: string; amount: number; status: string }[];
   }>;
   fines: Array<{ id: string; amount: number; paid: boolean }>;
   reservations: Array<{ id: string; status: string }>;
@@ -480,7 +480,7 @@ export default function MembersPage() {
       <div className="flex gap-4 items-start min-w-0">
 
         {/* Table card */}
-        <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden min-w-0 transition-all ${selectedMemberId ? "flex-1" : "w-full"}`}>
+        <div className={`bg-white rounded-xl shadow-sm border border-gray-100 min-w-0 transition-all ${selectedMemberId ? "flex-1" : "w-full"}`}>
           {loading ? (
             <div className="p-8 text-center text-gray-400 flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />{tc("loading")}

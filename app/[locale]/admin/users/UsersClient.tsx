@@ -422,13 +422,14 @@ export default function UsersClient({ currentUserId }: { currentUserId: string }
                   </p>
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/70">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{t("colUser")}</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{t("colRole")}</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">{t("colJoined")}</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{tc("actions")}</th>
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="text-left px-5 py-3">{t("colUser")}</th>
+                      <th className="text-left px-5 py-3">{t("colRole")}</th>
+                      <th className="text-left px-5 py-3 hidden lg:table-cell">{t("colJoined")}</th>
+                      <th className="text-right px-5 py-3">{tc("actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -496,6 +497,7 @@ export default function UsersClient({ currentUserId }: { currentUserId: string }
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </section>
@@ -556,13 +558,14 @@ export default function UsersClient({ currentUserId }: { currentUserId: string }
                   </p>
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/70">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{t("colBorrower")}</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">{t("colMemberId")}</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">{t("colJoined")}</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{tc("actions")}</th>
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="text-left px-5 py-3">{t("colBorrower")}</th>
+                      <th className="text-left px-5 py-3 hidden md:table-cell">{t("colMemberId")}</th>
+                      <th className="text-left px-5 py-3 hidden lg:table-cell">{t("colJoined")}</th>
+                      <th className="text-right px-5 py-3">{tc("actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -623,6 +626,7 @@ export default function UsersClient({ currentUserId }: { currentUserId: string }
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </section>

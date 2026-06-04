@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   const finePerDay = parseFloat(fineRateSetting?.value ?? "0.50");
 
   const overdueNoFine = await prisma.loan.findMany({
-    where: { status: "OVERDUE", loanType: "HOME", fine: { is: null } },
+    where: { status: "OVERDUE", loanType: "HOME", fines: { none: { type: "LATE_FEE" } } },
     select: { id: true, memberId: true, dueDate: true },
   });
   let fineFixed = 0;

@@ -69,7 +69,7 @@ export async function GET() {
 
   // Only take-home loans generate daily fines — in-library loans are same-day reads
   const overdueNoFine = await prisma.loan.count({
-    where: { status: "OVERDUE", loanType: "HOME", fine: { is: null } },
+    where: { status: "OVERDUE", loanType: "HOME", fines: { none: { type: "LATE_FEE" } } },
   });
   if (overdueNoFine > 0)
     issues.push(`${overdueNoFine} overdue take-home loan(s) have no fine created yet`);

@@ -35,7 +35,8 @@ import {
 import { useLibraryLogo } from "@/context/library-logo";
 import { ALL_LOCALES, DEFAULT_LOCALE } from "@/lib/locales";
 import { OPAC_THEMES, type OpacThemeKey } from "@/lib/opac-theme";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
+import Link from "next/link";
 
 interface SettingsData {
   DEFAULT_LOAN_DAYS:                string;
@@ -64,6 +65,8 @@ interface SettingsData {
   OPAC_FULL_WIDTH:                   string;
   OPAC_PAGE_BG:                      string;
   OPAC_FONT:                         string;
+  OPAC_FONT_EN:                      string;
+  OPAC_FONT_KM:                      string;
   OPAC_CUSTOM_FONTS:                 string;
   PUBLIC_PAGINATION_MODE:            string;
   PUBLIC_PAGINATION_LIMIT:           string;
@@ -96,6 +99,8 @@ interface SettingsData {
   TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:  string;
   TELEGRAM_LINK_MEMBER:             string;
   PHONE_CLICK_ACTION:               string;
+  MEMBER_ID_FORMAT:                 string;
+  MEMBER_ID_COUNTER:                string;
 }
 
 const DEFAULT: SettingsData = {
@@ -125,6 +130,8 @@ const DEFAULT: SettingsData = {
   OPAC_FULL_WIDTH:                   "false",
   OPAC_PAGE_BG:                      "light",
   OPAC_FONT:                         "default",
+  OPAC_FONT_EN:                      "default",
+  OPAC_FONT_KM:                      "default",
   OPAC_CUSTOM_FONTS:                 "[]",
   PUBLIC_PAGINATION_MODE:            "loadmore",
   PUBLIC_PAGINATION_LIMIT:           "20",
@@ -156,6 +163,8 @@ const DEFAULT: SettingsData = {
   TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:  "7",
   TELEGRAM_LINK_MEMBER:             "true",
   PHONE_CLICK_ACTION:               "both",
+  MEMBER_ID_FORMAT:                 "MEM-{YYYY}-{RAND4}",
+  MEMBER_ID_COUNTER:                "0",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -244,6 +253,7 @@ const AUTH_STYLES = [
 
 export default function SettingsPage() {
   const t      = useTranslations("settings");
+  const locale = useLocale();
   const router = useRouter();
 
   const [data,   setData]   = useState<SettingsData>(DEFAULT);
@@ -617,15 +627,37 @@ export default function SettingsPage() {
             </div>
           </Field>
 
-          {/* Font picker */}
-          <FontPickerField
-            currentFont={data.OPAC_FONT}
-            customFontsJson={data.OPAC_CUSTOM_FONTS}
-            busy={busy}
-            inputCls={inputCls}
-            onFontChange={(v) => set("OPAC_FONT", v)}
-            onCustomFontsChange={(v) => set("OPAC_CUSTOM_FONTS", v)}
-          />
+          {/* Per-language font pickers */}
+          <div className="col-span-full space-y-4">
+            <p className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+              <Monitor className="w-4 h-4 text-gray-400" />
+              Page Fonts — per language
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FontPickerField
+                label="English / Latin font"
+                sampleText="Aa Bb Cc"
+                currentFont={data.OPAC_FONT_EN}
+                customFontsJson={data.OPAC_CUSTOM_FONTS}
+                busy={busy}
+                inputCls={inputCls}
+                onFontChange={(v) => set("OPAC_FONT_EN", v)}
+                onCustomFontsChange={(v) => set("OPAC_CUSTOM_FONTS", v)}
+                latinOnly
+              />
+              <FontPickerField
+                label="Khmer font"
+                sampleText="អក្សរ"
+                currentFont={data.OPAC_FONT_KM}
+                customFontsJson={data.OPAC_CUSTOM_FONTS}
+                busy={busy}
+                inputCls={inputCls}
+                onFontChange={(v) => set("OPAC_FONT_KM", v)}
+                onCustomFontsChange={(v) => set("OPAC_CUSTOM_FONTS", v)}
+                khmerOnly
+              />
+            </div>
+          </div>
         </div>
 
         {/* Pagination mode */}
@@ -673,6 +705,22 @@ export default function SettingsPage() {
 
       {/* ── Loan & Fine Policy ─────────────────────────────────────────── */}
       <Section title={t("sectionLoanPolicy")} icon={<BookOpen className="w-4 h-4 text-indigo-500" />}>
+        {/* Relationship notice with Circulation Rules */}
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+          <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800 min-w-0">
+            <strong>These are global fallback defaults.</strong> When a loan is created, the system first
+            checks your{" "}
+            <Link
+              href={`/${locale}/admin/circulation-rules`}
+              className="font-semibold underline hover:text-amber-900"
+            >
+              Circulation Rules
+            </Link>
+            {" "}for a matching rule (by patron type, material type, or branch). If a rule matches, its
+            values override these settings. If no rule matches, these defaults apply.
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Field
             label={t("fieldLoanDaysLabel")}
@@ -897,12 +945,16 @@ export default function SettingsPage() {
           </Field>
         </div>
 
+        {/* Register Webhook button */}
+        <WebhookRegister />
+
         <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 text-xs text-sky-700 space-y-1">
           <p className="font-semibold">How to set up the Telegram bot</p>
           <p>• Create a bot via <strong>@BotFather</strong> on Telegram and copy the bot token</p>
-          <p>• Add <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> to your <code className="bg-sky-100 px-1 rounded">.env</code> file</p>
-          <p>• <strong>Admin alerts:</strong> message the bot to get your personal chat ID (forward any message to <strong>@userinfobot</strong>), then paste it in <em>Admin / Staff Alert Chat ID</em> above. For a group, add the bot to the group and use the group&apos;s negative chat ID.</p>
-          <p>• <strong>Member notifications:</strong> members link their account by messaging the bot <code className="bg-sky-100 px-1 rounded">/start</code> — they receive their chat ID to enter in the member portal</p>
+          <p>• Add <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> and <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_USERNAME</code> to your <code className="bg-sky-100 px-1 rounded">.env</code> file</p>
+          <p>• Click <strong>Register Webhook</strong> above — this tells Telegram where to send messages</p>
+          <p>• <strong>Admin alerts:</strong> message the bot to get your personal chat ID (forward any message to <strong>@userinfobot</strong>), then paste it in <em>Admin / Staff Alert Chat ID</em> above</p>
+          <p>• <strong>Member notifications:</strong> members link their account by messaging the bot <code className="bg-sky-100 px-1 rounded">/start</code></p>
           <p>• Loan/membership reminders are sent automatically by the cron job or via the Notifications page</p>
         </div>
       </Section>
@@ -954,6 +1006,80 @@ export default function SettingsPage() {
             Registration is closed. Only staff can create member accounts via the admin panel.
           </div>
         )}
+      </Section>
+
+      {/* ── Member ID Format ──────────────────────────────────────────────── */}
+      <Section title="Member ID Format" icon={<Users className="w-4 h-4 text-indigo-500" />}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Field
+            label="ID Format"
+            hint="Template for auto-generated Member IDs. Use tokens: {YYYY} {YY} {MM} {SEQ4} {SEQ5} {SEQ6} {RAND4} {RAND6}"
+            icon={<Users className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="text"
+              value={data.MEMBER_ID_FORMAT}
+              onChange={(e) => set("MEMBER_ID_FORMAT", e.target.value)}
+              disabled={busy}
+              placeholder="MEM-{YYYY}-{RAND4}"
+              className={inputCls}
+            />
+          </Field>
+
+          <Field
+            label="Sequence Counter"
+            hint="Current value of the sequence counter used by {SEQ*} tokens. Set to 0 to reset, or any number to continue from."
+            icon={<Users className="w-4 h-4 text-gray-400" />}
+          >
+            <input
+              type="number"
+              min={0}
+              value={data.MEMBER_ID_COUNTER}
+              onChange={(e) => set("MEMBER_ID_COUNTER", e.target.value)}
+              disabled={busy}
+              className={inputCls}
+            />
+          </Field>
+        </div>
+
+        {/* Live preview */}
+        {(() => {
+          const fmt = data.MEMBER_ID_FORMAT || "MEM-{YYYY}-{RAND4}";
+          const seq = parseInt(data.MEMBER_ID_COUNTER || "0", 10) + 1;
+          const now = new Date();
+          const yyyy = String(now.getFullYear());
+          const preview = fmt
+            .replace(/{YYYY}/g, yyyy)
+            .replace(/{YY}/g,   yyyy.slice(-2))
+            .replace(/{MM}/g,   String(now.getMonth() + 1).padStart(2, "0"))
+            .replace(/{SEQ6}/g, String(seq).padStart(6, "0"))
+            .replace(/{SEQ5}/g, String(seq).padStart(5, "0"))
+            .replace(/{SEQ4}/g, String(seq).padStart(4, "0"))
+            .replace(/{RAND6}/g, "382910")
+            .replace(/{RAND4}/g, "4821");
+          return (
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-xs text-indigo-700 flex items-center gap-2">
+              <span className="font-medium">Preview:</span>
+              <code className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-200">{preview}</code>
+              <span className="text-indigo-400">(random digits shown as example)</span>
+            </div>
+          );
+        })()}
+
+        <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 text-xs text-gray-500 space-y-1">
+          <p className="font-semibold text-gray-700 mb-1">Available tokens</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"YYYY}"}</code> — 4-digit year (e.g. 2026)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"YY}"}</code> — 2-digit year (e.g. 26)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"MM}"}</code> — 2-digit month (e.g. 06)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"SEQ4}"}</code> — 4-digit auto sequence (0001, 0002…)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"SEQ5}"}</code> — 5-digit auto sequence (00001, 00002…)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"SEQ6}"}</code> — 6-digit auto sequence (000001…)</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"RAND4}"}</code> — 4-digit random number</p>
+            <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"RAND6}"}</code> — 6-digit random number</p>
+          </div>
+          <p className="mt-1 text-gray-400">Examples: <code>LIB-{"{YYYY}"}-{"{SEQ5}"}</code> → LIB-2026-00001 &nbsp;·&nbsp; <code>STU-{"{YY}"}{"{MM}"}-{"{RAND4}"}</code> → STU-2606-4821</p>
+        </div>
       </Section>
 
       {/* ── Book Sale / Shop ──────────────────────────────────────────── */}
@@ -1430,6 +1556,67 @@ export default function SettingsPage() {
   );
 }
 
+/* ── Webhook register button ───────────────────────────────────────────── */
+function WebhookRegister() {
+  const [status,  setStatus]  = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [url,     setUrl]     = useState("");
+  const [errMsg,  setErrMsg]  = useState("");
+  const [domain,  setDomain]  = useState("");
+
+  async function register() {
+    setStatus("loading");
+    setErrMsg("");
+    try {
+      const res  = await fetch("/api/telegram/register-webhook", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ domain: domain.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setStatus("error"); setErrMsg(data.error ?? "Failed"); return; }
+      setUrl(data.webhookUrl);
+      setStatus("ok");
+    } catch {
+      setStatus("error");
+      setErrMsg("Network error");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          placeholder="https://yourdomain.com  (leave blank to auto-detect)"
+          className="flex-1 min-w-[260px] px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+        />
+        <button
+          type="button"
+          onClick={register}
+          disabled={status === "loading"}
+          className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+        >
+          {status === "loading"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering…</>
+            : <><Send className="w-4 h-4" /> Register Webhook</>}
+        </button>
+      </div>
+      {status === "ok" && (
+        <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          ✓ Webhook registered → <code className="font-mono break-all">{url}</code>
+        </p>
+      )}
+      {status === "error" && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          ✗ {errMsg}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── Small helpers ─────────────────────────────────────────────────────── */
 
 const inputCls =
@@ -1459,26 +1646,31 @@ function Section({
 
 /* ── Font picker (self-contained to avoid IIFE-in-JSX issues) ──────────── */
 const FONT_PRESETS = [
-  { val: "default",         label: "System Default", sample: "Aa"    },
-  { val: "Battambang",      label: "Battambang",     sample: "អក្សរ" },
-  { val: "Noto Sans Khmer", label: "Noto Sans Khmer",sample: "អក្សរ" },
-  { val: "Hanuman",         label: "Hanuman",        sample: "អក្សរ" },
-  { val: "Moul",            label: "Moul",           sample: "អក្សរ" },
-  { val: "Dangrek",         label: "Dangrek",        sample: "អក្សរ" },
-  { val: "Inter",           label: "Inter",          sample: "Aa"    },
-  { val: "Poppins",         label: "Poppins",        sample: "Aa"    },
-  { val: "Roboto",          label: "Roboto",         sample: "Aa"    },
+  { val: "default",         label: "System Default", sample: "Aa",    khmer: false },
+  { val: "Noto Sans Khmer", label: "Noto Sans Khmer",sample: "អក្សរ", khmer: true  },
+  { val: "Kantumruy Pro",   label: "Kantumruy Pro",  sample: "អក្សរ", khmer: true  },
+  { val: "Ang Daunsok",     label: "Ang Daunsok",    sample: "អក្សរ", khmer: true  },
+  { val: "Kh Siemreap",     label: "Kh Siemreap",   sample: "អក្សរ", khmer: true  },
+  { val: "Khmer Chantha",   label: "Khmer Chantha",  sample: "អក្សរ", khmer: true  },
+  { val: "Inter",           label: "Inter",          sample: "Aa",    khmer: false },
+  { val: "Poppins",         label: "Poppins",        sample: "Aa",    khmer: false },
+  { val: "Roboto",          label: "Roboto",         sample: "Aa",    khmer: false },
 ] as const;
 
 function FontPickerField({
-  currentFont, customFontsJson, busy, inputCls, onFontChange, onCustomFontsChange,
+  label, sampleText, currentFont, customFontsJson, busy, inputCls,
+  onFontChange, onCustomFontsChange, latinOnly, khmerOnly,
 }: {
+  label?: string;
+  sampleText?: string;
   currentFont: string;
   customFontsJson: string;
   busy: boolean;
   inputCls: string;
   onFontChange: (v: string) => void;
   onCustomFontsChange: (v: string) => void;
+  latinOnly?: boolean;
+  khmerOnly?: boolean;
 }) {
   const [newFontName, setNewFontName] = useState("");
 
@@ -1489,16 +1681,22 @@ function FontPickerField({
   const allFontNames  = [...allPresetVals, ...customFonts.map(f => f.name)];
   const googleValue   = allFontNames.includes(currentFont) ? "" : currentFont;
 
+  // Filter presets based on latinOnly / khmerOnly
+  const visiblePresets = FONT_PRESETS.filter(p =>
+    khmerOnly  ? (p.val === "default" || p.khmer) :
+    latinOnly  ? (p.val === "default" || !p.khmer) :
+    true
+  );
+
   return (
     <div className="space-y-1">
-      <p className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-        <Monitor className="w-4 h-4 text-gray-400" />
-        Page Font
-      </p>
+      {label && (
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{label}</p>
+      )}
       <div className="mt-1 space-y-3">
         {/* Preset grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {FONT_PRESETS.map(({ val, label, sample }) => {
+        <div className="grid grid-cols-2 gap-2">
+          {visiblePresets.map(({ val, label: presetLabel, sample }) => {
             const active = currentFont === val;
             return (
               <button key={val} type="button" disabled={busy}
@@ -1506,7 +1704,7 @@ function FontPickerField({
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all
                   ${active ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}>
                 <span className={`text-lg leading-none flex-shrink-0 ${active ? "text-indigo-600" : "text-gray-500"}`}>{sample}</span>
-                <span className={`text-xs font-medium truncate ${active ? "text-indigo-700" : "text-gray-600"}`}>{label}</span>
+                <span className={`text-xs font-medium truncate ${active ? "text-indigo-700" : "text-gray-600"}`}>{presetLabel}</span>
               </button>
             );
           })}

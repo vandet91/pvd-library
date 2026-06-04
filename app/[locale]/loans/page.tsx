@@ -27,7 +27,7 @@ interface Loan {
     materialType?: string | null;
     author?: { name: string } | null;
   };
-  fine?: { amount: number; status: "UNPAID" | "PAID" | "WAIVED"; type?: "LATE_FEE" | "REPLACEMENT" } | null;
+  fines: { id: string; amount: number; status: "UNPAID" | "PAID" | "WAIVED"; type: "LATE_FEE" | "REPLACEMENT" | "DAMAGED" }[];
 }
 
 function daysUntil(date: string) {
@@ -64,8 +64,9 @@ export default function LoansPage() {
   const lost     = loans.filter((l) => l.status === "LOST");
 
   const unpaidFines = loans
-    .filter((l) => l.fine?.status === "UNPAID")
-    .reduce((sum, l) => sum + (l.fine?.amount ?? 0), 0);
+    .flatMap((l) => l.fines ?? [])
+    .filter((f) => f.status === "UNPAID")
+    .reduce((sum, f) => sum + f.amount, 0);
 
   const statusStyle: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
     ACTIVE:   { label: t("statusActive"),   icon: <Clock className="w-3.5 h-3.5" />,         cls: "bg-blue-50 text-blue-700"    },
@@ -334,20 +335,20 @@ function LoanCard({
           <DueBadge loan={loan} t={t} />
         </div>
 
-        {loan.fine && (
-          <div className={`mt-1.5 text-xs px-2 py-1 rounded-lg font-medium w-fit flex items-center gap-1 ${
-            loan.fine.status === "UNPAID"
-              ? loan.fine.type === "REPLACEMENT"
+        {loan.fines?.map((fine: { id: string; amount: number; status: string; type: string }) => (
+          <div key={fine.id} className={`mt-1.5 text-xs px-2 py-1 rounded-lg font-medium w-fit flex items-center gap-1 ${
+            fine.status === "UNPAID"
+              ? fine.type === "REPLACEMENT"
                 ? "bg-red-50 text-red-700 border border-red-200"
                 : "bg-orange-50 text-orange-700 border border-orange-200"
               : "bg-gray-100 text-gray-500"
           }`}>
             <AlertCircle className="w-3 h-3" />
-            {loan.fine.type === "REPLACEMENT"
-              ? `Replacement fee: $${loan.fine.amount.toFixed(2)} · ${loan.fine.status}`
-              : t("fine", { amount: loan.fine.amount.toFixed(2), status: loan.fine.status })}
+            {fine.type === "REPLACEMENT"
+              ? `Replacement fee: $${fine.amount.toFixed(2)} · ${fine.status}`
+              : t("fine", { amount: fine.amount.toFixed(2), status: fine.status })}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );

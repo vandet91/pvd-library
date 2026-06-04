@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useTheme, type ThemeName } from "@/components/ThemeProvider";
 import { useEnabledLocales } from "@/context/enabled-locales";
-import { ALL_LOCALES } from "@/lib/locales";
 
 interface HeaderProps {
   title:       string;
@@ -80,7 +79,7 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
 
   /* ── language dropdown ── */
   const enabledLocales = useEnabledLocales();
-  const currentLocaleEntry = ALL_LOCALES.find((l) => l.code === locale) ?? ALL_LOCALES[0];
+  const currentLocaleEntry = enabledLocales.find((l) => l.code === locale) ?? enabledLocales[0];
 
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);

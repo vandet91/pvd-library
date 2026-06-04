@@ -717,9 +717,10 @@ export default function ProcessingQueuePage() {
               {/* ── Grouped table ── */}
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 {/* Table header */}
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100">
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                    <tr>
                       <th className="px-4 py-2.5 w-8">
                         {/* Select-all checkbox (only selects copies with barcodes) */}
                         <input
@@ -875,6 +876,7 @@ export default function ProcessingQueuePage() {
                     })}
                   </tbody>
                 </table>
+                </div>
                 {needsLabelCount > 200 && (
                   <div className="px-4 py-3 bg-amber-50 border-t border-amber-100 text-xs text-amber-700 text-center">
                     Showing the 200 most recently acquired copies. Mark them as labeled to reveal older ones.
@@ -960,9 +962,10 @@ export default function ProcessingQueuePage() {
                   </div>
 
                   {(expandedBaskets.has(basket.id) || items.length <= 3) && (
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
+                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                        <tr>
                           <th className="px-4 py-2 text-left">Book</th>
                           <th className="px-4 py-2 text-center w-16">Copy#</th>
                           <th className="px-4 py-2 text-left w-32">Barcode</th>
@@ -1019,6 +1022,7 @@ export default function ProcessingQueuePage() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               ))}
@@ -1046,14 +1050,15 @@ export default function ProcessingQueuePage() {
                   {noBarcodeCount} copy/copies have no barcode or RFID — assign one before printing labels.
                 </span>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
-                    <th className="px-4 py-2 text-left">Book</th>
-                    <th className="px-4 py-2 text-center w-16">Copy#</th>
-                    <th className="px-4 py-2 text-left w-24">Status</th>
-                    <th className="px-4 py-2 text-left w-24">Condition</th>
-                    <th className="px-4 py-2 text-right w-28">Action</th>
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Book</th>
+                    <th className="px-4 py-3 text-center w-16">Copy#</th>
+                    <th className="px-4 py-3 text-left w-24">Status</th>
+                    <th className="px-4 py-3 text-left w-24">Condition</th>
+                    <th className="px-4 py-3 text-right w-28">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -1092,6 +1097,7 @@ export default function ProcessingQueuePage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </div>

@@ -100,6 +100,33 @@ export function reservationReadyTemplate({ memberName, bookTitle, holdShelf, exp
   return { subject, html };
 }
 
+/* ── Book request status update ─────────────────────────────── */
+export function bookRequestStatusTemplate({ memberName, title, status, adminNote }: {
+  memberName: string; title: string; status: "APPROVED" | "REJECTED" | "FULFILLED"; adminNote?: string | null;
+}) {
+  const map = {
+    APPROVED:  { accent: "#3b82f6,#1d4ed8", icon: "✅ Request approved",  subject: `Your book request has been approved: "${title}"`,  blurb: "Great news! The library has approved your book request. We will let you know once the book arrives." },
+    REJECTED:  { accent: "#ef4444,#b91c1c", icon: "❌ Request declined",   subject: `Your book request was not approved: "${title}"`,   blurb: "Unfortunately the library is unable to fulfil this request at this time." },
+    FULFILLED: { accent: "#10b981,#047857", icon: "📦 Book acquired!",     subject: `Your requested book is now available: "${title}"`, blurb: "Your requested book has been acquired and added to our collection. Head to the library to borrow it!" },
+  };
+  const { accent, icon, subject, blurb } = map[status];
+  const html = shell({
+    preheader: blurb,
+    accent,
+    icon,
+    body: `
+      <p style="margin:0 0 16px;">Hi <strong>${memberName}</strong>,</p>
+      <p style="margin:0 0 20px;">${blurb}</p>
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:20px;">
+        ${loanRow("Requested book", title)}
+        ${loanRow("Status", status.charAt(0) + status.slice(1).toLowerCase())}
+        ${adminNote ? loanRow("Note from library", adminNote) : ""}
+      </div>
+    `,
+  });
+  return { subject, html };
+}
+
 /* ── Test email ──────────────────────────────────────────────── */
 export function testEmailTemplate() {
   const subject = "PVD Library — test notification";

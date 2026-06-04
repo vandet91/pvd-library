@@ -9,7 +9,7 @@ import {
   AlertCircle, BarChart3, Search, Settings, LogOut, ShoppingCart, ShieldCheck, Inbox,
   ClipboardList, ShoppingBasket, Barcode, Shield, DatabaseBackup, Bell, Tags, Activity,
   Bot, Tag, Trash2, PackagePlus, Warehouse, ShoppingBag, CheckSquare, ArrowDownToLine, Hash,
-  Languages, Wand2, UserRound, Wrench, ChevronDown,
+  Languages, Wand2, UserRound, Wrench, ChevronDown, ScrollText, Newspaper, CalendarDays, TrendingUp,
 } from "lucide-react";
 import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
@@ -44,14 +44,20 @@ function Badge({ count, color = "red" }: { count: number; color?: "red" | "yello
 }
 
 interface Alerts {
-  reservations: number;  // PENDING — needs approve/cancel decision
-  approved:     number;  // APPROVED — book needs to be pulled from shelf
-  readyPickup:  number;  // READY — on hold shelf, awaiting member pickup
-  bookRequests: number;
-  overdue:      number;
-  fines:        number;
-  processing:   number;  // basket items needing labeling
-  pendingTasks: number;  // active staff tasks
+  reservations:         number;
+  approved:             number;
+  readyPickup:          number;
+  bookRequests:         number;
+  overdue:              number;
+  fines:                number;
+  processing:           number;
+  pendingTasks:         number;
+  pendingMembers:       number;
+  salePaymentSubmitted: number;
+  saleReturnRequested:  number;
+  serialIssuesMissing:  number;
+  subscriptionsExpiring: number;
+  ordersAwaitingReceive: number;
 }
 
 /* ── Rotating daily quote ───────────────────────────────────────── */
@@ -125,7 +131,10 @@ export default function Sidebar({ role }: { role: string }) {
   const libraryLogo = useLibraryLogo();
 
   const [alerts, setAlerts] = useState<Alerts>({
-    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0, processing: 0, pendingTasks: 0,
+    reservations: 0, approved: 0, readyPickup: 0, bookRequests: 0, overdue: 0, fines: 0,
+    processing: 0, pendingTasks: 0, pendingMembers: 0,
+    salePaymentSubmitted: 0, saleReturnRequested: 0,
+    serialIssuesMissing: 0, subscriptionsExpiring: 0, ordersAwaitingReceive: 0,
   });
 
   const [aiAdminEnabled, setAiAdminEnabled] = useState(true);
@@ -165,34 +174,11 @@ export default function Sidebar({ role }: { role: string }) {
   };
 
   const allLinks: NavLink[] = [
+    // ── Daily operations ─────────────────────────────────────────
     {
       href: `/${locale}/admin`,
       label: t("dashboard"),
       icon: LayoutDashboard,
-      minRole: "STAFF",
-    },
-    {
-      href: `/${locale}/admin/books`,
-      label: t("books"),
-      icon: BookOpen,
-      minRole: "LIBRARIAN",
-    },
-    {
-      href: `/${locale}/admin/ebooks`,
-      label: t("ebooks"),
-      icon: BookMarked,
-      minRole: "LIBRARIAN",
-    },
-    {
-      href: `/${locale}/admin/taxonomy`,
-      label: t("taxonomy"),
-      icon: Tags,
-      minRole: "LIBRARIAN",
-    },
-    {
-      href: `/${locale}/admin/members`,
-      label: t("members"),
-      icon: Users,
       minRole: "STAFF",
     },
     {
@@ -209,7 +195,6 @@ export default function Sidebar({ role }: { role: string }) {
       label: t("reservations"),
       icon: ShoppingCart,
       minRole: "STAFF",
-      // Combined total; color = most urgent status present
       badge: (() => {
         const total = alerts.reservations + alerts.approved + alerts.readyPickup;
         if (total === 0) return null;
@@ -218,6 +203,15 @@ export default function Sidebar({ role }: { role: string }) {
           :                                    "purple";
         return <Badge count={total} color={color} />;
       })(),
+    },
+    {
+      href: `/${locale}/admin/members`,
+      label: t("members"),
+      icon: Users,
+      minRole: "STAFF",
+      badge: alerts.pendingMembers > 0
+        ? <Badge count={alerts.pendingMembers} color="yellow" />
+        : null,
     },
     {
       href: `/${locale}/admin/fines`,
@@ -229,18 +223,6 @@ export default function Sidebar({ role }: { role: string }) {
         : null,
     },
     {
-      href: `/${locale}/admin/reports`,
-      label: t("reports"),
-      icon: BarChart3,
-      minRole: "LIBRARIAN",
-    },
-    {
-      href: `/${locale}/admin/users`,
-      label: t("users"),
-      icon: ShieldCheck,
-      minRole: "ADMIN",
-    },
-    {
       href: `/${locale}/admin/book-requests`,
       label: t("bookRequests"),
       icon: Inbox,
@@ -250,22 +232,38 @@ export default function Sidebar({ role }: { role: string }) {
         : null,
     },
     {
-      href: `/${locale}/admin/inventory`,
-      label: t("inventory"),
-      icon: ClipboardList,
+      href: `/${locale}/admin/tasks`,
+      label: t("staffTasks"),
+      icon: CheckSquare,
+      minRole: "STAFF",
+      badge: alerts.pendingTasks > 0
+        ? <Badge count={alerts.pendingTasks} color="purple" />
+        : null,
+    },
+    // ── Catalog ───────────────────────────────────────────────────
+    {
+      href: `/${locale}/admin/books`,
+      label: t("books"),
+      icon: BookOpen,
       minRole: "LIBRARIAN",
     },
     {
-      href: `/${locale}/admin/baskets`,
-      label: t("baskets"),
-      icon: ShoppingBasket,
+      href: `/${locale}/admin/ebooks`,
+      label: t("ebooks"),
+      icon: BookMarked,
       minRole: "LIBRARIAN",
     },
     {
-      href: `/${locale}/admin/barcode`,
-      label: t("barcode"),
-      icon: Barcode,
+      href: `/${locale}/admin/serials`,
+      label: "Serials",
+      icon: Newspaper,
       minRole: "LIBRARIAN",
+      badge: (() => {
+        const total = alerts.serialIssuesMissing + alerts.subscriptionsExpiring;
+        if (total === 0) return null;
+        const color = alerts.serialIssuesMissing > 0 ? "red" : "yellow";
+        return <Badge count={total} color={color} />;
+      })(),
     },
     {
       href: `/${locale}/admin/books/processing`,
@@ -277,15 +275,31 @@ export default function Sidebar({ role }: { role: string }) {
         : null,
     },
     {
-      href: `/${locale}/admin/books/weeding`,
-      label: t("weeding"),
-      icon: Trash2,
+      href: `/${locale}/admin/barcode`,
+      label: t("barcode"),
+      icon: Barcode,
       minRole: "LIBRARIAN",
     },
     {
-      href: `/${locale}/admin/books/acquisition`,
-      label: t("acquisition"),
+      href: `/${locale}/admin/baskets`,
+      label: t("baskets"),
+      icon: ShoppingBasket,
+      minRole: "LIBRARIAN",
+    },
+    // ── Acquisitions & Stock ──────────────────────────────────────
+    {
+      href: `/${locale}/admin/acquisitions`,
+      label: "Acquisitions",
       icon: PackagePlus,
+      minRole: "LIBRARIAN",
+      badge: alerts.ordersAwaitingReceive > 0
+        ? <Badge count={alerts.ordersAwaitingReceive} color="yellow" />
+        : null,
+    },
+    {
+      href: `/${locale}/admin/books/acquisition`,
+      label: "Demand Intel",
+      icon: TrendingUp,
       minRole: "LIBRARIAN",
     },
     {
@@ -295,10 +309,36 @@ export default function Sidebar({ role }: { role: string }) {
       minRole: "LIBRARIAN",
     },
     {
+      href: `/${locale}/admin/inventory`,
+      label: t("inventory"),
+      icon: ClipboardList,
+      minRole: "LIBRARIAN",
+    },
+    {
+      href: `/${locale}/admin/books/weeding`,
+      label: t("weeding"),
+      icon: Trash2,
+      minRole: "LIBRARIAN",
+    },
+    // ── Bookshop ──────────────────────────────────────────────────
+    {
       href: `/${locale}/admin/orders`,
       label: t("saleOrders"),
       icon: ShoppingBag,
       minRole: "STAFF",
+      badge: (() => {
+        const total = alerts.salePaymentSubmitted + alerts.saleReturnRequested;
+        if (total === 0) return null;
+        const color = alerts.saleReturnRequested > 0 ? "red" : "orange";
+        return <Badge count={total} color={color} />;
+      })(),
+    },
+    // ── Analytics & AI ────────────────────────────────────────────
+    {
+      href: `/${locale}/admin/reports`,
+      label: t("reports"),
+      icon: BarChart3,
+      minRole: "LIBRARIAN",
     },
     ...(aiAdminEnabled ? [{
       href: `/${locale}/admin/ai-assistant`,
@@ -306,15 +346,14 @@ export default function Sidebar({ role }: { role: string }) {
       icon: Bot,
       minRole: "STAFF",
     }] : []),
+    // ── User management ───────────────────────────────────────────
     {
-      href: `/${locale}/admin/tasks`,
-      label: t("staffTasks"),
-      icon: CheckSquare,
-      minRole: "STAFF",
-      badge: alerts.pendingTasks > 0
-        ? <Badge count={alerts.pendingTasks} color="purple" />
-        : null,
+      href: `/${locale}/admin/users`,
+      label: t("users"),
+      icon: ShieldCheck,
+      minRole: "ADMIN",
     },
+    // ── Public portal ─────────────────────────────────────────────
     {
       href: `/${locale}/discover`,
       label: t("opac"),
@@ -328,13 +367,16 @@ export default function Sidebar({ role }: { role: string }) {
 
   /* ── Settings section (collapsible) ── */
   const allSettingsLinks: NavLink[] = [
-    { href: `/${locale}/admin/settings`,      label: t("settings"),      icon: Settings,   minRole: "ADMIN"     },
-    { href: `/${locale}/admin/notifications`, label: t("notifications"), icon: Bell,       minRole: "ADMIN"     },
-    { href: `/${locale}/admin/logs`,          label: t("activityLogs"),  icon: Activity,   minRole: "ADMIN"     },
-    { href: `/${locale}/admin/translations`,  label: t("translations"),  icon: Languages,  minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/settings`,          label: t("settings"),      icon: Settings,    minRole: "ADMIN"     },
+    { href: `/${locale}/admin/circulation-rules`, label: "Circ. Rules",      icon: ScrollText,  minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/calendar`,          label: "Calendar",         icon: CalendarDays,minRole: "ADMIN"     },
+    { href: `/${locale}/admin/taxonomy`,          label: t("taxonomy"),      icon: Tags,        minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/notifications`,     label: t("notifications"), icon: Bell,        minRole: "ADMIN"     },
+    { href: `/${locale}/admin/logs`,              label: t("activityLogs"),  icon: Activity,    minRole: "ADMIN"     },
+    { href: `/${locale}/admin/translations`,      label: t("translations"),  icon: Languages,   minRole: "LIBRARIAN" },
   ];
   const settingsLinks = allSettingsLinks.filter((l) => hasAccess(role, l.minRole));
-  const isOnSettingsPage = ["/admin/settings", "/admin/notifications", "/admin/logs", "/admin/translations"]
+  const isOnSettingsPage = ["/admin/settings", "/admin/notifications", "/admin/logs", "/admin/translations", "/admin/circulation-rules", "/admin/calendar", "/admin/taxonomy"]
     .some((p) => pathname.includes(p));
   const [settingsOpen, setSettingsOpen] = useState(isOnSettingsPage);
 
@@ -360,7 +402,10 @@ export default function Sidebar({ role }: { role: string }) {
   const [toolsOpen, setToolsOpen] = useState(isOnToolsPage);
 
   /* Total urgent count for the page <title> */
-  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests + alerts.overdue + alerts.fines + alerts.processing + alerts.pendingTasks;
+  const totalUrgent = alerts.reservations + alerts.approved + alerts.readyPickup + alerts.bookRequests
+    + alerts.overdue + alerts.fines + alerts.processing + alerts.pendingTasks + alerts.pendingMembers
+    + alerts.salePaymentSubmitted + alerts.saleReturnRequested
+    + alerts.serialIssuesMissing + alerts.subscriptionsExpiring + alerts.ordersAwaitingReceive;
 
   return (
     <aside className="w-64 min-h-screen flex flex-col" style={{ background: "var(--sidebar)", color: "var(--sidebar-foreground)" }}>

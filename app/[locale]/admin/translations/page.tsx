@@ -69,6 +69,7 @@ export default function TranslationsPage() {
 
   /* ── Publish state ── */
   const [publishing,      setPublishing]      = useState<string | null>(null);
+  const [publishErr,      setPublishErr]      = useState<string | null>(null);
   const [restartRequired, setRestartRequired] = useState(false);
   const [enabledLocales,  setEnabledLocales]  = useState<Set<string>>(new Set(["en"]));
 
@@ -113,16 +114,25 @@ export default function TranslationsPage() {
     if (publishing) return;
     const enabling = !enabledLocales.has(code);
     setPublishing(code);
-    const res = await fetch("/api/admin/translations/publish", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ locale: code, enabled: enabling }),
-    });
-    setPublishing(null);
-    if (res.ok) {
-      const d = await res.json();
-      setEnabledLocales(new Set(d.enabledLocales ?? ["en"]));
-      if (d.restartRequired) setRestartRequired(true);
+    setPublishErr(null);
+    try {
+      const res = await fetch("/api/admin/translations/publish", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ locale: code, enabled: enabling }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setEnabledLocales(new Set(d.enabledLocales ?? ["en"]));
+        if (d.restartRequired) setRestartRequired(true);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setPublishErr(d.error ?? `Failed to ${enabling ? "enable" : "disable"} language`);
+      }
+    } catch {
+      setPublishErr("Network error — please try again");
+    } finally {
+      setPublishing(null);
     }
   }
 
@@ -264,7 +274,7 @@ export default function TranslationsPage() {
               return (
                 <button
                   key={loc.code}
-                  onClick={() => { setActiveLocale(loc.code); setEdits({}); }}
+                  onClick={() => { setActiveLocale(loc.code); setEdits({}); setPublishErr(null); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                     activeLocale === loc.code
                       ? "bg-indigo-600 text-white shadow-sm"
@@ -455,6 +465,12 @@ export default function TranslationsPage() {
               </div>
 
               {/* Publish toggle */}
+              {publishErr && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {publishErr}
+                </div>
+              )}
               {(() => {
                 const routingReady = true; // proxy.ts reads messages/ dynamically — no restart needed
                 const isEnabled    = enabledLocales.has(activeLocale);

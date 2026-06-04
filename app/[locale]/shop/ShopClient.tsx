@@ -103,6 +103,8 @@ export default function ShopClient({
   footerTelegram = "", footerHours = "", footerFacebook = "", footerWebsite = "",
   pageBg = "light" as "light" | "white" | "dark",
   pageFont = "default",
+  pageFontEn = "default",
+  pageFontKm = "default",
   pageCustomFonts = [] as {name:string;url:string}[],
   fullWidth = false,
 }: {
@@ -119,6 +121,8 @@ export default function ShopClient({
   footerTelegram?: string; footerHours?: string; footerFacebook?: string; footerWebsite?: string;
   pageBg?: "light" | "white" | "dark";
   pageFont?: string;
+  pageFontEn?: string;
+  pageFontKm?: string;
   pageCustomFonts?: {name:string;url:string}[];
   fullWidth?: boolean;
 }) {
@@ -299,7 +303,13 @@ export default function ShopClient({
   if (!loading && !enabled) {
     return (
       <div className={`min-h-screen opac-font-root ${pageBg === "white" ? "bg-white" : pageBg === "dark" ? "bg-slate-950 page-dark" : "bg-gray-200"}`}>
-      <FontLoader font={pageFont} customFonts={pageCustomFonts} />
+      <FontLoader
+        fonts={pageFontEn !== "default" || pageFontKm !== "default"
+          ? { en: pageFontEn, km: pageFontKm }
+          : undefined}
+        font={pageFont}
+        customFonts={pageCustomFonts}
+      />
         {ThemedNav}
         <div className="max-w-md mx-auto mt-24 text-center px-4">
           <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
@@ -315,7 +325,13 @@ export default function ShopClient({
   return (
     <>
     <div className={`min-h-screen opac-font-root ${pageBg === "white" ? "bg-white" : pageBg === "dark" ? "bg-slate-950 page-dark" : "bg-gray-200"}`}>
-      <FontLoader font={pageFont} customFonts={pageCustomFonts} />
+      <FontLoader
+        fonts={pageFontEn !== "default" || pageFontKm !== "default"
+          ? { en: pageFontEn, km: pageFontKm }
+          : undefined}
+        font={pageFont}
+        customFonts={pageCustomFonts}
+      />
       {ThemedNav}
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}

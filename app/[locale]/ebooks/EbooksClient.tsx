@@ -90,6 +90,8 @@ export default function EbooksClient({
   footerDescription = "",
   pageBg = "light" as "light" | "white" | "dark",
   pageFont = "default",
+  pageFontEn = "default",
+  pageFontKm = "default",
   pageCustomFonts = [] as {name:string;url:string}[],
   fullWidth = false,
 }: {
@@ -105,6 +107,8 @@ export default function EbooksClient({
   footerDescription?: string;
   pageBg?: "light" | "white" | "dark";
   pageFont?: string;
+  pageFontEn?: string;
+  pageFontKm?: string;
   pageCustomFonts?: {name:string;url:string}[];
   fullWidth?: boolean;
 }) {
@@ -264,7 +268,13 @@ export default function EbooksClient({
   return (
     <>
     <div className={`min-h-screen opac-font-root ${pageBg === "white" ? "bg-white" : pageBg === "dark" ? "bg-slate-950 page-dark" : "bg-gray-200"}`}>
-      <FontLoader font={pageFont} customFonts={pageCustomFonts} />
+      <FontLoader
+        fonts={pageFontEn !== "default" || pageFontKm !== "default"
+          ? { en: pageFontEn, km: pageFontKm }
+          : undefined}
+        font={pageFont}
+        customFonts={pageCustomFonts}
+      />
 
       {/* ── Sticky top nav ──────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-30 backdrop-blur border-b border-white/10" style={{ background: 'var(--m-nav-bg)' }}>

@@ -242,9 +242,10 @@ export default function WeedingPage() {
           </div>
         ) : (
           <>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                <tr>
                   <th className="px-4 py-2.5 text-left w-8">
                     <input
                       type="checkbox"
@@ -307,6 +308,7 @@ export default function WeedingPage() {
                 ))}
               </tbody>
             </table>
+            </div>
             <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
               Showing {books.length} candidate(s). Select items above and add to a basket for batch processing.
             </div>

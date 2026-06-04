@@ -8,6 +8,7 @@ interface LinkStatus {
   linked:      boolean;
   linkedAt:    string | null;
   botUsername: string;
+  enabled:     boolean;
 }
 
 interface LinkCode {
@@ -53,8 +54,12 @@ export default function TelegramLinkWidget() {
     setError("");
     try {
       const res  = await fetch("/api/telegram/link", { method: "POST" });
-      const data = await res.json() as LinkCode;
-      setCode(data);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Failed to generate code. Please try again.");
+        return;
+      }
+      setCode(data as LinkCode);
     } catch {
       setError("Failed to generate code. Please try again.");
     } finally {
@@ -95,6 +100,15 @@ export default function TelegramLinkWidget() {
         <Loader2 className="w-4 h-4 animate-spin" />
         Loading Telegram status...
       </div>
+    );
+  }
+
+  /* ── Disabled by admin ── */
+  if (status && !status.enabled && !status.linked) {
+    return (
+      <p className="text-xs text-gray-400 py-2">
+        Telegram linking is not available at this time.
+      </p>
     );
   }
 

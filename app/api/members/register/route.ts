@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateMemberId } from "@/lib/utils";
+import { generateMemberIdFromSettings } from "@/lib/member-id";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
   /* ── Create User + Member in one transaction ── */
   const hashed   = await bcrypt.hash(password, 12);
-  const memberId = generateMemberId();
+  const memberId = await generateMemberIdFromSettings();
 
   const expireDate = new Date();
   expireDate.setFullYear(expireDate.getFullYear() + 1);

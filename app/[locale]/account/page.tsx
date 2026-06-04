@@ -5,7 +5,7 @@ import { useLocale }  from "next-intl";
 import { useRouter }  from "next/navigation";
 import { useEffect }  from "react";
 import Link           from "next/link";
-import { User, BookOpen, ChevronLeft, Send } from "lucide-react";
+import { User, BookOpen, ChevronLeft, Send, Inbox } from "lucide-react";
 import MemberHeader        from "@/components/shared/MemberHeader";
 import TelegramLinkWidget  from "@/components/member/TelegramLinkWidget";
 import { useLibraryName }  from "@/context/library-name";
@@ -82,6 +82,13 @@ export default function AccountPage() {
               <BookOpen className="w-5 h-5 text-blue-600" />
             </div>
             <span className="text-sm font-medium text-gray-700">Discover Books</span>
+          </Link>
+          <Link href={`/${locale}/book-requests`}
+            className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
+            <div className="w-9 h-9 bg-pink-50 rounded-lg flex items-center justify-center">
+              <Inbox className="w-5 h-5 text-pink-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-700">Book Requests</span>
           </Link>
         </div>
 

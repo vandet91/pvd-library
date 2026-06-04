@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { addDays } from "date-fns";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 import { notifyMember, tg } from "@/lib/telegram";
+import { resolveCirculationRule } from "@/lib/circulation-rules";
+import { addOpenDays } from "@/lib/calendar";
 
 /**
  * POST /api/loans/batch
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
     bookIds?: string[];                        // legacy
     items?:   { bookId: string; copyId?: string }[];
     loanDays?: number;
+    overrideLoanDays?: number;                 // explicit staff override — bypasses rule loanDays
     loanType?: "HOME" | "IN_LIBRARY";
     branchId?: string;                         // branch processing the checkout
     overrideRestriction?: boolean;             // LIBRARIAN+ can override IN_LIBRARY_ONLY
@@ -32,17 +34,9 @@ export async function POST(request: NextRequest) {
   const { memberId } = body;
   const checkoutBranchId = body.branchId || null;
   const loanType = body.loanType === "IN_LIBRARY" ? "IN_LIBRARY" : "HOME";
-  // In-library loans expire at end of day; home loans use the configured duration
-  let loanDays: number;
-  if (loanType === "IN_LIBRARY") {
-    loanDays = 0;
-  } else if (body.loanDays) {
-    loanDays = body.loanDays;
-  } else {
-    // Fall back to the admin setting, then hard-coded safety net
-    const setting = await prisma.settings.findUnique({ where: { key: "DEFAULT_LOAN_DAYS" } });
-    loanDays = parseInt(setting?.value ?? "14", 10);
-  }
+  // loanDays resolved from circulation rule after member+book are known below.
+  // body.loanDays is only used as an explicit staff override (sent separately from the rule value).
+  let loanDays = 0;
 
   // Normalize both payload shapes into one `items` array
   const items = body.items
@@ -74,10 +68,32 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Quota + overdue check ─────────────────────────────────────────
+  // ── Resolve circulation rule for this member type ─────────────────
+  // We use the first book's material type as a heuristic for the rule lookup.
+  // Per-book rules are enforced later in the item loop.
   const bookIds = items.map((i) => i.bookId);
-  const quotaSetting = await prisma.settings.findUnique({ where: { key: "MAX_LOANS_PER_MEMBER" } });
-  const maxLoans     = parseInt(quotaSetting?.value ?? process.env.MAX_LOANS_PER_MEMBER ?? "3", 10);
+  const firstBook = await prisma.book.findUnique({ where: { id: bookIds[0] }, select: { materialType: true } });
+  const circRule = await resolveCirculationRule({
+    memberType:   member.memberType,
+    materialType: firstBook?.materialType ?? null,
+    branchId:     checkoutBranchId,
+  });
+
+  // allowHomeLoan rule enforcement (e.g. reference-only material types)
+  if (loanType === "HOME" && !circRule.allowHomeLoan) {
+    const canOverride = body.overrideRestriction === true && can(session.user?.role, "LIBRARIAN");
+    if (!canOverride) {
+      return NextResponse.json({
+        error: circRule.ruleName
+          ? `Rule "${circRule.ruleName}" does not allow home loans for this combination.`
+          : "Home loans are not allowed for this material type or patron type.",
+        code: "RULE_NO_HOME_LOAN",
+      }, { status: 403 });
+    }
+  }
+
+  // ── Quota + overdue check ─────────────────────────────────────────
+  const maxLoans = circRule.maxLoans;
 
   const [activeCount, overdueCount, reservationCount] = await Promise.all([
     prisma.loan.count({ where: { memberId, status: "ACTIVE"  } }),
@@ -170,10 +186,16 @@ export async function POST(request: NextRequest) {
 
   // ── Atomic transaction ────────────────────────────────────────────
   const now = new Date();
-  // In-library: due at 23:59 today; home: due in loanDays days
+  // Use rule loanDays as base; body.overrideLoanDays is an explicit staff override
+  if (loanType === "HOME") {
+    loanDays = (body.overrideLoanDays && Number(body.overrideLoanDays) > 0)
+      ? Number(body.overrideLoanDays)
+      : circRule.loanDays;
+  }
+  // In-library: due at 23:59 today; home: due in loanDays OPEN days (skips closed days)
   const dueDate = loanType === "IN_LIBRARY"
     ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
-    : addDays(now, loanDays);
+    : await addOpenDays(now, loanDays);
 
   const createdLoans = await prisma.$transaction(async (tx) => {
     const loans: { id: string; bookId: string; title: string }[] = [];

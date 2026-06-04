@@ -114,6 +114,16 @@ export const tg = {
   lostBook: (memberName: string, bookTitle: string, replacementCost: number) =>
     `⚠️ <b>Book Marked as Lost</b>\n\nHi ${memberName}! <i>${bookTitle}</i> has been marked as lost on your account.\n\nReplacement fine: <b>$${replacementCost.toFixed(2)}</b>\n\nPlease visit the library to resolve this.`,
 
+  // ── Book request events ───────────────────────────────────────────────
+  bookRequestApproved: (memberName: string, title: string, adminNote?: string | null) =>
+    `✅ <b>Book Request Approved</b>\n\nHi ${memberName}! Your request for <i>${title}</i> has been approved.\n\nWe will notify you once the book arrives.${adminNote ? `\n\n📝 Note: ${adminNote}` : ""}`,
+
+  bookRequestRejected: (memberName: string, title: string, adminNote?: string | null) =>
+    `❌ <b>Book Request Declined</b>\n\nHi ${memberName}! Unfortunately your request for <i>${title}</i> could not be fulfilled at this time.${adminNote ? `\n\n📝 Note: ${adminNote}` : ""}`,
+
+  bookRequestFulfilled: (memberName: string, title: string, adminNote?: string | null) =>
+    `📦 <b>Book Acquired!</b>\n\nHi ${memberName}! Your requested book <i>${title}</i> has been acquired and added to our collection.\n\nHead to the library to borrow it!${adminNote ? `\n\n📝 Note: ${adminNote}` : ""}`,
+
   // ── Reservation events ────────────────────────────────────────────────
   reservationCreated: (memberName: string, bookTitle: string, queuePosition: number) =>
     `📋 <b>Reservation Placed</b>\n\nHi ${memberName}! You are now in the queue for <i>${bookTitle}</i>.\n\nYour queue position: <b>#${queuePosition}</b>\n\nWe'll notify you when it's ready for pickup.`,

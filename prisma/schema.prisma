@@ -152,9 +152,10 @@ model Branch {
   books          Book[]
   copies         BookCopy[]
   loans          Loan[]
-  movementsFrom  StockMovement[] @relation("MovementFrom")
-  movementsTo    StockMovement[] @relation("MovementTo")
-  saleOrders     SaleOrder[]     @relation("SaleOrderBranch")
+  movementsFrom     StockMovement[]    @relation("MovementFrom")
+  movementsTo       StockMovement[]    @relation("MovementTo")
+  saleOrders        SaleOrder[]        @relation("SaleOrderBranch")
+  circulationRules  CirculationRule[]
 }
 
 model Book {
@@ -204,8 +205,9 @@ model Book {
   copies          BookCopy[]
   ratings         Rating[]
   stockMovements  StockMovement[]
-  saleCartItems   SaleCartItem[]
-  saleOrderItems  SaleOrderItem[]
+  saleCartItems      SaleCartItem[]
+  saleOrderItems     SaleOrderItem[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   @@index([title])
   @@index([categoryId])
@@ -233,7 +235,7 @@ model Loan {
   book         Book       @relation(fields: [bookId], references: [id])
   copy         BookCopy?  @relation(fields: [copyId], references: [id])
   branch       Branch?    @relation(fields: [branchId], references: [id])
-  fine         Fine?
+  fines        Fine[]
 
   @@index([status])
   @@index([memberId])
@@ -332,7 +334,7 @@ enum StockMovementType {
 
 model Fine {
   id            String     @id @default(cuid())
-  loanId        String     @unique
+  loanId        String
   memberId      String
   amount        Float
   daysLate      Int        @default(0)
@@ -346,6 +348,7 @@ model Fine {
   loan          Loan       @relation(fields: [loanId], references: [id])
   member        Member     @relation(fields: [memberId], references: [id])
 
+  @@index([loanId])
   @@index([status])
   @@index([memberId])
   @@index([type])
@@ -873,6 +876,215 @@ enum TaskStatus {
   IN_PROGRESS
   DONE
   CANCELLED
+}
+
+// ─── Library Calendar ─────────────────────────────────────────────────────────
+
+// Weekly opening schedule — one row per day of week (0=Sun … 6=Sat)
+model LibraryHours {
+  id        String  @id @default(cuid())
+  dayOfWeek Int     @unique  // 0 = Sunday, 6 = Saturday
+  isOpen    Boolean @default(true)
+  openTime  String? // "08:00"
+  closeTime String? // "17:00"
+}
+
+// Specific closed dates (holidays, special closures)
+model ClosedDay {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date  // date only, no time
+  reason      String?
+  isRecurring Boolean  @default(false)  // true = recurs every year on this month/day
+  createdAt   DateTime @default(now())
+
+  @@unique([date])
+  @@index([date])
+}
+
+// ─── Serials ──────────────────────────────────────────────────────────────────
+
+model Serial {
+  id            String         @id @default(cuid())
+  title         String
+  titleKm       String?
+  issn          String?        @unique
+  publisher     String?
+  frequency     SerialFrequency @default(MONTHLY)
+  language      String?        @default("en")
+  description   String?        @db.Text
+  coverImage    String?
+  isActive      Boolean        @default(true)
+  notes         String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+  issues        SerialIssue[]
+
+  @@index([isActive])
+  @@index([frequency])
+}
+
+model Subscription {
+  id           String             @id @default(cuid())
+  serialId     String
+  vendorId     String?
+  startDate    DateTime
+  endDate      DateTime?
+  cost         Float?
+  currency     String             @default("USD")
+  autoRenew    Boolean            @default(false)
+  notes        String?            @db.Text
+  status       SubscriptionStatus @default(ACTIVE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  serial       Serial             @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  vendor       Vendor?            @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  @@index([serialId])
+  @@index([status])
+  @@index([endDate])
+}
+
+model SerialIssue {
+  id           String      @id @default(cuid())
+  serialId     String
+  volume       String?     // e.g. "Vol. 12"
+  issueNumber  String      // e.g. "No. 3", "March 2025"
+  issueDate    DateTime    // cover date / publication date
+  receivedDate DateTime?
+  status       IssueStatus @default(EXPECTED)
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  serial       Serial      @relation(fields: [serialId], references: [id], onDelete: Cascade)
+
+  @@index([serialId])
+  @@index([status])
+  @@index([issueDate])
+}
+
+enum SerialFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  IRREGULAR
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum IssueStatus {
+  EXPECTED   // predicted by schedule, not yet arrived
+  RECEIVED   // arrived and checked in
+  MISSING    // overdue and not received
+  CLAIMED    // claim sent to vendor
+  WITHDRAWN  // removed from collection
+}
+
+// ─── Acquisitions ─────────────────────────────────────────────────────────────
+
+model Vendor {
+  id        String          @id @default(cuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?         @db.Text
+  website   String?
+  notes     String?         @db.Text
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  orders        PurchaseOrder[]
+  subscriptions Subscription[]
+
+  @@index([isActive])
+}
+
+model PurchaseOrder {
+  id           String              @id @default(cuid())
+  orderNumber  String              @unique   // e.g. "PO-2025-0001"
+  vendorId     String
+  status       PurchaseOrderStatus @default(DRAFT)
+  orderDate    DateTime            @default(now())
+  expectedDate DateTime?
+  receivedDate DateTime?
+  subtotal     Float               @default(0)
+  currency     String              @default("USD")
+  notes        String?             @db.Text
+  createdById  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  vendor       Vendor              @relation(fields: [vendorId], references: [id])
+  items        PurchaseOrderItem[]
+
+  @@index([status])
+  @@index([vendorId])
+  @@index([createdAt])
+}
+
+model PurchaseOrderItem {
+  id        String        @id @default(cuid())
+  orderId   String
+  bookId    String?       // null = new title not yet cataloged
+  title     String        // snapshot at order time
+  isbn      String?
+  quantity  Int           @default(1)
+  unitPrice Float         @default(0)
+  currency  String        @default("USD")
+  received  Int           @default(0)
+  notes     String?
+  createdAt DateTime      @default(now())
+  order     PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  book      Book?         @relation(fields: [bookId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([bookId])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT      // being prepared
+  SENT       // sent to vendor, awaiting fulfillment
+  PARTIAL    // some items received
+  RECEIVED   // fully received
+  CANCELLED
+}
+
+// ─── Circulation Rules Matrix ─────────────────────────────────────────────────
+// Rules are resolved by specificity: memberType+materialType+branch wins over
+// memberType+materialType, which wins over memberType-only, etc.
+// Falls back to global Settings values when no rule matches.
+model CirculationRule {
+  id           String        @id @default(cuid())
+  name         String                          // human-readable label, e.g. "Student – Magazine"
+  memberType   MemberType?                     // null = all patron types
+  materialType MaterialType?                   // null = all material types
+  branchId     String?                         // null = all branches
+  loanDays     Int           @default(14)
+  maxLoans     Int           @default(3)
+  maxRenewals  Int           @default(2)
+  renewalDays  Int           @default(14)      // days added per renewal
+  finePerDay   Float         @default(0.50)
+  allowHomeLoan Boolean      @default(true)    // false = in-library only for this combination
+  isActive     Boolean       @default(true)
+  notes        String?       @db.Text
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+
+  @@index([memberType])
+  @@index([materialType])
+  @@index([branchId])
+  @@index([isActive])
 }
 
 model QueryTemplate {

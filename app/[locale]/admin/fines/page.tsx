@@ -77,6 +77,12 @@ export default function FinesPage() {
   // ── Multi-select for combined receipt ──
   const [selectedFineIds, setSelectedFineIds] = useState<Set<string>>(new Set());
 
+  // ── Pay All (batch) ──
+  const [payAllOpen,    setPayAllOpen]    = useState(false);
+  const [payAllMethod,  setPayAllMethod]  = useState("cash");
+  const [payAllNotes,   setPayAllNotes]   = useState("");
+  const [payAllLoading, setPayAllLoading] = useState(false);
+
   // ── Inline error banner ──
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -148,6 +154,29 @@ export default function FinesPage() {
       return;
     }
     setWaiveTarget(null); setWaiveNotes("");
+    fetchFines();
+    window.dispatchEvent(new CustomEvent("alertsChanged"));
+  }
+
+  // ── Pay All for searched member ──
+  async function handlePayAll() {
+    const unpaid = fines.filter((f) => f.status === "UNPAID");
+    if (!unpaid.length) return;
+    const memberId = unpaid[0].member.id;
+    setPayAllLoading(true);
+    setActionError(null);
+    const res = await fetch("/api/fines/batch", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ memberId, action: "pay", paymentMethod: payAllMethod, notes: payAllNotes || undefined }),
+    });
+    setPayAllLoading(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setActionError(data.error ?? "Failed to pay fines");
+      return;
+    }
+    setPayAllOpen(false); setPayAllMethod("cash"); setPayAllNotes("");
     fetchFines();
     window.dispatchEvent(new CustomEvent("alertsChanged"));
   }
@@ -647,6 +676,32 @@ export default function FinesPage() {
         </div>
       </div>
 
+      {/* ── Member Pay-All banner (shown when search returns unpaid fines for one member) ── */}
+      {(() => {
+        const unpaid = fines.filter((f) => f.status === "UNPAID");
+        const uniqueMembers = [...new Set(unpaid.map((f) => f.member.id))];
+        if (!debouncedSearch || unpaid.length === 0 || uniqueMembers.length !== 1) return null;
+        const member = unpaid[0].member;
+        const total  = unpaid.reduce((s, f) => s + f.amount, 0);
+        return (
+          <div className="flex items-center gap-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-900">{member.name}</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                {unpaid.length} unpaid fine{unpaid.length !== 1 ? "s" : ""} · Total: <strong>${total.toFixed(2)}</strong>
+              </p>
+            </div>
+            <button
+              onClick={() => setPayAllOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              <CreditCard className="w-4 h-4" />
+              Pay All ${total.toFixed(2)}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* ── Action error banner ── */}
       {actionError && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -657,7 +712,7 @@ export default function FinesPage() {
       )}
 
       {/* ── Table ── */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <div className="p-8 text-center text-gray-400">{tc("loading")}</div>
         ) : fines.length === 0 ? (
@@ -1001,6 +1056,86 @@ export default function FinesPage() {
           </div>
         </div>
       )}
+      {/* ── Pay All modal ── */}
+      {payAllOpen && (() => {
+        const unpaid = fines.filter((f) => f.status === "UNPAID");
+        const member = unpaid[0]?.member;
+        const total  = unpaid.reduce((s, f) => s + f.amount, 0);
+        if (!member) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Pay All Fines</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {member.name} · {unpaid.length} fine{unpaid.length !== 1 ? "s" : ""} · Total <strong>${total.toFixed(2)}</strong>
+                </p>
+              </div>
+
+              {/* Fine breakdown */}
+              <div className="bg-gray-50 rounded-xl divide-y divide-gray-100 text-sm max-h-48 overflow-y-auto">
+                {unpaid.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between px-4 py-2.5">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800 truncate">{f.loan.book.title}</p>
+                      <TypeBadge type={f.type} />
+                    </div>
+                    <span className="font-semibold text-gray-900 ml-3 shrink-0">${f.amount.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Payment method */}
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">{t("paymentMethod")}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {PAYMENT_METHODS.map(({ value, label, icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => setPayAllMethod(value)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                        payAllMethod === value
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <input
+                type="text"
+                placeholder={t("notesOptional")}
+                value={payAllNotes}
+                onChange={(e) => setPayAllNotes(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setPayAllOpen(false); setPayAllNotes(""); }}
+                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium transition-colors"
+                >
+                  {tc("cancel")}
+                </button>
+                <button
+                  onClick={handlePayAll}
+                  disabled={payAllLoading}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {payAllLoading
+                    ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing…</>
+                    : <><CreditCard className="w-4 h-4" /> Confirm Pay ${total.toFixed(2)}</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

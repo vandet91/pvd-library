@@ -54,7 +54,7 @@ export default async function LocaleLayout({
        * X-NEXT-INTL-LOCALE header injected by the next-intl proxy middleware.
        */}
       <SetHtmlAttributes locale={locale} />
-      <NextIntlClientProvider messages={messages}>
+      <NextIntlClientProvider locale={locale} messages={messages}>
         {children}
       </NextIntlClientProvider>
     </>

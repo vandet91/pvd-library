@@ -28,7 +28,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const member = await prisma.member.findUnique({
     where: { id },
     include: {
-      loans: { include: { book: true, fine: true }, orderBy: { createdAt: "desc" } },
+      loans: { include: { book: true, fines: true }, orderBy: { createdAt: "desc" } },
       fines: { include: { loan: { include: { book: true } } }, orderBy: { createdAt: "desc" } },
       reservations: {
         where: { status: { in: ["PENDING", "APPROVED", "READY"] } },

@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import {
   Wand2, RefreshCw, CheckCircle2, AlertCircle,
-  Loader2, Hash, ArrowRight, ShieldCheck, Users,
+  Loader2, Hash, ArrowRight, ShieldCheck, Users, Filter,
 } from "lucide-react";
 
-interface NonSystemMember {
+interface Member {
   id:         string;
   memberId:   string;
   name:       string;
@@ -14,19 +14,35 @@ interface NonSystemMember {
   isActive:   boolean;
 }
 
+interface Change { id: string; oldId: string; newId: string; name: string }
+
+const TYPE_COLORS: Record<string, string> = {
+  STUDENT: "bg-blue-50 text-blue-700",
+  TEACHER: "bg-violet-50 text-violet-700",
+  STAFF:   "bg-amber-50 text-amber-700",
+  PUBLIC:  "bg-gray-100 text-gray-600",
+};
+
 export default function RegenMemberIdsPage() {
-  const [members,  setMembers]  = useState<NonSystemMember[]>([]);
-  const [total,    setTotal]    = useState<number | null>(null);
-  const [loading,  setLoading]  = useState(true);
-  const [busy,     setBusy]     = useState(false);
-  const [confirm,  setConfirm]  = useState(false);
-  const [changes,  setChanges]  = useState<{ oldId: string; newId: string; name: string }[]>([]);
-  const [result,   setResult]   = useState<{ updated: number; skipped: number } | null>(null);
-  const [err,      setErr]      = useState<string | null>(null);
+  const [members,       setMembers]       = useState<Member[]>([]);
+  const [total,         setTotal]         = useState<number | null>(null);
+  const [currentFormat, setCurrentFormat] = useState<string>("");
+  const [loading,       setLoading]       = useState(true);
+  const [busy,          setBusy]          = useState(false);
+  const [err,           setErr]           = useState<string | null>(null);
 
-  useEffect(() => { loadMembers(); }, []);
+  /* scope settings */
+  const [scope,      setScope]      = useState<"all" | "pattern">("all");
+  const [oldPattern, setOldPattern] = useState("");
 
-  async function loadMembers() {
+  /* workflow states */
+  const [changes, setChanges] = useState<Change[]>([]);
+  const [confirm, setConfirm] = useState(false);
+  const [result,  setResult]  = useState<{ updated: number; skipped: number } | null>(null);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
     setLoading(true); setErr(null);
     try {
       const res = await fetch("/api/admin/tools/regen-member-ids");
@@ -34,18 +50,28 @@ export default function RegenMemberIdsPage() {
       const data = await res.json();
       setMembers(data.members ?? []);
       setTotal(data.total ?? 0);
+      setCurrentFormat(data.currentFormat ?? "MEM-{YYYY}-{RAND4}");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load");
     } finally { setLoading(false); }
   }
 
+  /* filtered preview list for the scope=pattern view */
+  const patternMatches = (() => {
+    if (scope !== "pattern" || !oldPattern.trim()) return [];
+    try { const re = new RegExp(oldPattern, "i"); return members.filter((m) => re.test(m.memberId)); }
+    catch { return []; }
+  })();
+
+  const targetCount = scope === "all" ? (total ?? 0) : patternMatches.length;
+
   async function runPreview() {
     setBusy(true); setErr(null); setChanges([]); setResult(null);
     try {
       const res = await fetch("/api/admin/tools/regen-member-ids", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dryRun: true }),
+        body:    JSON.stringify({ dryRun: true, scope, oldPattern: oldPattern || undefined }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -60,28 +86,19 @@ export default function RegenMemberIdsPage() {
     setBusy(true); setErr(null); setConfirm(false);
     try {
       const res = await fetch("/api/admin/tools/regen-member-ids", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dryRun: false }),
+        body:    JSON.stringify({ dryRun: false, scope, oldPattern: oldPattern || undefined }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setResult({ updated: data.updated, skipped: data.skipped });
       setChanges([]);
-      loadMembers();
+      load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
     } finally { setBusy(false); }
   }
-
-  const allDone = !loading && members.length === 0;
-
-  const TYPE_COLORS: Record<string, string> = {
-    STUDENT:  "bg-blue-50 text-blue-700",
-    TEACHER:  "bg-violet-50 text-violet-700",
-    STAFF:    "bg-amber-50 text-amber-700",
-    PUBLIC:   "bg-gray-100 text-gray-600",
-  };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -94,33 +111,16 @@ export default function RegenMemberIdsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Regenerate Member IDs</h1>
           <p className="text-sm text-gray-500">
-            Finds every member whose ID is not in{" "}
-            <code className="bg-gray-100 px-1 rounded">MEM-YYYY-XXXX</code> format
-            and replaces it with a proper system ID.
+            Re-apply the current ID format to members. Current format:{" "}
+            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-gray-700">
+              {currentFormat || "…"}
+            </code>
           </p>
         </div>
-        <button onClick={loadMembers} disabled={loading}
+        <button onClick={load} disabled={loading}
           className="ml-auto text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
-      </div>
-
-      {/* Summary banner */}
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium ${
-        loading           ? "bg-gray-50 border-gray-200 text-gray-400" :
-        allDone           ? "bg-green-50 border-green-200 text-green-700" :
-                            "bg-amber-50 border-amber-200 text-amber-700"
-      }`}>
-        {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-        {allDone && <CheckCircle2 className="w-4 h-4" />}
-        {!loading && !allDone && <AlertCircle className="w-4 h-4" />}
-        <span className="flex-1">
-          {loading
-            ? "Scanning member IDs…"
-            : allDone
-            ? `All ${total?.toLocaleString()} members already have system-format IDs ✓`
-            : `${members.length.toLocaleString()} of ${total?.toLocaleString()} members have non-system IDs`}
-        </span>
       </div>
 
       {/* Error */}
@@ -135,67 +135,111 @@ export default function RegenMemberIdsPage() {
         <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-medium">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           Done — <strong>{result.updated}</strong> ID{result.updated !== 1 ? "s" : ""} regenerated
-          {result.skipped > 0 && <>, <strong>{result.skipped}</strong> skipped</>}
+          {result.skipped > 0 && <>, <strong>{result.skipped}</strong> skipped (collision)</>}
         </div>
       )}
 
-      {/* Full list of non-system members */}
-      {!loading && members.length > 0 && !confirm && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-400" />
-              <span className="text-sm font-semibold text-gray-700">
-                Members with non-system IDs
-              </span>
-              <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
-                {members.length}
-              </span>
+      {/* Scope selector */}
+      {!confirm && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+          <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" /> Which members to regenerate?
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setScope("all")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                scope === "all"
+                  ? "border-violet-400 bg-violet-50 text-violet-700"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Users className="w-4 h-4 inline mr-1.5" />
+              All members{total !== null ? ` (${total.toLocaleString()})` : ""}
+            </button>
+            <button
+              onClick={() => setScope("pattern")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                scope === "pattern"
+                  ? "border-violet-400 bg-violet-50 text-violet-700"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Hash className="w-4 h-4 inline mr-1.5" />
+              Match old pattern
+            </button>
+          </div>
+
+          {scope === "pattern" && (
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder='e.g. ^MEM-\d{4}-\d{4}$ or just "MEM-" to match prefix'
+                value={oldPattern}
+                onChange={(e) => setOldPattern(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 font-mono"
+              />
+              {oldPattern && (
+                <p className="text-xs text-gray-500">
+                  {patternMatches.length > 0
+                    ? <><span className="text-violet-700 font-semibold">{patternMatches.length}</span> member{patternMatches.length !== 1 ? "s" : ""} match</>
+                    : <span className="text-gray-400">No members match this pattern</span>}
+                </p>
+              )}
+              {patternMatches.length > 0 && (
+                <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-48 overflow-y-auto">
+                  {patternMatches.slice(0, 50).map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 px-4 py-2 text-xs">
+                      <code className="font-mono text-gray-600 w-40 truncate">{m.memberId}</code>
+                      <span className="text-gray-500 flex-1 truncate">{m.name}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${TYPE_COLORS[m.memberType] ?? "bg-gray-100 text-gray-600"}`}>
+                        {m.memberType}
+                      </span>
+                    </div>
+                  ))}
+                  {patternMatches.length > 50 && (
+                    <p className="px-4 py-2 text-xs text-gray-400">…and {patternMatches.length - 50} more</p>
+                  )}
+                </div>
+              )}
             </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-xs text-gray-400">
+              {targetCount > 0
+                ? <><span className="text-gray-700 font-medium">{targetCount}</span> ID{targetCount !== 1 ? "s" : ""} will be regenerated using <code className="bg-gray-100 px-1 rounded">{currentFormat}</code></>
+                : "No members selected"}
+            </p>
             <button
               onClick={runPreview}
-              disabled={busy}
+              disabled={busy || targetCount === 0}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
             >
               {busy
                 ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Preparing…</>
-                : <><Wand2 className="w-3.5 h-3.5" /> Preview & Regenerate</>}
+                : <><Wand2 className="w-3.5 h-3.5" /> Preview Changes</>}
             </button>
           </div>
 
-          <div className="divide-y divide-gray-50 max-h-[480px] overflow-y-auto">
-            {members.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
-                <Hash className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-                <code className="font-mono text-sm text-red-600 w-44 flex-shrink-0 truncate">
-                  {m.memberId}
-                </code>
-                <span className="flex-1 text-sm text-gray-800 truncate">{m.name}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${TYPE_COLORS[m.memberType] ?? "bg-gray-100 text-gray-600"}`}>
-                  {m.memberType}
-                </span>
-                {!m.isActive && (
-                  <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full flex-shrink-0">
-                    Inactive
-                  </span>
-                )}
-              </div>
-            ))}
+          <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-xs text-amber-700">
+            ⚠️ All loans, fines, and reservations stay linked — only the display ID changes. Consider a backup before applying to all members.
           </div>
         </div>
       )}
 
-      {/* Confirm panel — show every change */}
+      {/* Confirm panel */}
       {confirm && changes.length > 0 && (
         <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3.5 bg-amber-50 border-b border-amber-100">
             <p className="text-sm font-semibold text-amber-800">
-              Confirm — {changes.length} IDs will change
+              Preview — {changes.length} ID{changes.length !== 1 ? "s" : ""} will change
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirm(false)}
                 className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
+                Back
               </button>
               <button onClick={runApply} disabled={busy}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors">
@@ -216,10 +260,12 @@ export default function RegenMemberIdsPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
 
-          <div className="px-5 py-3 bg-amber-50 border-t border-amber-100 text-xs text-amber-700">
-            All loans, fines and reservations stay linked — only the display ID changes. Back up first if needed.
-          </div>
+      {confirm && changes.length === 0 && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 className="w-4 h-4" /> No changes needed — all matched IDs already fit the current format.
         </div>
       )}
 

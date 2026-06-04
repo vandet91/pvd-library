@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 import { notifyMember, tg } from "@/lib/telegram";
+import { resolveCirculationRule } from "@/lib/circulation-rules";
 
 // GET — list reservations
 //   Staff (ADMIN/LIBRARIAN/STAFF): all reservations, filterable by status
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     const member = await prisma.member.findUnique({
       where:  { userId },
-      select: { id: true, name: true, isActive: true, pendingApproval: true, restrictionStatus: true, restrictionReason: true },
+      select: { id: true, name: true, memberType: true, isActive: true, pendingApproval: true, restrictionStatus: true, restrictionReason: true },
     });
     if (!member) return NextResponse.json({ error: "Member record not found" }, { status: 404 });
     if (member.pendingApproval)
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
     // Block reservations for reference-only titles
     const targetBook = await prisma.book.findUnique({
       where:  { id: bookId },
-      select: { title: true, referenceOnly: true },
+      select: { title: true, referenceOnly: true, materialType: true, branchId: true },
     });
     if (!targetBook) {
       return NextResponse.json({ error: "Book not found" }, { status: 404 });
@@ -153,6 +154,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: `"${targetBook.title}" is reference-only — visit the library to read it on-site.`,
         code:  "REFERENCE_ONLY",
+      }, { status: 409 });
+    }
+
+    // ── Resolve circulation rule once (used for allowHomeLoan + maxLoans) ──
+    const rule = await resolveCirculationRule({
+      memberType:   member.memberType,
+      materialType: targetBook.materialType ?? undefined,
+      branchId:     targetBook.branchId     ?? undefined,
+    });
+
+    if (!rule.allowHomeLoan) {
+      return NextResponse.json({
+        error: `"${targetBook.title}" cannot be reserved for home loan under your account type's circulation rules.`,
+        code:  "HOME_LOAN_NOT_ALLOWED",
       }, { status: 409 });
     }
 
@@ -172,11 +187,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    // ── Quota check ─────────────────────────────────────────────────
-    // Active items = loans (ACTIVE+OVERDUE) + reservations (PENDING+APPROVED+READY)
-    const quotaSetting = await prisma.settings.findUnique({ where: { key: "MAX_LOANS_PER_MEMBER" } });
-    const maxQuota     = parseInt(quotaSetting?.value ?? process.env.MAX_LOANS_PER_MEMBER ?? "3", 10);
-
+    // ── Quota check via Circulation Rule ────────────────────────────
     const [activeLoanCount, overdueCount, reservationCount] = await Promise.all([
       prisma.loan.count({ where: { memberId: member.id, status: "ACTIVE"  } }),
       prisma.loan.count({ where: { memberId: member.id, status: "OVERDUE" } }),
@@ -188,10 +199,10 @@ export async function POST(request: NextRequest) {
         error: `You have ${overdueCount} overdue book${overdueCount > 1 ? "s" : ""} — please return them before making new reservations`,
       }, { status: 409 });
 
-    const totalActive = activeLoanCount + reservationCount; // overdueCount already blocked above
-    if (totalActive >= maxQuota)
+    const totalActive = activeLoanCount + reservationCount;
+    if (totalActive >= rule.maxLoans)
       return NextResponse.json({
-        error: `Reservation limit reached — you have ${activeLoanCount} book${activeLoanCount !== 1 ? "s" : ""} borrowed and ${reservationCount} reserved (limit: ${maxQuota} total)`,
+        error: `Reservation limit reached — you have ${activeLoanCount} book${activeLoanCount !== 1 ? "s" : ""} borrowed and ${reservationCount} reserved (limit: ${rule.maxLoans} for your account type${!rule.isDefault ? " · custom rule applied" : ""})`,
       }, { status: 409 });
 
     // Read RESERVATION_EXPIRE_DAYS from settings (default 7)

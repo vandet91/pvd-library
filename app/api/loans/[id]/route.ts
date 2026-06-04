@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { calculateFine } from "@/lib/utils";
 import { can } from "@/lib/rbac";
+import { calculateFineWithCalendar } from "@/lib/calendar";
 import { logActivity, actorFromSession, Actions } from "@/lib/activity-log";
 import { notifyMember, tg } from "@/lib/telegram";
 
@@ -25,13 +25,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const returnDate = new Date();
     const fineRow    = await prisma.settings.findUnique({ where: { key: "FINE_PER_DAY" } });
     const finePerDay = parseFloat(fineRow?.value ?? process.env.FINE_PER_DAY ?? "0.25");
-    const { daysLate, amount } = calculateFine(loan.dueDate, returnDate, finePerDay);
+    const { daysLate, amount } = await calculateFineWithCalendar(loan.dueDate, returnDate, finePerDay);
 
     const updatedLoan = await prisma.$transaction(async (tx) => {
       const updated = await tx.loan.update({
         where: { id },
         data: { status: "RETURNED", returnDate },
-        include: { member: true, book: true, fine: true, copy: true },
+        include: { member: true, book: true, fines: true, copy: true },
       });
       await tx.book.update({ where: { id: loan.bookId }, data: { availableCopies: { increment: 1 } } });
       if (loan.copyId) {
@@ -46,11 +46,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         });
       }
       if (daysLate > 0) {
-        await tx.fine.upsert({
-          where:  { loanId: id },
-          create: { loanId: id, memberId: loan.memberId, amount, daysLate },
-          update: { amount, daysLate },
-        });
+        // Upsert the LATE_FEE fine — preserve any REPLACEMENT fine that may already exist
+        const existingLateFee = await tx.fine.findFirst({ where: { loanId: id, type: "LATE_FEE" } });
+        if (existingLateFee) {
+          await tx.fine.update({ where: { id: existingLateFee.id }, data: { amount, daysLate } });
+        } else {
+          await tx.fine.create({ data: { loanId: id, memberId: loan.memberId, amount, daysLate, type: "LATE_FEE" } });
+        }
       }
       return updated;
     });
@@ -122,27 +124,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           });
         }
 
-        await tx.fine.upsert({
-          where:  { loanId: id },
-          create: {
-            loanId:   id,
-            memberId: loan.memberId,
-            amount:   replacementAmount,
-            daysLate: 0,
-            type:     "REPLACEMENT",
-            status:   "UNPAID",
-          },
-          update: {
-            amount: replacementAmount,
-            type:   "REPLACEMENT",
-            status: "UNPAID",
-          },
-        });
+        // Keep any existing LATE_FEE fine — don't overwrite it.
+        // Add (or update) a separate REPLACEMENT fine for the lost book.
+        const existingReplacement = await tx.fine.findFirst({ where: { loanId: id, type: "REPLACEMENT" } });
+        if (existingReplacement) {
+          await tx.fine.update({
+            where: { id: existingReplacement.id },
+            data:  { amount: replacementAmount, status: "UNPAID" },
+          });
+        } else {
+          await tx.fine.create({
+            data: {
+              loanId:   id,
+              memberId: loan.memberId,
+              amount:   replacementAmount,
+              daysLate: 0,
+              type:     "REPLACEMENT",
+              status:   "UNPAID",
+            },
+          });
+        }
 
-        // Re-fetch with fine included after upsert
+        // Re-fetch with all fines included
         return tx.loan.findUnique({
           where: { id },
-          include: { member: true, book: true, fine: true },
+          include: { member: true, book: true, fines: true },
         });
       });
 
@@ -166,6 +172,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!loan) return NextResponse.json({ error: "Loan not found" }, { status: 404 });
     if (loan.status === "RETURNED") return NextResponse.json({ error: "Cannot renew a returned loan" }, { status: 400 });
     if (loan.loanType === "IN_LIBRARY") return NextResponse.json({ error: "In-library loans cannot be renewed — the book must be returned today" }, { status: 400 });
+    if (loan.dueDate < new Date()) return NextResponse.json({ error: "Overdue loans cannot be renewed — please return the book and pay any fines first" }, { status: 400 });
 
     const maxRenewalRow = await prisma.settings.findUnique({ where: { key: "MAX_RENEWALS" } });
     const maxRenewals = Number(maxRenewalRow?.value ?? 2);

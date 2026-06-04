@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         ...(resolvedCopyId   && { copyId: resolvedCopyId }),
         ...(resolvedBookId && !resolvedCopyId && { bookId: resolvedBookId }),
       },
-      include: { member: true, book: { include: { author: true } }, copy: true, fine: true },
+      include: { member: true, book: { include: { author: true } }, copy: true, fines: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         if (loan.status === "ACTIVE" && loan.dueDate < now) {
           return prisma.loan.update({
             where: { id: loan.id }, data: { status: "OVERDUE" },
-            include: { member: true, book: { include: { author: true } }, fine: true },
+            include: { member: true, book: { include: { author: true } }, fines: true },
           });
         }
         return loan;
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
           coverImage: true,
         },
       },
-      fine: { select: { amount: true, status: true, type: true } },
+      fines: { select: { id: true, amount: true, status: true, type: true } },
     },
     orderBy: { createdAt: "desc" },
   });
