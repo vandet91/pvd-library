@@ -608,7 +608,7 @@ export default function DiscoverClient({
               </div>
             </div>
 
-            <div ref={emblaRef} className="overflow-hidden py-3 -my-3">
+            <div ref={emblaRef} className="overflow-hidden py-3 -my-3 px-4 -mx-4">
               <div className="flex -ml-5">
                 {heroBooks.map((book) => (
                   <div key={book.id}
