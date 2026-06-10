@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Plus, Pencil, Trash2, Check, X, Loader2, BookOpen, Users,
   ToggleLeft, ToggleRight, Info, ListFilter,
@@ -84,6 +85,7 @@ function NumInput({
 
 /* ── Main page ───────────────────────────────────────────────────── */
 export default function CirculationRulesPage() {
+  const t = useTranslations("circulationRules");
   const [rules,    setRules]    = useState<CircRule[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -113,7 +115,7 @@ export default function CirculationRulesPage() {
       ]);
       setRules(Array.isArray(r) ? r : []);
       setBranches(Array.isArray(b) ? b.filter((br: Branch & { isActive?: boolean }) => br.isActive !== false) : []);
-    } catch { setError("Failed to load rules."); }
+    } catch { setError(t("loading")); }
     setLoading(false);
   }, []);
 
@@ -134,7 +136,7 @@ export default function CirculationRulesPage() {
   }
 
   async function handleSave() {
-    if (!form.name.trim()) { setSaveErr("Name is required"); return; }
+    if (!form.name.trim()) { setSaveErr(t("errNameRequired")); return; }
     setSaving(true); setSaveErr(null);
     try {
       const url    = editId ? `/api/circulation-rules/${editId}` : "/api/circulation-rules";
@@ -178,10 +180,10 @@ export default function CirculationRulesPage() {
   /* ── Specificity badge ─────────────────────────────────────────── */
   function specificityLabel(r: CircRule) {
     const parts = [];
-    if (r.memberType)   parts.push("Patron");
-    if (r.materialType) parts.push("Material");
-    if (r.branchId)     parts.push("Branch");
-    if (parts.length === 0) return <span className="text-xs text-gray-400 italic">Global fallback</span>;
+    if (r.memberType)   parts.push(t("specificityPatron"));
+    if (r.materialType) parts.push(t("specificityMaterial"));
+    if (r.branchId)     parts.push(t("specificityBranch"));
+    if (parts.length === 0) return <span className="text-xs text-gray-400 italic">{t("globalFallback")}</span>;
     return <span className="text-xs text-emerald-700 font-medium">{parts.join(" + ")}</span>;
   }
 
@@ -190,17 +192,14 @@ export default function CirculationRulesPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Circulation Rules</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Define loan duration, quotas, renewals and fines per patron type, material type, or branch.
-            More specific rules override less specific ones.
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("subtitle")}</p>
         </div>
         <button
           onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors"
         >
-          <Plus className="w-4 h-4" /> New Rule
+          <Plus className="w-4 h-4" /> {t("newRule")}
         </button>
       </div>
 
@@ -208,9 +207,7 @@ export default function CirculationRulesPage() {
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
         <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500" />
         <div>
-          <strong>How rules are matched:</strong> When a loan is created, the system picks the most specific
-          active rule. A rule matching Patron + Material + Branch wins over Patron + Material, which wins over
-          Patron only. Rules with no criteria act as a global override. If no rule matches, global Settings values are used.
+          <strong>{t("infoTitle")}</strong> {t("infoText")}
         </div>
       </div>
 
@@ -219,33 +216,33 @@ export default function CirculationRulesPage() {
         <ListFilter className="w-4 h-4 text-gray-400" />
         <select value={filterMember} onChange={(e) => setFilterMember(e.target.value)}
           className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">All patron types</option>
-          {MEMBER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          <option value="">{t("filterAllPatrons")}</option>
+          {MEMBER_TYPES.map((mt) => <option key={mt} value={mt}>{mt}</option>)}
         </select>
         <select value={filterMaterial} onChange={(e) => setFilterMaterial(e.target.value)}
           className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">All material types</option>
-          {MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          <option value="">{t("filterAllMaterials")}</option>
+          {MATERIAL_TYPES.map((mt) => <option key={mt} value={mt}>{mt}</option>)}
         </select>
         {(filterMember || filterMaterial) && (
           <button onClick={() => { setFilterMember(""); setFilterMaterial(""); }}
-            className="text-xs text-gray-400 hover:text-gray-600 underline">Clear filters</button>
+            className="text-xs text-gray-400 hover:text-gray-600 underline">{t("clearFilters")}</button>
         )}
-        <span className="ml-auto text-xs text-gray-400">{filtered.length} rule{filtered.length !== 1 ? "s" : ""}</span>
+        <span className="ml-auto text-xs text-gray-400">{t("ruleCount", { count: filtered.length })}</span>
       </div>
 
       {/* Table */}
       {loading ? (
         <div className="flex items-center gap-2 py-12 justify-center text-gray-400">
-          <Loader2 className="w-5 h-5 animate-spin" /> Loading…
+          <Loader2 className="w-5 h-5 animate-spin" /> {t("loading")}
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
           <BookOpen className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-gray-400 font-medium">No circulation rules yet</p>
-          <p className="text-xs text-gray-300 mt-1">Create a rule to override the global loan settings for specific patron or material types.</p>
+          <p className="text-sm text-gray-400 font-medium">{t("noRules")}</p>
+          <p className="text-xs text-gray-300 mt-1">{t("noRulesHint")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -253,13 +250,13 @@ export default function CirculationRulesPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
               <tr>
-                <th className="text-left px-4 py-3">Rule / Scope</th>
-                <th className="text-center px-3 py-3">Loan Days</th>
-                <th className="text-center px-3 py-3">Max Loans</th>
-                <th className="text-center px-3 py-3">Renewals</th>
-                <th className="text-center px-3 py-3">Fine/Day</th>
-                <th className="text-center px-3 py-3">Home Loan</th>
-                <th className="text-center px-3 py-3">Active</th>
+                <th className="text-left px-4 py-3">{t("colRuleScope")}</th>
+                <th className="text-center px-3 py-3">{t("colLoanDays")}</th>
+                <th className="text-center px-3 py-3">{t("colMaxLoans")}</th>
+                <th className="text-center px-3 py-3">{t("colRenewals")}</th>
+                <th className="text-center px-3 py-3">{t("colFineDay")}</th>
+                <th className="text-center px-3 py-3">{t("colHomeLoan")}</th>
+                <th className="text-center px-3 py-3">{t("colActive")}</th>
                 <th className="px-3 py-3" />
               </tr>
             </thead>
@@ -269,8 +266,8 @@ export default function CirculationRulesPage() {
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-800">{r.name}</p>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {r.memberType   ? pill(r.memberType,   MEMBER_COLOR)   : <span className="text-xs text-gray-300">Any patron</span>}
-                      {r.materialType ? pill(r.materialType, MATERIAL_COLOR) : <span className="text-xs text-gray-300">Any material</span>}
+                      {r.memberType   ? pill(r.memberType,   MEMBER_COLOR)   : <span className="text-xs text-gray-300">{t("anyPatron")}</span>}
+                      {r.materialType ? pill(r.materialType, MATERIAL_COLOR) : <span className="text-xs text-gray-300">{t("anyMaterial")}</span>}
                       {r.branch       ? <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">{r.branch.name}</span> : null}
                     </div>
                     <div className="mt-1">{specificityLabel(r)}</div>
@@ -287,7 +284,7 @@ export default function CirculationRulesPage() {
                       : <X    className="w-4 h-4 text-red-400  mx-auto" />}
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <button onClick={() => toggleActive(r)} title={r.isActive ? "Deactivate" : "Activate"}>
+                    <button onClick={() => toggleActive(r)} title={r.isActive ? t("deactivate") : t("activate")}>
                       {r.isActive
                         ? <ToggleRight className="w-5 h-5 text-green-500 mx-auto" />
                         : <ToggleLeft  className="w-5 h-5 text-gray-300  mx-auto" />}
@@ -318,14 +315,14 @@ export default function CirculationRulesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">{modal === "create" ? "New Circulation Rule" : "Edit Rule"}</h2>
+              <h2 className="font-bold text-gray-900">{modal === "create" ? t("modalNewRule") : t("modalEditRule")}</h2>
               <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="px-6 py-5 space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rule Name <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldRuleName")}</label>
                 <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Student – Magazine, Teacher – All, Reference Only"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -335,29 +332,29 @@ export default function CirculationRulesPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    <Users className="w-3 h-3 inline mr-1" />Patron Type
+                    <Users className="w-3 h-3 inline mr-1" />{t("fieldPatronType")}
                   </label>
                   <select value={form.memberType ?? ""} onChange={(e) => setForm((f) => ({ ...f, memberType: e.target.value || null }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">All patrons</option>
-                    {MEMBER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    <option value="">{t("allPatrons")}</option>
+                    {MEMBER_TYPES.map((mt) => <option key={mt} value={mt}>{mt}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    <BookOpen className="w-3 h-3 inline mr-1" />Material Type
+                    <BookOpen className="w-3 h-3 inline mr-1" />{t("fieldMaterialType")}
                   </label>
                   <select value={form.materialType ?? ""} onChange={(e) => setForm((f) => ({ ...f, materialType: e.target.value || null }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">All materials</option>
-                    {MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    <option value="">{t("allMaterials")}</option>
+                    {MATERIAL_TYPES.map((mt) => <option key={mt} value={mt}>{mt}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldBranch")}</label>
                   <select value={form.branchId ?? ""} onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value || null }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">All branches</option>
+                    <option value="">{t("allBranches")}</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
@@ -365,11 +362,11 @@ export default function CirculationRulesPage() {
 
               {/* Loan parameters */}
               <div className="grid grid-cols-2 gap-3">
-                <NumInput label="Loan Days"    value={form.loanDays}    onChange={(v) => setForm((f) => ({ ...f, loanDays: v }))}    min={1} />
-                <NumInput label="Max Loans"    value={form.maxLoans}    onChange={(v) => setForm((f) => ({ ...f, maxLoans: v }))}    min={1} />
-                <NumInput label="Max Renewals" value={form.maxRenewals} onChange={(v) => setForm((f) => ({ ...f, maxRenewals: v }))} min={0} />
-                <NumInput label="Renewal Days" value={form.renewalDays} onChange={(v) => setForm((f) => ({ ...f, renewalDays: v }))} min={1} />
-                <NumInput label="Fine / Day ($)" value={form.finePerDay} onChange={(v) => setForm((f) => ({ ...f, finePerDay: v }))} min={0} step={0.01} />
+                <NumInput label={t("fieldLoanDays")}    value={form.loanDays}    onChange={(v) => setForm((f) => ({ ...f, loanDays: v }))}    min={1} />
+                <NumInput label={t("fieldMaxLoans")}    value={form.maxLoans}    onChange={(v) => setForm((f) => ({ ...f, maxLoans: v }))}    min={1} />
+                <NumInput label={t("fieldMaxRenewals")} value={form.maxRenewals} onChange={(v) => setForm((f) => ({ ...f, maxRenewals: v }))} min={0} />
+                <NumInput label={t("fieldRenewalDays")} value={form.renewalDays} onChange={(v) => setForm((f) => ({ ...f, renewalDays: v }))} min={1} />
+                <NumInput label={t("fieldFinePerDay")}  value={form.finePerDay}  onChange={(v) => setForm((f) => ({ ...f, finePerDay: v }))}  min={0} step={0.01} />
               </div>
 
               {/* Toggles */}
@@ -378,21 +375,21 @@ export default function CirculationRulesPage() {
                   <input type="checkbox" checked={form.allowHomeLoan}
                     onChange={(e) => setForm((f) => ({ ...f, allowHomeLoan: e.target.checked }))}
                     className="w-4 h-4 accent-blue-600" />
-                  <span className="text-sm text-gray-700">Allow home loans</span>
+                  <span className="text-sm text-gray-700">{t("fieldAllowHomeLoan")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input type="checkbox" checked={form.isActive}
                     onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
                     className="w-4 h-4 accent-blue-600" />
-                  <span className="text-sm text-gray-700">Active</span>
+                  <span className="text-sm text-gray-700">{t("fieldIsActive")}</span>
                 </label>
               </div>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes (optional)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldNotes")}</label>
                 <textarea rows={2} value={form.notes ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value || null }))}
-                  placeholder="Internal notes about this rule…"
+                  placeholder={t("notesPlaceholder")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
 
@@ -404,12 +401,12 @@ export default function CirculationRulesPage() {
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setModal(null)}
                 className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
+                {t("cancel")}
               </button>
               <button onClick={handleSave} disabled={saving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition-colors">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {modal === "create" ? "Create Rule" : "Save Changes"}
+                {modal === "create" ? t("createRule") : t("saveChanges")}
               </button>
             </div>
           </div>
@@ -421,17 +418,17 @@ export default function CirculationRulesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
             <Trash2 className="w-10 h-10 text-red-400 mx-auto mb-3" />
-            <h3 className="font-bold text-gray-900 mb-1">Delete this rule?</h3>
-            <p className="text-sm text-gray-500 mb-5">This cannot be undone. Existing loans are not affected.</p>
+            <h3 className="font-bold text-gray-900 mb-1">{t("deleteTitle")}</h3>
+            <p className="text-sm text-gray-500 mb-5">{t("deleteDesc")}</p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteId(null)}
                 className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
+                {t("cancel")}
               </button>
               <button onClick={handleDelete} disabled={deleteBusy}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {deleteBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                Delete
+                {t("delete")}
               </button>
             </div>
           </div>

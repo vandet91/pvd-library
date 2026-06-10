@@ -7,6 +7,7 @@ import LanguageToggle from "@/components/shared/LanguageToggle";
 import { useLoginForm } from "../useLoginForm";
 import { useAuthMethod } from "../useAuthMethod";
 import { useLibraryName } from "@/context/library-name";
+import { useLibraryLogo } from "@/context/library-logo";
 
 /* ── Google "G" icon ─────────────────────────────────────────── */
 function GoogleIcon() {
@@ -23,6 +24,7 @@ function GoogleIcon() {
 export default function AuthSplit() {
   const locale = useLocale();
   const libraryName = useLibraryName();
+  const libraryLogo = useLibraryLogo();
   const {
     identifier, setIdentifier,
     password, setPassword,
@@ -50,8 +52,10 @@ export default function AuthSplit() {
 
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-11 h-11 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30">
-              <BookOpen className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30 overflow-hidden">
+              {libraryLogo
+                ? <img src={libraryLogo} alt={libraryName} className="w-full h-full object-contain p-1" />
+                : <BookOpen className="w-6 h-6 text-white" />}
             </div>
             <span className="text-white font-bold text-xl tracking-tight">{libraryName}</span>
           </div>
@@ -88,8 +92,10 @@ export default function AuthSplit() {
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between px-8 pt-6">
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent)" }}>
-              <BookOpen className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: libraryLogo ? "transparent" : "var(--accent)" }}>
+              {libraryLogo
+                ? <img src={libraryLogo} alt={libraryName} className="w-full h-full object-contain" />
+                : <BookOpen className="w-4 h-4 text-white" />}
             </div>
             <span className="font-bold text-gray-800">{libraryName}</span>
           </div>

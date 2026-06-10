@@ -80,7 +80,11 @@ const DEFAULTS: Record<string, string> = {
   // Public catalog pagination mode — "numbers" or "loadmore"
   PUBLIC_PAGINATION_MODE:            "loadmore",
   // Per-page limit for paginated catalog/ebook/shop listings
-  PUBLIC_PAGINATION_LIMIT:           "20",
+  PUBLIC_PAGINATION_LIMIT:           "30",
+  // Book cover style for Discover, E-Library and Shop pages
+  BOOK_COVER_STYLE:                  "spine",  // "spine" | "vignette" | "tilt" | "hardcover"
+  // Book cover frame for Discover, E-Library and Shop pages
+  BOOK_COVER_FRAME:                  "none",   // "none" | "accent" | "glow" | "classic" | "shadow"
   // Audience level display labels (JSON map of enum value → display name)
   AUDIENCE_LEVEL_LABELS: JSON.stringify({ CHILDREN: "Children", YOUTH: "Youth", ADULTS: "Adults", UNSPECIFIED: "Unspecified" }),
   // NOTE: LIBRARY_LOGO is intentionally excluded here.

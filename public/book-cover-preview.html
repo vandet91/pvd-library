@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:36px 28px;color:#1e293b}
+.title{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.card{background:#fff;border-radius:18px;padding:24px 18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.lbl{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:16px}
+.desc{font-size:11px;color:#94a3b8;margin-top:14px;line-height:1.6}
+.row{display:flex;gap:10px;justify-content:center;align-items:flex-end;min-height:155px}
+.fi{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px}
+.fi b{color:rgba(255,255,255,.92);font-size:8px;font-weight:700;text-align:center;line-height:1.35}
+.fi s{color:rgba(255,255,255,.42);font-size:6px;text-transform:uppercase;letter-spacing:.1em;text-decoration:none;display:block}
+.g1{background:linear-gradient(135deg,#3b4a6b,#1e3a5f)}
+.g2{background:linear-gradient(135deg,#064e3b,#047857)}
+.g3{background:linear-gradient(135deg,#7c3aed,#4c1d95)}
+.v1{background:linear-gradient(160deg,#f59e0b,#b45309)}
+.v2{background:linear-gradient(160deg,#0ea5e9,#0369a1)}
+.v3{background:linear-gradient(160deg,#ec4899,#9d174d)}
+.t1{background:linear-gradient(135deg,#dc2626,#7f1d1d)}
+.t2{background:linear-gradient(135deg,#d97706,#78350f)}
+.t3{background:linear-gradient(135deg,#0891b2,#164e63)}
+.h1{background:linear-gradient(160deg,#1e3a5f,#0c1f3a)}
+.h2{background:linear-gradient(160deg,#4c1d95,#1e0a4a)}
+.h3{background:linear-gradient(160deg,#064e3b,#022c22)}
+
+/* ① Spine Shadow */
+.sp-wrap{position:relative;border-radius:2px 6px 6px 2px;overflow:visible;flex-shrink:0}
+.sp-wrap .cov{width:100%;height:100%;border-radius:2px 6px 6px 2px;overflow:hidden;
+  box-shadow:-4px 0 0 rgba(0,0,0,.28),5px 8px 24px rgba(0,0,0,.42),1px 1px 0 1px rgba(255,255,255,.1) inset}
+.sp-wrap .pgs{position:absolute;right:-4px;top:3px;bottom:3px;width:5px;
+  background:repeating-linear-gradient(to bottom,#e8dcc8 0,#e8dcc8 1px,#f5ead5 1px,#f5ead5 3px);
+  border-radius:0 2px 2px 0;z-index:-1}
+
+/* ② Vignette */
+.vg-wrap{border-radius:5px;overflow:hidden;flex-shrink:0;box-shadow:0 10px 28px rgba(0,0,0,.3);position:relative}
+.vg-inner{width:100%;height:100%;position:relative}
+.vg-inner::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 50%,transparent 28%,rgba(0,0,0,.65) 100%);pointer-events:none}
+.vg-inner::before{content:'';position:absolute;inset:0;z-index:2;opacity:.065;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* ③ 3D Tilt */
+.tilt-wrap{perspective:480px;flex-shrink:0}
+.tilt-book{border-radius:3px 6px 6px 3px;overflow:hidden;
+  transform:rotateY(-14deg) rotateX(2deg);
+  box-shadow:-7px 10px 32px rgba(0,0,0,.5),2px 0 6px rgba(255,255,255,.08) inset;
+  transition:transform .3s ease,box-shadow .3s ease;cursor:pointer;position:relative}
+.tilt-book:hover{transform:rotateY(-3deg) rotateX(0);box-shadow:-2px 14px 42px rgba(0,0,0,.3)}
+.tilt-book .shine{position:absolute;inset:0;
+  background:linear-gradient(110deg,rgba(255,255,255,.22) 0%,transparent 48%);
+  pointer-events:none;z-index:2}
+
+/* ④ Hardcover */
+.hc-wrap{border-radius:2px 6px 6px 2px;overflow:hidden;flex-shrink:0;
+  box-shadow:-3px 0 0 rgba(0,0,0,.32),5px 10px 22px rgba(0,0,0,.32)}
+.hc-wrap .spine{position:absolute;left:0;top:0;bottom:0;width:11px;
+  background:rgba(0,0,0,.28);z-index:2;border-right:1px solid rgba(255,255,255,.08)}
+.hc-wrap .body{width:100%;height:100%;display:flex;flex-direction:column;padding:8px 6px 6px 17px;
+  position:relative;overflow:hidden}
+.hc-wrap .body::after{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(155deg,rgba(255,255,255,.035) 0,rgba(255,255,255,.035) 1px,transparent 1px,transparent 7px)}
+.hc-wrap .fold{position:absolute;top:0;right:0;width:14px;height:14px;
+  background:linear-gradient(135deg,rgba(255,255,255,.2) 50%,transparent 50%)}
+.hc-wrap .emblem{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;margin-bottom:5px}
+.hc-wrap .ttl{flex:1;font-size:7.5px;font-weight:700;color:rgba(255,255,255,.92);line-height:1.35;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical}
+.hc-wrap .auth{font-size:6px;color:rgba(255,255,255,.45);
+  border-top:1px solid rgba(255,255,255,.14);padding-top:3px;margin-top:3px}
+</style>
+</head>
+<body>
+
+<div class="title">Book Cover Style Options</div>
+<div class="grid">
+
+  <!-- ① Spine Shadow -->
+  <div class="card">
+    <div class="lbl">① Spine Shadow</div>
+    <div class="row">
+      <div class="sp-wrap" style="width:80px;height:118px">
+        <div class="cov g1"><div class="fi"><b>The Great Gatsby</b><s>F. Scott</s></div></div>
+        <div class="pgs"></div>
+      </div>
+      <div class="sp-wrap" style="width:80px;height:106px">
+        <div class="cov g2"><div class="fi"><b>Forest Walk</b><s>J. Green</s></div></div>
+        <div class="pgs"></div>
+      </div>
+      <div class="sp-wrap" style="width:80px;height:128px">
+        <div class="cov g3"><div class="fi"><b>Midnight Dreams</b><s>A. Violet</s></div></div>
+        <div class="pgs"></div>
+      </div>
+    </div>
+    <div class="desc">Dark left-spine edge + warm paper page-stack on the right. Feels like picking a real book off a shelf. Zero layout change needed.</div>
+  </div>
+
+  <!-- ② Vignette + Grain -->
+  <div class="card">
+    <div class="lbl">② Vignette + Grain</div>
+    <div class="row">
+      <div class="vg-wrap" style="width:80px;height:118px">
+        <div class="vg-inner v1"><div class="fi"><b>The Great Gatsby</b><s>F. Scott</s></div></div>
+      </div>
+      <div class="vg-wrap" style="width:80px;height:106px">
+        <div class="vg-inner v2"><div class="fi"><b>Ocean Blue</b><s>M. Wave</s></div></div>
+      </div>
+      <div class="vg-wrap" style="width:80px;height:128px">
+        <div class="vg-inner v3"><div class="fi"><b>Pink Moon</b><s>L. Song</s></div></div>
+      </div>
+    </div>
+    <div class="desc">Radial vignette darkens the cover edges + subtle film grain overlay. Flat gradients look deep and cinematic — like a movie poster.</div>
+  </div>
+
+  <!-- ③ 3D Tilt -->
+  <div class="card">
+    <div class="lbl">③ 3D Tilt + Shine</div>
+    <div class="row">
+      <div class="tilt-wrap">
+        <div class="tilt-book t1" style="width:80px;height:118px">
+          <div class="shine"></div>
+          <div class="fi"><b>The Great Gatsby</b><s>F. Scott</s></div>
+        </div>
+      </div>
+      <div class="tilt-wrap">
+        <div class="tilt-book t2" style="width:80px;height:106px">
+          <div class="shine"></div>
+          <div class="fi"><b>Desert Gold</b><s>R. Sand</s></div>
+        </div>
+      </div>
+      <div class="tilt-wrap">
+        <div class="tilt-book t3" style="width:80px;height:128px">
+          <div class="shine"></div>
+          <div class="fi"><b>Deep Ocean</b><s>C. Blue</s></div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">Covers rest at a rotateY angle with a gloss shine overlay. Hover to see them flatten. Interactive and premium feel.</div>
+  </div>
+
+  <!-- ④ Hardcover Binding -->
+  <div class="card">
+    <div class="lbl">④ Hardcover Binding</div>
+    <div class="row">
+      <div class="hc-wrap h1" style="width:80px;height:118px;position:relative">
+        <div class="spine"></div>
+        <div class="body">
+          <div class="fold"></div>
+          <div class="emblem">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div class="ttl">The Great Gatsby</div>
+          <div class="auth">F. Scott Fitzgerald</div>
+        </div>
+      </div>
+      <div class="hc-wrap h2" style="width:80px;height:106px;position:relative">
+        <div class="spine"></div>
+        <div class="body">
+          <div class="fold"></div>
+          <div class="emblem">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div class="ttl">Midnight Garden</div>
+          <div class="auth">John Berendt</div>
+        </div>
+      </div>
+      <div class="hc-wrap h3" style="width:80px;height:128px;position:relative">
+        <div class="spine"></div>
+        <div class="body">
+          <div class="fold"></div>
+          <div class="emblem">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div class="ttl">Into The Wild Forest</div>
+          <div class="auth">Henry Thoreau</div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">No-cover placeholder as a real hardcover — spine stripe, cloth texture lines, corner fold, title + author. Looks like a library shelf.</div>
+  </div>
+
+</div>
+</body>
+</html>

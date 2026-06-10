@@ -393,6 +393,11 @@ export default function BookForm({ initial }: BookFormProps) {
 
     const payload: Record<string, unknown> = {
       ...form,
+      // Empty strings for nullable unique fields must become null/undefined,
+      // otherwise they collide with other books that also have blank ISBN.
+      isbn:        form.isbn?.trim()        || null,
+      titleKm:     form.titleKm?.trim()     || undefined,
+      subtitle:    form.subtitle?.trim()    || undefined,
       publishYear: form.publishYear !== "" ? Number(form.publishYear) : undefined,
       pages:       form.pages       !== "" ? Number(form.pages)       : undefined,
       price:               form.price       !== "" ? Number(form.price)       : undefined,
@@ -427,7 +432,7 @@ export default function BookForm({ initial }: BookFormProps) {
       router.refresh();
     } else {
       const data = await res.json();
-      setError(data.error?.message ?? "Error saving book");
+      setError(typeof data.error === "string" ? data.error : (data.error?.message ?? "Error saving book"));
     }
   }
 

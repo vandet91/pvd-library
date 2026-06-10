@@ -7,6 +7,7 @@ import LanguageToggle from "@/components/shared/LanguageToggle";
 import { useLoginForm } from "../useLoginForm";
 import { useAuthMethod } from "../useAuthMethod";
 import { useLibraryName } from "@/context/library-name";
+import { useLibraryLogo } from "@/context/library-logo";
 
 function GoogleIcon() {
   return (
@@ -27,6 +28,7 @@ const glassInput = {
 export default function AuthGlass() {
   const locale = useLocale();
   const libraryName = useLibraryName();
+  const libraryLogo = useLibraryLogo();
   const {
     identifier, setIdentifier,
     password, setPassword,
@@ -57,9 +59,11 @@ export default function AuthGlass() {
       >
         {/* Brand */}
         <div className="flex flex-col items-center mb-6">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg border"
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg border overflow-hidden"
                style={{ background: "rgba(255,255,255,.20)", borderColor: "rgba(255,255,255,.35)" }}>
-            <BookOpen className="w-8 h-8 text-white" />
+            {libraryLogo
+              ? <img src={libraryLogo} alt={libraryName} className="w-full h-full object-contain p-2" />
+              : <BookOpen className="w-8 h-8 text-white" />}
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{libraryName}</h1>
           <p className="text-white/60 text-sm mt-1">{t("loginSubtitle")}</p>

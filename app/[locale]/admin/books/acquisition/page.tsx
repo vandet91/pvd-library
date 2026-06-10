@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ShoppingCart, TrendingUp, Loader2, RefreshCw,
   BookOpen, Inbox, AlertCircle, ChevronRight, Star,
@@ -34,6 +34,7 @@ type Tab = "demand" | "understocked" | "requests";
 
 export default function AcquisitionPage() {
   const locale = useLocale();
+  const t = useTranslations("acquisitions");
 
   const [data,    setData]    = useState<AcquisitionData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,23 +63,21 @@ export default function AcquisitionPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <ShoppingCart className="w-6 h-6 text-green-600" />
-            Acquisition Intelligence
+            {t("intelTitle")}
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Data-driven suggestions on what to acquire or order more copies of
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">{t("intelSubtitle")}</p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-          <RefreshCw className="w-4 h-4" /> Refresh
+          <RefreshCw className="w-4 h-4" /> {t("refresh")}
         </button>
       </div>
 
       {/* ── Summary cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-4">
         {([
-          { key: "demand",       label: "High Demand",      count: highDemand.length,      color: "rose",   icon: AlertCircle },
-          { key: "understocked", label: "Understocked",     count: understocked.length,    color: "amber",  icon: TrendingUp  },
-          { key: "requests",     label: "Member Requests",  count: pendingRequests.length, color: "blue",   icon: Inbox       },
+          { key: "demand",       label: t("cardHighDemand"),      count: highDemand.length,      color: "rose",   icon: AlertCircle },
+          { key: "understocked", label: t("cardUnderstocked"),    count: understocked.length,    color: "amber",  icon: TrendingUp  },
+          { key: "requests",     label: t("cardMemberRequests"),  count: pendingRequests.length, color: "blue",   icon: Inbox       },
         ] as const).map(({ key, label, count, color, icon: Icon }) => (
           <div
             key={key}
@@ -105,9 +104,9 @@ export default function AcquisitionPage() {
       {/* ── Tabs ───────────────────────────────────────────────────────── */}
       <div className="flex gap-1 border-b border-gray-200">
         {([
-          { key: "demand",       label: `High Demand (${highDemand.length})`,           icon: AlertCircle },
-          { key: "understocked", label: `Understocked (${understocked.length})`,         icon: TrendingUp  },
-          { key: "requests",     label: `Member Requests (${pendingRequests.length})`,   icon: Inbox       },
+          { key: "demand",       label: t("tabHighDemand",      { count: highDemand.length }),      icon: AlertCircle },
+          { key: "understocked", label: t("tabUnderstocked",    { count: understocked.length }),    icon: TrendingUp  },
+          { key: "requests",     label: t("tabMemberRequests",  { count: pendingRequests.length }), icon: Inbox       },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -128,7 +127,7 @@ export default function AcquisitionPage() {
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="p-10 text-center text-gray-400 flex items-center justify-center gap-2">
-            <Loader2 className="w-5 h-5 animate-spin" /> Loading…
+            <Loader2 className="w-5 h-5 animate-spin" /> {t("loading")}
           </div>
         ) : (
 
@@ -137,21 +136,21 @@ export default function AcquisitionPage() {
             highDemand.length === 0 ? (
               <div className="p-12 text-center">
                 <AlertCircle className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-gray-500">No high-demand titles right now.</p>
+                <p className="text-gray-500">{t("noHighDemand")}</p>
               </div>
             ) : (
               <>
                 <div className="px-4 py-3 bg-rose-50 border-b border-rose-100 text-sm text-rose-800">
-                  Books with active reservations but <strong>zero available copies</strong> — these are the most urgent acquisitions.
+                  {t("highDemandBanner")}
                 </div>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
-                      <th className="px-4 py-2.5 text-left">Title / Author</th>
-                      <th className="px-4 py-2.5 text-center w-28">Waiting</th>
-                      <th className="px-4 py-2.5 text-center w-28">Copies</th>
-                      <th className="px-4 py-2.5 text-center w-24">Price</th>
-                      <th className="px-4 py-2.5 text-right w-20">View</th>
+                      <th className="px-4 py-2.5 text-left">{t("colTitleAuthor")}</th>
+                      <th className="px-4 py-2.5 text-center w-28">{t("colWaiting")}</th>
+                      <th className="px-4 py-2.5 text-center w-28">{t("colCopies")}</th>
+                      <th className="px-4 py-2.5 text-center w-24">{t("colPrice")}</th>
+                      <th className="px-4 py-2.5 text-right w-20">{t("colView")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -164,7 +163,7 @@ export default function AcquisitionPage() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-rose-100 text-rose-700 rounded-full font-bold">
-                            {b.pendingReservations} waiting
+                            {b.pendingReservations} {t("waiting")}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-center text-sm">
@@ -179,7 +178,7 @@ export default function AcquisitionPage() {
                         <td className="px-4 py-3 text-right">
                           <Link href={`/${locale}/admin/books/${b.id}`}
                             className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                            View <ChevronRight className="w-3 h-3" />
+                            {t("viewBtn")} <ChevronRight className="w-3 h-3" />
                           </Link>
                         </td>
                       </tr>
@@ -196,21 +195,21 @@ export default function AcquisitionPage() {
           understocked.length === 0 ? (
             <div className="p-12 text-center">
               <BookOpen className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-500">No understocked titles detected.</p>
+              <p className="text-gray-500">{t("noUnderstocked")}</p>
             </div>
           ) : (
             <>
               <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 text-sm text-amber-800">
-                Books borrowed <strong>2+ times in the last 30 days</strong> but with fewer than 3 total copies — worth ordering more.
+                {t("understockedBanner")}
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
-                    <th className="px-4 py-2.5 text-left">Title / Author</th>
-                    <th className="px-4 py-2.5 text-center w-32">Recent Loans</th>
-                    <th className="px-4 py-2.5 text-center w-28">Copies</th>
-                    <th className="px-4 py-2.5 text-center w-24">Price</th>
-                    <th className="px-4 py-2.5 text-right w-20">View</th>
+                    <th className="px-4 py-2.5 text-left">{t("colTitleAuthor")}</th>
+                    <th className="px-4 py-2.5 text-center w-32">{t("colRecentLoans")}</th>
+                    <th className="px-4 py-2.5 text-center w-28">{t("colCopies")}</th>
+                    <th className="px-4 py-2.5 text-center w-24">{t("colPrice")}</th>
+                    <th className="px-4 py-2.5 text-right w-20">{t("colView")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -223,7 +222,7 @@ export default function AcquisitionPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full font-bold">
-                          <Star className="w-3 h-3" /> {b.recentLoans} loans
+                          <Star className="w-3 h-3" /> {b.recentLoans} {t("loans")}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center text-sm">
@@ -236,7 +235,7 @@ export default function AcquisitionPage() {
                       <td className="px-4 py-3 text-right">
                         <Link href={`/${locale}/admin/books/${b.id}`}
                           className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                          View <ChevronRight className="w-3 h-3" />
+                          {t("viewBtn")} <ChevronRight className="w-3 h-3" />
                         </Link>
                       </td>
                     </tr>
@@ -252,24 +251,24 @@ export default function AcquisitionPage() {
           pendingRequests.length === 0 ? (
             <div className="p-12 text-center">
               <Inbox className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-500">No pending purchase requests from members.</p>
+              <p className="text-gray-500">{t("noMemberRequests")}</p>
             </div>
           ) : (
             <>
               <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 text-sm text-blue-800">
-                Books members have formally requested for the library to acquire.
+                {t("memberRequestsBanner")}
                 <Link href={`/${locale}/admin/book-requests`} className="ml-2 underline font-medium">
-                  Manage all requests →
+                  {t("manageRequests")}
                 </Link>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-500 uppercase tracking-wide bg-gray-50">
-                    <th className="px-4 py-2.5 text-left">Requested Title</th>
-                    <th className="px-4 py-2.5 text-left w-32">Requested by</th>
-                    <th className="px-4 py-2.5 text-left w-32">ISBN</th>
-                    <th className="px-4 py-2.5 text-left w-28">Date</th>
-                    <th className="px-4 py-2.5 text-right w-20">View</th>
+                    <th className="px-4 py-2.5 text-left">{t("colRequestedTitle")}</th>
+                    <th className="px-4 py-2.5 text-left w-32">{t("colRequestedBy")}</th>
+                    <th className="px-4 py-2.5 text-left w-32">{t("colISBN")}</th>
+                    <th className="px-4 py-2.5 text-left w-28">{t("colDate")}</th>
+                    <th className="px-4 py-2.5 text-right w-20">{t("colView")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -277,7 +276,7 @@ export default function AcquisitionPage() {
                     <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-medium text-gray-800">{r.title}</p>
-                        {r.author && <p className="text-xs text-gray-400">by {r.author}</p>}
+                        {r.author && <p className="text-xs text-gray-400">{t("byAuthor", { author: r.author })}</p>}
                         {r.notes && <p className="text-xs text-gray-300 truncate max-w-xs">{r.notes}</p>}
                       </td>
                       <td className="px-4 py-3">
@@ -293,7 +292,7 @@ export default function AcquisitionPage() {
                       <td className="px-4 py-3 text-right">
                         <Link href={`/${locale}/admin/book-requests`}
                           className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                          View <ChevronRight className="w-3 h-3" />
+                          {t("viewBtn")} <ChevronRight className="w-3 h-3" />
                         </Link>
                       </td>
                     </tr>

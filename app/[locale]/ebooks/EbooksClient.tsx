@@ -20,6 +20,7 @@ import { useLibraryLogo } from "@/context/library-logo";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
 import BookSearchChat from "@/components/BookSearchChat";
+import { BookCover, type BookCoverStyle, type BookCoverFrame, coverFrameStyle } from "@/components/BookCover";
 
 interface Ebook {
   id: string; title: string; titleKm?: string; description?: string;
@@ -45,36 +46,29 @@ const ACTION_KEY: Record<string, string> = {
 
 const TYPES = ["ALL", "PDF", "EPUB", "VIDEO", "AUDIO", "LINK"];
 
-// ── EbookCover ───────────────────────────────────────────────────────────────
+// ── EbookCoverAdapter — maps ebookType gradient → shared BookCover ───────────
 function EbookCover({
-  coverImage, title, ebookType, className = "",
+  coverImage, title, ebookType, style, className = "",
 }: {
   coverImage?: string | null;
   title: string;
   ebookType: string;
+  style: BookCoverStyle;
   className?: string;
 }) {
   const meta = TYPE_META[ebookType];
-  const gradFrom = meta?.gradFrom ?? "from-indigo-600";
-  const gradTo   = meta?.gradTo   ?? "to-indigo-900";
+  // Strip Tailwind class prefix (e.g. "from-red-600" → "#dc2626")
+  const gradMap: Record<string, string> = {
+    "from-red-600": "#dc2626", "to-red-800": "#991b1b",
+    "from-blue-600": "#2563eb", "to-blue-800": "#1e40af",
+    "from-gray-500": "#6b7280", "to-gray-700": "#374151",
+    "from-violet-600": "#7c3aed", "to-violet-900": "#4c1d95",
+    "from-emerald-600": "#059669", "to-emerald-900": "#064e3b",
+  };
+  const gFrom = gradMap[meta?.gradFrom ?? ""] ?? "#4f46e5";
+  const gTo   = gradMap[meta?.gradTo   ?? ""] ?? "#3730a3";
 
-  if (coverImage) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={coverImage} alt={title} className={`w-full h-full object-cover ${className}`} />
-    );
-  }
-
-  const initials = title
-    .split(" ").filter(Boolean).slice(0, 2)
-    .map((w) => w[0].toUpperCase()).join("");
-
-  return (
-    <div className={`w-full h-full bg-gradient-to-br ${gradFrom} ${gradTo} flex flex-col items-center justify-center gap-2 ${className}`}>
-      <div className="text-white/30 [&_svg]:w-8 [&_svg]:h-8">{meta?.icon ?? <BookOpen className="w-8 h-8" />}</div>
-      <span className="text-white/70 text-xs font-bold px-2 text-center leading-tight">{initials}</span>
-    </div>
-  );
+  return <BookCover coverImage={coverImage} title={title} style={style} gradFrom={gFrom} gradTo={gTo} className={className} />;
 }
 
 export default function EbooksClient({
@@ -94,6 +88,8 @@ export default function EbooksClient({
   pageFontKm = "default",
   pageCustomFonts = [] as {name:string;url:string}[],
   fullWidth = false,
+  coverStyle = "spine" as BookCoverStyle,
+  coverFrame = "none" as BookCoverFrame,
 }: {
   opacTheme: string;
   initialSaleEnabled: boolean;
@@ -111,6 +107,8 @@ export default function EbooksClient({
   pageFontKm?: string;
   pageCustomFonts?: {name:string;url:string}[];
   fullWidth?: boolean;
+  coverStyle?: BookCoverStyle;
+  coverFrame?: BookCoverFrame;
 }) {
   const cx = fullWidth ? "w-full px-4" : "max-w-6xl mx-auto px-4";
   const t   = useTranslations("ebooks");
@@ -398,7 +396,7 @@ export default function EbooksClient({
                       <span className="font-black text-white text-sm tracking-tight">BOOK</span>
                       <span className="text-white/40 font-light text-sm tracking-[0.18em]">store</span>
                     </div>
-                    <span className="text-white/35 text-[11px]">Browse &amp; Buy</span>
+                    <span className="text-white/35 text-[11px]">{to("browseAndBuy")}</span>
                   </div>
                   {/* Warm cream bookshelf */}
                   <div className="px-3 pt-4 pb-0" style={{ background: "#f5ead5" }}>
@@ -433,10 +431,10 @@ export default function EbooksClient({
                   </div>
                   {/* Cream CTA footer */}
                   <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#f5ead5" }}>
-                    <span className="text-xs font-medium" style={{ color: "#5c4535" }}>Books for purchase</span>
+                    <span className="text-xs font-medium" style={{ color: "#5c4535" }}>{to("booksForPurchase")}</span>
                     <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-gray-900 group-hover:gap-1.5 transition-all"
                       style={{ background: "#f5b731" }}>
-                      Visit Store <ArrowRight className="w-3 h-3" />
+                      {to("visitStore")} <ArrowRight className="w-3 h-3" />
                     </span>
                   </div>
                 </div>
@@ -517,14 +515,14 @@ export default function EbooksClient({
                   <Link key={ebook.id} href={`/${locale}/ebooks/${ebook.id}`}
                     className={`flex-[0_0_50%] sm:flex-[0_0_33.333%] md:flex-[0_0_25%] lg:flex-[0_0_20%] ${fullWidth ? "lg:flex-[0_0_16.666%] xl:flex-[0_0_14.285%] 2xl:flex-[0_0_11.111%]" : ""} min-w-0 pl-5 flex flex-col group`}>
                     <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden
-                      shadow-[0_4px_16px_rgba(0,0,0,0.12)]
-                      group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
-                      transition-all duration-300 bg-gray-100 flex-shrink-0 relative">
-                      <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
+                      group-hover:-translate-y-2
+                      transition-all duration-300 bg-gray-100 flex-shrink-0 relative"
+                      style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                      <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} style={coverStyle} />
                       {/* NEW badge */}
                       <div className="absolute top-2.5 left-2.5 bg-blue-500 text-white
                         text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wide uppercase shadow-sm">
-                        NEW
+                        {to("newBadge")}
                       </div>
                       {/* Type badge */}
                       {meta && (
@@ -602,10 +600,10 @@ export default function EbooksClient({
                 <Link key={ebook.id} href={`/${locale}/ebooks/${ebook.id}`}
                   className={`flex-shrink-0 w-[calc(50%-10px)] sm:w-[calc(33.333%-14px)] md:w-[calc(25%-15px)] lg:w-[calc(20%-16px)] ${fullWidth ? "lg:w-[calc(16.666%-17px)] xl:w-[calc(14.285%-17px)] 2xl:w-[calc(11.111%-18px)]" : ""} group flex flex-col`}>
                   <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden relative
-                    shadow-[0_4px_16px_rgba(0,0,0,0.12)]
-                    group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
-                    transition-all duration-300 bg-gray-100 flex-shrink-0">
-                    <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
+                    group-hover:-translate-y-2
+                    transition-all duration-300 bg-gray-100 flex-shrink-0"
+                    style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                    <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} style={coverStyle} />
                     {/* Rank badge */}
                     <div className={`absolute top-2.5 left-2.5 w-7 h-7 rounded-lg flex items-center justify-center
                       text-xs font-extrabold shadow-md border border-white/30
@@ -663,7 +661,7 @@ export default function EbooksClient({
                   <span className="font-black text-white text-base tracking-tight">BOOK</span>
                   <span className="text-white/40 font-light text-base tracking-[0.18em]">store</span>
                 </div>
-                <span className="text-white/35 text-xs">Browse &amp; Buy</span>
+                <span className="text-white/35 text-xs">{to("browseAndBuy")}</span>
               </div>
               {/* Warm cream bookshelf */}
               <div className="px-4 pt-5 pb-0" style={{ background: "#f5ead5" }}>
@@ -697,10 +695,10 @@ export default function EbooksClient({
               </div>
               {/* Cream CTA footer */}
               <div className="flex items-center justify-between px-5 py-3" style={{ background: "#f5ead5" }}>
-                <span className="text-sm font-medium" style={{ color: "#5c4535" }}>Books available for purchase</span>
+                <span className="text-sm font-medium" style={{ color: "#5c4535" }}>{to("booksAvailableForPurchase")}</span>
                 <span className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-gray-900 group-hover:gap-2 transition-all"
                   style={{ background: "#f5b731" }}>
-                  Visit Store <ArrowRight className="w-3.5 h-3.5" />
+                  {to("visitStore")} <ArrowRight className="w-3.5 h-3.5" />
                 </span>
               </div>
             </div>
@@ -771,8 +769,9 @@ export default function EbooksClient({
                   className="group flex flex-col"
                 >
                   {/* Portrait cover */}
-                  <div className="aspect-[2/3] rounded-xl overflow-hidden relative bg-gray-100 shadow-sm group-hover:shadow-lg transition-all duration-200">
-                    <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} />
+                  <div className="aspect-[2/3] rounded-xl overflow-hidden relative bg-gray-100 transition-all duration-200"
+                    style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                    <EbookCover coverImage={ebook.coverImage} title={ebook.title} ebookType={ebook.ebookType} style={coverStyle} />
 
                     {/* Hover overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200 flex items-center justify-center">
@@ -855,7 +854,7 @@ export default function EbooksClient({
                 disabled={loadingMore}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50">
                 {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {loadingMore ? "Loading…" : "Load more"}
+                {loadingMore ? to("loadingMore") : to("loadMore")}
               </button>
             </div>
           )

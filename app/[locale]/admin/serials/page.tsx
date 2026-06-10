@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Plus, Pencil, Trash2, Check, X, Loader2, BookOpen,
   Calendar, RefreshCw, ChevronRight, Package, AlertTriangle,
@@ -36,32 +37,35 @@ interface Vendor { id: string; name: string }
 
 /* ── Constants ──────────────────────────────────────────────────── */
 const FREQUENCIES: SerialFrequency[] = ["DAILY","WEEKLY","BIWEEKLY","MONTHLY","BIMONTHLY","QUARTERLY","SEMIANNUAL","ANNUAL","IRREGULAR"];
-const FREQ_LABEL: Record<SerialFrequency, string> = {
-  DAILY:"Daily", WEEKLY:"Weekly", BIWEEKLY:"Bi-weekly", MONTHLY:"Monthly",
-  BIMONTHLY:"Bi-monthly", QUARTERLY:"Quarterly", SEMIANNUAL:"Semi-annual",
-  ANNUAL:"Annual", IRREGULAR:"Irregular",
-};
-
-const ISSUE_META: Record<IssueStatus, { label: string; cls: string }> = {
-  EXPECTED:  { label: "Expected",  cls: "bg-blue-100   text-blue-700"  },
-  RECEIVED:  { label: "Received",  cls: "bg-green-100  text-green-700" },
-  MISSING:   { label: "Missing",   cls: "bg-red-100    text-red-700"   },
-  CLAIMED:   { label: "Claimed",   cls: "bg-amber-100  text-amber-700" },
-  WITHDRAWN: { label: "Withdrawn", cls: "bg-gray-100   text-gray-500"  },
-};
-
-const SUB_META: Record<SubStatus, { label: string; cls: string }> = {
-  ACTIVE:    { label: "Active",    cls: "bg-green-100  text-green-700" },
-  EXPIRED:   { label: "Expired",   cls: "bg-red-100    text-red-600"   },
-  CANCELLED: { label: "Cancelled", cls: "bg-gray-100   text-gray-500"  },
-  SUSPENDED: { label: "Suspended", cls: "bg-amber-100  text-amber-700" },
-};
 
 const BLANK_SERIAL = { title:"", titleKm:"", issn:"", publisher:"", frequency:"MONTHLY" as SerialFrequency, language:"en", description:"", notes:"" };
 const BLANK_SUB    = { vendorId:"", startDate:"", endDate:"", cost:"", currency:"USD", autoRenew:false, notes:"" };
 
 /* ── Main page ───────────────────────────────────────────────────── */
 export default function SerialsPage() {
+  const t = useTranslations("serials");
+
+  const FREQ_LABEL: Record<SerialFrequency, string> = {
+    DAILY: t("freqDaily"), WEEKLY: t("freqWeekly"), BIWEEKLY: t("freqBiweekly"),
+    MONTHLY: t("freqMonthly"), BIMONTHLY: t("freqBimonthly"), QUARTERLY: t("freqQuarterly"),
+    SEMIANNUAL: t("freqSemiannual"), ANNUAL: t("freqAnnual"), IRREGULAR: t("freqIrregular"),
+  };
+
+  const ISSUE_META: Record<IssueStatus, { label: string; cls: string }> = {
+    EXPECTED:  { label: t("issueExpected"),  cls: "bg-blue-100   text-blue-700"  },
+    RECEIVED:  { label: t("issueReceived"),  cls: "bg-green-100  text-green-700" },
+    MISSING:   { label: t("issueMissing"),   cls: "bg-red-100    text-red-700"   },
+    CLAIMED:   { label: t("issueClaimed"),   cls: "bg-amber-100  text-amber-700" },
+    WITHDRAWN: { label: t("issueWithdrawn"), cls: "bg-gray-100   text-gray-500"  },
+  };
+
+  const SUB_META: Record<SubStatus, { label: string; cls: string }> = {
+    ACTIVE:    { label: t("subActive"),    cls: "bg-green-100  text-green-700" },
+    EXPIRED:   { label: t("subExpired"),   cls: "bg-red-100    text-red-600"   },
+    CANCELLED: { label: t("subCancelled"), cls: "bg-gray-100   text-gray-500"  },
+    SUSPENDED: { label: t("subSuspended"), cls: "bg-amber-100  text-amber-700" },
+  };
+
   const [serials,  setSerials]  = useState<Serial[]>([]);
   const [vendors,  setVendors]  = useState<Vendor[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -123,7 +127,7 @@ export default function SerialsPage() {
     setSEditId(s.id); setSErr(null); setSModal("edit");
   }
   async function saveSerial() {
-    if (!sForm.title.trim()) { setSErr("Title is required"); return; }
+    if (!sForm.title.trim()) { setSErr(t("errTitleRequired")); return; }
     setSSaving(true); setSErr(null);
     const url = sEditId ? `/api/serials/${sEditId}` : "/api/serials";
     const res = await fetch(url, { method: sEditId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sForm) });
@@ -151,7 +155,7 @@ export default function SerialsPage() {
     setSubEditId(sub.id); setSubErr(null); setSubModal(true);
   }
   async function saveSub() {
-    if (!subForm.startDate) { setSubErr("Start date is required"); return; }
+    if (!subForm.startDate) { setSubErr(t("errStartDateRequired")); return; }
     setSubSaving(true); setSubErr(null);
     const payload = { ...subForm, vendorId: subForm.vendorId || null, cost: subForm.cost ? Number(subForm.cost) : null, endDate: subForm.endDate || null };
     const url = subEditId ? `/api/serials/${selected!.id}/subscriptions/${subEditId}` : `/api/serials/${selected!.id}/subscriptions`;
@@ -173,7 +177,7 @@ export default function SerialsPage() {
     setIssueEditId(issue.id); setIssueErr(null); setIssueModal(true);
   }
   async function saveIssue() {
-    if (!issueForm.issueNumber.trim() || !issueForm.issueDate) { setIssueErr("Issue number and date are required"); return; }
+    if (!issueForm.issueNumber.trim() || !issueForm.issueDate) { setIssueErr(t("errIssueRequired")); return; }
     setIssueSaving(true); setIssueErr(null);
     const payload = { ...issueForm, volume: issueForm.volume || null, receivedDate: issueForm.receivedDate || null, notes: issueForm.notes || null };
     const url = issueEditId ? `/api/serials/${selected!.id}/issues/${issueEditId}` : `/api/serials/${selected!.id}/issues`;
@@ -218,12 +222,12 @@ export default function SerialsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Serials</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage journal, magazine, and newspaper subscriptions and issues</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("subtitle")}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={openSerialCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors">
-            <Plus className="w-4 h-4" /> New Serial
+            <Plus className="w-4 h-4" /> {t("newSerial")}
           </button>
           <button onClick={fetchAll} className="p-2 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
             <RefreshCw className="w-4 h-4" />
@@ -232,7 +236,7 @@ export default function SerialsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> {t("loading")}</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           {/* ── Serial list (2 cols) ── */}
@@ -240,7 +244,7 @@ export default function SerialsPage() {
             {serials.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
                 <BookOpen className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">No serials yet</p>
+                <p className="text-sm text-gray-400">{t("noSerials")}</p>
               </div>
             ) : serials.map(s => {
               const activeSub = s.subscriptions?.[0];
@@ -263,7 +267,7 @@ export default function SerialsPage() {
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">{FREQ_LABEL[s.frequency]}</span>
                         {s.issn && <span className="text-xs font-mono text-gray-400">{s.issn}</span>}
-                        {expiring && <span className="text-xs text-amber-600 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />Expiring</span>}
+                        {expiring && <span className="text-xs text-amber-600 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />{t("expiring")}</span>}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {s._count?.issues ?? 0} issues · {s._count?.subscriptions ?? 0} sub{(s._count?.subscriptions ?? 0) !== 1 ? "s" : ""}
@@ -291,7 +295,7 @@ export default function SerialsPage() {
             {!selected ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
                 <ChevronRight className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-xs text-gray-400">Select a serial to manage its subscriptions and issues</p>
+                <p className="text-xs text-gray-400">{t("selectSerial")}</p>
               </div>
             ) : detailLoading ? (
               <div className="flex items-center gap-2 py-16 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
@@ -312,14 +316,14 @@ export default function SerialsPage() {
                       <h2 className="font-bold text-gray-900">{selected.title}</h2>
                       {selected.titleKm && <p className="text-sm text-gray-500">{selected.titleKm}</p>}
                       <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
-                        <span><strong>Frequency:</strong> {FREQ_LABEL[selected.frequency]}</span>
-                        {selected.issn      && <span><strong>ISSN:</strong> {selected.issn}</span>}
-                        {selected.publisher && <span><strong>Publisher:</strong> {selected.publisher}</span>}
-                        {selected.language  && <span><strong>Language:</strong> {selected.language.toUpperCase()}</span>}
+                        <span><strong>{t("labelFrequency")}</strong> {FREQ_LABEL[selected.frequency]}</span>
+                        {selected.issn      && <span><strong>{t("labelISSN")}</strong> {selected.issn}</span>}
+                        {selected.publisher && <span><strong>{t("labelPublisher")}</strong> {selected.publisher}</span>}
+                        {selected.language  && <span><strong>{t("labelLanguage")}</strong> {selected.language.toUpperCase()}</span>}
                       </div>
                       {detail && missingCount(detail.issues) > 0 && (
                         <div className="mt-2 flex items-center gap-1.5 text-xs text-red-600 font-semibold">
-                          <AlertTriangle className="w-3.5 h-3.5" /> {missingCount(detail.issues)} missing/claimed issue{missingCount(detail.issues) !== 1 ? "s" : ""}
+                          <AlertTriangle className="w-3.5 h-3.5" /> {t("missingIssues", { count: missingCount(detail.issues) })}
                         </div>
                       )}
                     </div>
@@ -329,13 +333,13 @@ export default function SerialsPage() {
                 {/* Subscriptions */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-                    <h3 className="font-semibold text-gray-800 text-sm">Subscriptions</h3>
+                    <h3 className="font-semibold text-gray-800 text-sm">{t("sectionSubscriptions")}</h3>
                     <button onClick={openSubCreate} className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold hover:text-blue-800">
-                      <Plus className="w-3.5 h-3.5" /> Add
+                      <Plus className="w-3.5 h-3.5" /> {t("addSubscription")}
                     </button>
                   </div>
                   {!detail?.subscriptions.length ? (
-                    <p className="px-5 py-4 text-xs text-gray-400">No subscriptions yet</p>
+                    <p className="px-5 py-4 text-xs text-gray-400">{t("noSubscriptions")}</p>
                   ) : (
                     <div className="divide-y divide-gray-50">
                       {detail.subscriptions.map(sub => (
@@ -344,12 +348,12 @@ export default function SerialsPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${SUB_META[sub.status].cls}`}>{SUB_META[sub.status].label}</span>
                               {sub.vendor && <span className="text-xs text-gray-600">{sub.vendor.name}</span>}
-                              {isExpiringSoon(sub) && <span className="text-xs text-amber-600 font-bold flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />Expiring soon</span>}
+                              {isExpiringSoon(sub) && <span className="text-xs text-amber-600 font-bold flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />{t("expiringSoon")}</span>}
                             </div>
                             <p className="text-xs text-gray-500 mt-0.5">
-                              {new Date(sub.startDate).toLocaleDateString()} — {sub.endDate ? new Date(sub.endDate).toLocaleDateString() : "Open"}
+                              {new Date(sub.startDate).toLocaleDateString()} — {sub.endDate ? new Date(sub.endDate).toLocaleDateString() : t("openDate")}
                               {sub.cost && ` · ${sub.currency} ${sub.cost.toFixed(2)}/yr`}
-                              {sub.autoRenew && " · Auto-renew"}
+                              {sub.autoRenew && ` · ${t("autoRenew")}`}
                             </p>
                           </div>
                           <div className="flex gap-1 flex-shrink-0">
@@ -366,19 +370,19 @@ export default function SerialsPage() {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
                     <h3 className="font-semibold text-gray-800 text-sm">
-                      Issues <span className="text-gray-400 font-normal">({detail?.issues.length ?? 0})</span>
+                      {t("sectionIssues")} <span className="text-gray-400 font-normal">({detail?.issues.length ?? 0})</span>
                     </h3>
                     <div className="flex gap-2">
                       <button onClick={() => setGenModal(true)} className="flex items-center gap-1.5 text-xs text-violet-600 font-semibold hover:text-violet-800">
-                        <Wand2 className="w-3.5 h-3.5" /> Generate
+                        <Wand2 className="w-3.5 h-3.5" /> {t("generate")}
                       </button>
                       <button onClick={openIssueCreate} className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold hover:text-blue-800">
-                        <Plus className="w-3.5 h-3.5" /> Add
+                        <Plus className="w-3.5 h-3.5" /> {t("addIssue")}
                       </button>
                     </div>
                   </div>
                   {!detail?.issues.length ? (
-                    <p className="px-5 py-4 text-xs text-gray-400">No issues yet — add manually or use Generate to predict expected issues from frequency.</p>
+                    <p className="px-5 py-4 text-xs text-gray-400">{t("noIssues")}</p>
                   ) : (
                     <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
                       {detail.issues.map(issue => (
@@ -392,12 +396,12 @@ export default function SerialsPage() {
                             </div>
                             <p className="text-xs text-gray-400">
                               {new Date(issue.issueDate).toLocaleDateString()}
-                              {issue.receivedDate && ` · Received ${new Date(issue.receivedDate).toLocaleDateString()}`}
+                              {issue.receivedDate && ` · ${t("receivedDate", { date: new Date(issue.receivedDate).toLocaleDateString() })}`}
                             </p>
                           </div>
                           <div className="flex gap-1 flex-shrink-0">
                             {issue.status === "EXPECTED" && (
-                              <button onClick={() => quickReceive(issue)} title="Mark received"
+                              <button onClick={() => quickReceive(issue)} title={t("markReceived")}
                                 className="p-1 text-gray-300 hover:text-green-600"><Package className="w-3.5 h-3.5" /></button>
                             )}
                             <button onClick={() => openIssueEdit(issue)} className="p-1 text-gray-300 hover:text-blue-500"><Pencil className="w-3.5 h-3.5" /></button>
@@ -419,11 +423,11 @@ export default function SerialsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">{sModal === "create" ? "New Serial" : "Edit Serial"}</h2>
+              <h2 className="font-bold text-gray-900">{sModal === "create" ? t("modalNewSerial") : t("modalEditSerial")}</h2>
               <button onClick={() => setSModal(null)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
-              {[["title","Title *"],["titleKm","Khmer Title"],["issn","ISSN"],["publisher","Publisher"]].map(([k,l]) => (
+              {([["title", t("fieldTitle")],["titleKm", t("fieldTitleKm")],["issn", t("fieldISSN")],["publisher", t("fieldPublisher")]] as [string,string][]).map(([k,l]) => (
                 <div key={k}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{l}</label>
                   <input type="text" value={(sForm as Record<string,string>)[k]} onChange={e => setSForm(f => ({ ...f, [k]: e.target.value }))}
@@ -432,32 +436,32 @@ export default function SerialsPage() {
               ))}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Frequency</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldFrequency")}</label>
                   <select value={sForm.frequency} onChange={e => setSForm(f => ({ ...f, frequency: e.target.value as SerialFrequency }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {FREQUENCIES.map(f => <option key={f} value={f}>{FREQ_LABEL[f]}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Language</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldLanguage")}</label>
                   <input type="text" value={sForm.language} onChange={e => setSForm(f => ({ ...f, language: e.target.value }))}
                     placeholder="en, km, fr…"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldDescription")}</label>
                 <textarea rows={2} value={sForm.description} onChange={e => setSForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               {sErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{sErr}</div>}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setSModal(null)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setSModal(null)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={saveSerial} disabled={sSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
                 {sSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {sModal === "create" ? "Create" : "Save"}
+                {sModal === "create" ? t("create") : t("save")}
               </button>
             </div>
           </div>
@@ -469,36 +473,36 @@ export default function SerialsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">{subEditId ? "Edit Subscription" : "New Subscription"}</h2>
+              <h2 className="font-bold text-gray-900">{subEditId ? t("modalEditSub") : t("modalNewSub")}</h2>
               <button onClick={() => setSubModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Vendor</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldVendor")}</label>
                 <select value={subForm.vendorId} onChange={e => setSubForm(f => ({ ...f, vendorId: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">— No vendor —</option>
+                  <option value="">{t("noVendor")}</option>
                   {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Start Date *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldStartDate")}</label>
                   <input type="date" value={subForm.startDate} onChange={e => setSubForm(f => ({ ...f, startDate: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldEndDate")}</label>
                   <input type="date" value={subForm.endDate} onChange={e => setSubForm(f => ({ ...f, endDate: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Annual Cost</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldCost")}</label>
                   <input type="number" min={0} step={0.01} value={subForm.cost} onChange={e => setSubForm(f => ({ ...f, cost: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldCurrency")}</label>
                   <select value={subForm.currency} onChange={e => setSubForm(f => ({ ...f, currency: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {["USD","KHR","EUR","THB"].map(c => <option key={c}>{c}</option>)}
@@ -507,20 +511,20 @@ export default function SerialsPage() {
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={subForm.autoRenew} onChange={e => setSubForm(f => ({ ...f, autoRenew: e.target.checked }))} className="w-4 h-4 accent-blue-600" />
-                <span className="text-sm text-gray-700">Auto-renew</span>
+                <span className="text-sm text-gray-700">{t("fieldAutoRenew")}</span>
               </label>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldNotes")}</label>
                 <textarea rows={2} value={subForm.notes} onChange={e => setSubForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               {subErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{subErr}</div>}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setSubModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setSubModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={saveSub} disabled={subSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
-                {subSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save
+                {subSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t("save")}
               </button>
             </div>
           </div>
@@ -532,34 +536,34 @@ export default function SerialsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">{issueEditId ? "Edit Issue" : "New Issue"}</h2>
+              <h2 className="font-bold text-gray-900">{issueEditId ? t("modalEditIssue") : t("modalNewIssue")}</h2>
               <button onClick={() => setIssueModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Issue Number *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldIssueNumber")}</label>
                   <input type="text" value={issueForm.issueNumber} onChange={e => setIssueForm(f => ({ ...f, issueNumber: e.target.value }))} placeholder="e.g. No. 5"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Volume</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldVolume")}</label>
                   <input type="text" value={issueForm.volume} onChange={e => setIssueForm(f => ({ ...f, volume: e.target.value }))} placeholder="e.g. Vol. 3"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Issue Date *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldIssueDate")}</label>
                   <input type="date" value={issueForm.issueDate} onChange={e => setIssueForm(f => ({ ...f, issueDate: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Received Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldReceivedDate")}</label>
                   <input type="date" value={issueForm.receivedDate} onChange={e => setIssueForm(f => ({ ...f, receivedDate: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldStatus")}</label>
                 <select value={issueForm.status} onChange={e => setIssueForm(f => ({ ...f, status: e.target.value as IssueStatus }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {(Object.keys(ISSUE_META) as IssueStatus[]).map(s => <option key={s} value={s}>{ISSUE_META[s].label}</option>)}
@@ -568,10 +572,10 @@ export default function SerialsPage() {
               {issueErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{issueErr}</div>}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setIssueModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setIssueModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={saveIssue} disabled={issueSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
-                {issueSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save
+                {issueSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t("save")}
               </button>
             </div>
           </div>
@@ -583,27 +587,27 @@ export default function SerialsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2"><Wand2 className="w-4 h-4 text-violet-600" /> Generate Expected Issues</h2>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><Wand2 className="w-4 h-4 text-violet-600" /> {t("modalGenerate")}</h2>
               <button onClick={() => setGenModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
-              <p className="text-xs text-gray-500">Auto-generate <em>Expected</em> issues based on the serial&apos;s frequency ({FREQ_LABEL[selected!.frequency]}). Mark them received as they arrive.</p>
+              <p className="text-xs text-gray-500">{t("generateDesc", { freq: FREQ_LABEL[selected!.frequency] })}</p>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Starting from *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldStartingFrom")}</label>
                 <input type="date" value={genFrom} onChange={e => setGenFrom(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Number of issues (max 60)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldIssueCount")}</label>
                 <input type="number" min={1} max={60} value={genCount} onChange={e => setGenCount(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setGenModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setGenModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={generateIssues} disabled={genBusy || !genFrom}
                 className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 disabled:opacity-50">
-                {genBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} Generate
+                {genBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} {t("generateBtn")}
               </button>
             </div>
           </div>
@@ -615,11 +619,11 @@ export default function SerialsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
             <Trash2 className="w-10 h-10 text-red-400 mx-auto mb-3" />
-            <h3 className="font-bold text-gray-900 mb-1">Delete this serial?</h3>
-            <p className="text-sm text-gray-500 mb-5">All subscriptions and issues will also be deleted.</p>
+            <h3 className="font-bold text-gray-900 mb-1">{t("deleteTitle")}</h3>
+            <p className="text-sm text-gray-500 mb-5">{t("deleteDesc")}</p>
             <div className="flex gap-3">
-              <button onClick={() => setSDelId(null)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button onClick={deleteSerial} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">Delete</button>
+              <button onClick={() => setSDelId(null)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
+              <button onClick={deleteSerial} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">{t("delete")}</button>
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ import {
   ChevronUp, Package, BookOpen, ToggleLeft, ToggleRight,
   AlertCircle, RefreshCw, ExternalLink,
 } from "lucide-react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 
 /* ── Types ──────────────────────────────────────────────────────── */
@@ -37,25 +37,6 @@ type POStatus = "DRAFT" | "SENT" | "PARTIAL" | "RECEIVED" | "CANCELLED";
 
 interface BookOption { id: string; title: string; isbn: string | null; coverImage: string | null }
 
-const STATUS_META: Record<POStatus, { label: string; cls: string }> = {
-  DRAFT:     { label: "Draft",          cls: "bg-gray-100   text-gray-600"   },
-  SENT:      { label: "Sent",           cls: "bg-blue-100   text-blue-700"   },
-  PARTIAL:   { label: "Partial",        cls: "bg-amber-100  text-amber-700"  },
-  RECEIVED:  { label: "Received",       cls: "bg-green-100  text-green-700"  },
-  CANCELLED: { label: "Cancelled",      cls: "bg-red-100    text-red-600"    },
-};
-
-const STATUS_FLOW: Record<POStatus, POStatus[]> = {
-  DRAFT:     ["SENT", "CANCELLED"],
-  SENT:      ["PARTIAL", "RECEIVED", "CANCELLED"],
-  PARTIAL:   ["RECEIVED", "CANCELLED"],
-  RECEIVED:  [],
-  CANCELLED: [],
-};
-
-/* ── Vendor blank ───────────────────────────────────────────────── */
-const BLANK_VENDOR = { name: "", contact: "", phone: "", email: "", address: "", website: "", notes: "" };
-
 /* ── PO item row ────────────────────────────────────────────────── */
 type POItemDraftFull = { bookId: string | null; title: string; isbn: string; quantity: number; unitPrice: number; notes: string; currency: string };
 interface ItemRowProps {
@@ -63,8 +44,9 @@ interface ItemRowProps {
   onChange: (patch: Partial<POItemDraftFull>) => void;
   onRemove: () => void;
   books: BookOption[];
+  t: ReturnType<typeof useTranslations>;
 }
-function ItemRow({ item, onChange, onRemove, books }: ItemRowProps) {
+function ItemRow({ item, onChange, onRemove, books, t }: ItemRowProps) {
   const [bookSearch, setBookSearch] = useState(item.bookId ? (books.find(b => b.id === item.bookId)?.title ?? "") : "");
   const [showDrop, setShowDrop] = useState(false);
   const filtered = books.filter(b =>
@@ -76,14 +58,14 @@ function ItemRow({ item, onChange, onRemove, books }: ItemRowProps) {
     <div className="grid grid-cols-12 gap-2 items-start border border-gray-100 rounded-xl p-3 bg-gray-50">
       {/* Book selector (6 cols) */}
       <div className="col-span-6 relative">
-        <label className="block text-[10px] font-medium text-gray-500 mb-1">Book / Title</label>
+        <label className="block text-[10px] font-medium text-gray-500 mb-1">{t("itemBookTitle")}</label>
         <input
           type="text"
           value={bookSearch}
           onChange={e => { setBookSearch(e.target.value); setShowDrop(true); onChange({ bookId: null, title: e.target.value }); }}
           onFocus={() => setShowDrop(true)}
           onBlur={() => setTimeout(() => setShowDrop(false), 150)}
-          placeholder="Search catalog or type new title…"
+          placeholder={t("itemSearchPlaceholder")}
           className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         {showDrop && filtered.length > 0 && (
@@ -113,14 +95,14 @@ function ItemRow({ item, onChange, onRemove, books }: ItemRowProps) {
 
       {/* Qty (1 col) */}
       <div className="col-span-1">
-        <label className="block text-[10px] font-medium text-gray-500 mb-1">Qty</label>
+        <label className="block text-[10px] font-medium text-gray-500 mb-1">{t("itemQtyLabel")}</label>
         <input type="number" min={1} value={item.quantity} onChange={e => onChange({ quantity: Number(e.target.value) })}
           className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
 
       {/* Price (2 cols) */}
       <div className="col-span-2">
-        <label className="block text-[10px] font-medium text-gray-500 mb-1">Unit Price</label>
+        <label className="block text-[10px] font-medium text-gray-500 mb-1">{t("itemUnitPrice")}</label>
         <input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => onChange({ unitPrice: Number(e.target.value) })}
           className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
@@ -138,7 +120,25 @@ function ItemRow({ item, onChange, onRemove, books }: ItemRowProps) {
 /* ── Main page ───────────────────────────────────────────────────── */
 export default function AcquisitionsPage() {
   const locale = useLocale();
+  const t = useTranslations("acquisitions");
   const [tab, setTab] = useState<"orders" | "vendors">("orders");
+
+  /* Status meta uses translated labels */
+  const STATUS_META: Record<POStatus, { label: string; cls: string }> = {
+    DRAFT:     { label: t("statusDraft"),     cls: "bg-gray-100   text-gray-600"   },
+    SENT:      { label: t("statusSent"),      cls: "bg-blue-100   text-blue-700"   },
+    PARTIAL:   { label: t("statusPartial"),   cls: "bg-amber-100  text-amber-700"  },
+    RECEIVED:  { label: t("statusReceived"),  cls: "bg-green-100  text-green-700"  },
+    CANCELLED: { label: t("statusCancelled"), cls: "bg-red-100    text-red-600"    },
+  };
+
+  const STATUS_FLOW: Record<POStatus, POStatus[]> = {
+    DRAFT:     ["SENT", "CANCELLED"],
+    SENT:      ["PARTIAL", "RECEIVED", "CANCELLED"],
+    PARTIAL:   ["RECEIVED", "CANCELLED"],
+    RECEIVED:  [],
+    CANCELLED: [],
+  };
 
   /* ── Data ───────────────────────────────────────────────────────── */
   const [orders,   setOrders]   = useState<PurchaseOrder[]>([]);
@@ -164,6 +164,7 @@ export default function AcquisitionsPage() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   /* ── Vendor modal ───────────────────────────────────────────────── */
+  const BLANK_VENDOR = { name: "", contact: "", phone: "", email: "", address: "", website: "", notes: "" };
   const [vModal,   setVModal]   = useState<"create" | "edit" | null>(null);
   const [vForm,    setVForm]    = useState(BLANK_VENDOR);
   const [vEditId,  setVEditId]  = useState<string | null>(null);
@@ -177,7 +178,7 @@ export default function AcquisitionsPage() {
     setVEditId(v.id); setVErr(null); setVModal("edit");
   }
   async function saveVendor() {
-    if (!vForm.name.trim()) { setVErr("Name is required"); return; }
+    if (!vForm.name.trim()) { setVErr(t("errNameRequired")); return; }
     setVSaving(true); setVErr(null);
     const url = vEditId ? `/api/acquisitions/vendors/${vEditId}` : "/api/acquisitions/vendors";
     const res = await fetch(url, { method: vEditId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(vForm) });
@@ -217,8 +218,8 @@ export default function AcquisitionsPage() {
     setPoItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
   }
   async function savePO() {
-    if (!poVendorId) { setPoErr("Select a vendor"); return; }
-    if (poItems.every(i => !i.title.trim())) { setPoErr("Add at least one item"); return; }
+    if (!poVendorId) { setPoErr(t("errSelectVendor")); return; }
+    if (poItems.every(i => !i.title.trim())) { setPoErr(t("errAddItem")); return; }
     setPoSaving(true); setPoErr(null);
     const res = await fetch("/api/acquisitions/orders", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -285,22 +286,22 @@ export default function AcquisitionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Acquisitions</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage vendors and purchase orders</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          {tab === "orders"  && <button onClick={openPOCreate}      className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors"><Plus className="w-4 h-4" /> New Order</button>}
-          {tab === "vendors" && <button onClick={openVendorCreate}  className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors"><Plus className="w-4 h-4" /> New Vendor</button>}
+          {tab === "orders"  && <button onClick={openPOCreate}     className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors"><Plus className="w-4 h-4" /> {t("newOrder")}</button>}
+          {tab === "vendors" && <button onClick={openVendorCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition-colors"><Plus className="w-4 h-4" /> {t("newVendor")}</button>}
           <button onClick={fetchAll} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"><RefreshCw className="w-4 h-4" /></button>
           <Link href={`/${locale}/admin/books/acquisition`} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
-            <ExternalLink className="w-4 h-4" /> Demand Intel
+            <ExternalLink className="w-4 h-4" /> {t("demandIntel")}
           </Link>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {([["orders","Purchase Orders",ShoppingCart],["vendors","Vendors",Building2]] as const).map(([key, label, Icon]) => (
+        {([["orders", t("tabOrders"), ShoppingCart], ["vendors", t("tabVendors"), Building2]] as const).map(([key, label, Icon]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             <Icon className="w-4 h-4" />{label}
@@ -309,7 +310,7 @@ export default function AcquisitionsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> {t("loading")}</div>
       ) : (
         <>
           {/* ════════ ORDERS TAB ════════ */}
@@ -321,7 +322,7 @@ export default function AcquisitionsPage() {
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => setStatusFilter("")}
                     className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${!statusFilter ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                    All ({orders.length})
+                    {t("allOrders", { count: orders.length })}
                   </button>
                   {(["DRAFT","SENT","PARTIAL","RECEIVED","CANCELLED"] as POStatus[]).map(s => (
                     <button key={s} onClick={() => setStatusFilter(s === statusFilter ? "" : s)}
@@ -334,7 +335,7 @@ export default function AcquisitionsPage() {
                 {filteredOrders.length === 0 ? (
                   <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
                     <ShoppingCart className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                    <p className="text-sm text-gray-400">No purchase orders yet</p>
+                    <p className="text-sm text-gray-400">{t("noOrders")}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -349,8 +350,11 @@ export default function AcquisitionsPage() {
                             </div>
                             <p className="text-sm text-gray-600 mt-0.5">{po.vendor.name}</p>
                             <p className="text-xs text-gray-400 mt-0.5">
-                              {po.items.length} item{po.items.length !== 1 ? "s" : ""} · {po.currency} {po.subtotal.toFixed(2)}
-                              {po.expectedDate && ` · Expected ${new Date(po.expectedDate).toLocaleDateString()}`}
+                              {po.items.length === 1
+                                ? t("itemCount_one", { count: po.items.length })
+                                : t("itemCount_other", { count: po.items.length })
+                              } · {po.currency} {po.subtotal.toFixed(2)}
+                              {po.expectedDate && ` · ${t("expectedLabel")} ${new Date(po.expectedDate).toLocaleDateString()}`}
                             </p>
                           </div>
                           <FileText className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5" />
@@ -366,7 +370,7 @@ export default function AcquisitionsPage() {
                 {!selectedPO ? (
                   <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
                     <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                    <p className="text-xs text-gray-400">Select an order to view details</p>
+                    <p className="text-xs text-gray-400">{t("selectOrder")}</p>
                   </div>
                 ) : (
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -377,23 +381,23 @@ export default function AcquisitionsPage() {
                       </div>
                       <p className="text-sm text-gray-600 mt-1">{selectedPO.vendor.name}</p>
                       <div className="text-xs text-gray-400 mt-1 space-y-0.5">
-                        <p>Ordered: {new Date(selectedPO.orderDate).toLocaleDateString()}</p>
-                        {selectedPO.expectedDate && <p>Expected: {new Date(selectedPO.expectedDate).toLocaleDateString()}</p>}
-                        {selectedPO.receivedDate && <p>Received: {new Date(selectedPO.receivedDate).toLocaleDateString()}</p>}
+                        <p>{t("orderedOn")} {new Date(selectedPO.orderDate).toLocaleDateString()}</p>
+                        {selectedPO.expectedDate && <p>{t("expectedOn")} {new Date(selectedPO.expectedDate).toLocaleDateString()}</p>}
+                        {selectedPO.receivedDate && <p>{t("receivedOn")} {new Date(selectedPO.receivedDate).toLocaleDateString()}</p>}
                       </div>
                     </div>
 
                     {/* Items */}
                     <div className="px-5 py-3 space-y-2">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t("sectionItems")}</p>
                       {selectedPO.items.map(item => (
                         <div key={item.id} className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{item.title}</p>
                             {item.isbn && <p className="text-xs font-mono text-gray-400">{item.isbn}</p>}
                             <p className="text-xs text-gray-500">
-                              Qty: {item.quantity} · {item.currency} {item.unitPrice.toFixed(2)}
-                              {item.received > 0 && <span className="text-green-600 ml-1">· {item.received} received</span>}
+                              {t("qtyLabel")} {item.quantity} · {item.currency} {item.unitPrice.toFixed(2)}
+                              {item.received > 0 && <span className="text-green-600 ml-1">· {item.received} {t("receivedCount")}</span>}
                             </p>
                           </div>
                           {receiveMode && (
@@ -409,7 +413,7 @@ export default function AcquisitionsPage() {
                     {/* Totals */}
                     <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
                       <div className="flex justify-between text-sm font-semibold text-gray-800">
-                        <span>Total</span>
+                        <span>{t("totalLabel")}</span>
                         <span>{selectedPO.currency} {selectedPO.subtotal.toFixed(2)}</span>
                       </div>
                     </div>
@@ -425,11 +429,11 @@ export default function AcquisitionsPage() {
                             : "bg-blue-900 text-white hover:bg-blue-800"
                           }`}>
                           {statusBusy ? <Loader2 className="w-4 h-4 animate-spin" /> :
-                            next === "SENT"      ? <Send       className="w-4 h-4" /> :
+                            next === "SENT"      ? <Send         className="w-4 h-4" /> :
                             next === "RECEIVED"  ? <PackageCheck className="w-4 h-4" /> :
-                            next === "CANCELLED" ? <X          className="w-4 h-4" /> :
+                            next === "CANCELLED" ? <X            className="w-4 h-4" /> :
                             <Package className="w-4 h-4" />}
-                          Mark as {STATUS_META[next].label}
+                          {t("markAs")} {STATUS_META[next].label}
                         </button>
                       ))}
 
@@ -437,19 +441,19 @@ export default function AcquisitionsPage() {
                       {(selectedPO.status === "SENT" || selectedPO.status === "PARTIAL") && (
                         receiveMode ? (
                           <div className="space-y-2">
-                            <p className="text-xs text-gray-500 text-center">Enter qty received per item above</p>
+                            <p className="text-xs text-gray-500 text-center">{t("receiveHint")}</p>
                             <div className="flex gap-2">
-                              <button onClick={() => setReceiveMode(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+                              <button onClick={() => setReceiveMode(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
                               <button onClick={submitReceive} disabled={receivingBusy || Object.values(receiveCounts).every(v => v === 0)}
                                 className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
-                                {receivingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-4 h-4" />} Confirm
+                                {receivingBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-4 h-4" />} {t("confirm")}
                               </button>
                             </div>
                           </div>
                         ) : (
                           <button onClick={() => setReceiveMode(true)}
                             className="w-full flex items-center justify-center gap-2 py-2 border-2 border-green-300 text-green-700 rounded-xl text-sm font-semibold hover:bg-green-50 transition-colors">
-                            <Package className="w-4 h-4" /> Receive Items…
+                            <Package className="w-4 h-4" /> {t("receiveItems")}
                           </button>
                         )
                       )}
@@ -469,7 +473,7 @@ export default function AcquisitionsPage() {
             vendors.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
                 <Building2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">No vendors yet — add your first supplier</p>
+                <p className="text-sm text-gray-400">{t("noVendors")}</p>
               </div>
             ) : (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -477,10 +481,10 @@ export default function AcquisitionsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
                     <tr>
-                      <th className="text-left px-4 py-3">Vendor</th>
-                      <th className="text-left px-4 py-3">Contact</th>
-                      <th className="text-center px-4 py-3">Orders</th>
-                      <th className="text-center px-4 py-3">Active</th>
+                      <th className="text-left px-4 py-3">{t("colVendor")}</th>
+                      <th className="text-left px-4 py-3">{t("colContact")}</th>
+                      <th className="text-center px-4 py-3">{t("colOrders")}</th>
+                      <th className="text-center px-4 py-3">{t("colActive")}</th>
                       <th className="px-3 py-3" />
                     </tr>
                   </thead>
@@ -524,7 +528,7 @@ export default function AcquisitionsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-blue-600" /> New Purchase Order</h2>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-blue-600" /> {t("newPOTitle")}</h2>
               <button onClick={() => setPoModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
 
@@ -532,20 +536,20 @@ export default function AcquisitionsPage() {
               {/* Vendor + dates */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Vendor <span className="text-red-400">*</span></label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("vendorLabel")} <span className="text-red-400">*</span></label>
                   <select value={poVendorId} onChange={e => setPoVendorId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">— Select vendor —</option>
+                    <option value="">{t("selectVendorPlaceholder")}</option>
                     {vendors.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Expected Delivery</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("expectedDelivery")}</label>
                   <input type="date" value={poExpected} onChange={e => setPoExpected(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("currencyLabel")}</label>
                   <select value={poCurrency} onChange={e => setPoCurrency(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {["USD","KHR","EUR","THB","SGD"].map(c => <option key={c}>{c}</option>)}
@@ -556,27 +560,27 @@ export default function AcquisitionsPage() {
               {/* Items */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Order Items</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t("orderItemsLabel")}</p>
                   <button type="button" onClick={() => setPoItems(p => [...p, { ...BLANK_ITEM }])}
                     className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                    <Plus className="w-3.5 h-3.5" /> Add item
+                    <Plus className="w-3.5 h-3.5" /> {t("addItem")}
                   </button>
                 </div>
                 <div className="space-y-2">
                   {poItems.map((item, idx) => (
-                    <ItemRow key={idx} item={item} books={books}
+                    <ItemRow key={idx} item={item} books={books} t={t}
                       onChange={patch => updateItem(idx, patch)}
                       onRemove={() => setPoItems(p => p.filter((_, i) => i !== idx))} />
                   ))}
                 </div>
                 <div className="mt-2 flex justify-end text-sm font-semibold text-gray-700">
-                  Total: {poCurrency} {poItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toFixed(2)}
+                  {t("totalLabel")}: {poCurrency} {poItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toFixed(2)}
                 </div>
               </div>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("notesLabel")}</label>
                 <textarea rows={2} value={poNotes} onChange={e => setPoNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -585,10 +589,10 @@ export default function AcquisitionsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white">
-              <button onClick={() => setPoModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setPoModal(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={savePO} disabled={poSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
-                {poSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create Order
+                {poSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t("createOrder")}
               </button>
             </div>
           </div>
@@ -600,11 +604,17 @@ export default function AcquisitionsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">{vModal === "create" ? "New Vendor" : "Edit Vendor"}</h2>
+              <h2 className="font-bold text-gray-900">{vModal === "create" ? t("newVendorTitle") : t("editVendorTitle")}</h2>
               <button onClick={() => setVModal(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
-              {[["name","Name *","text"],["contact","Contact Person","text"],["phone","Phone","tel"],["email","Email","email"],["website","Website","url"]] .map(([k, label, type]) => (
+              {([
+                ["name",    t("fieldNameRequired"), "text"],
+                ["contact", t("fieldContact"),      "text"],
+                ["phone",   t("fieldPhone"),         "tel"],
+                ["email",   t("fieldEmail"),        "email"],
+                ["website", t("fieldWebsite"),      "url"],
+              ] as [string, string, string][]).map(([k, label, type]) => (
                 <div key={k}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                   <input type={type} value={(vForm as Record<string,string>)[k]} onChange={e => setVForm(f => ({ ...f, [k]: e.target.value }))}
@@ -612,23 +622,23 @@ export default function AcquisitionsPage() {
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldAddress")}</label>
                 <textarea rows={2} value={vForm.address} onChange={e => setVForm(f => ({ ...f, address: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("notesLabel")}</label>
                 <textarea rows={2} value={vForm.notes} onChange={e => setVForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               {vErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{vErr}</div>}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setVModal(null)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setVModal(null)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
               <button onClick={saveVendor} disabled={vSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
                 {vSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {vModal === "create" ? "Create Vendor" : "Save"}
+                {vModal === "create" ? t("newVendorTitle") : t("save")}
               </button>
             </div>
           </div>
@@ -640,11 +650,11 @@ export default function AcquisitionsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
             <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-            <h3 className="font-bold text-gray-900 mb-1">Delete this vendor?</h3>
-            <p className="text-sm text-gray-500 mb-5">Vendors with existing orders cannot be deleted — deactivate them instead.</p>
+            <h3 className="font-bold text-gray-900 mb-1">{t("deleteVendorTitle")}</h3>
+            <p className="text-sm text-gray-500 mb-5">{t("deleteVendorNote")}</p>
             <div className="flex gap-3">
-              <button onClick={() => setVDelId(null)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button onClick={deleteVendor} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">Delete</button>
+              <button onClick={() => setVDelId(null)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">{t("cancel")}</button>
+              <button onClick={deleteVendor} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">{t("delete")}</button>
             </div>
           </div>
         </div>

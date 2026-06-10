@@ -70,6 +70,8 @@ interface SettingsData {
   OPAC_CUSTOM_FONTS:                 string;
   PUBLIC_PAGINATION_MODE:            string;
   PUBLIC_PAGINATION_LIMIT:           string;
+  BOOK_COVER_STYLE:                  string;
+  BOOK_COVER_FRAME:                  string;
   // Book Sale
   BOOK_SALE_ENABLED:                 string;
   BOOK_SALE_QR_IMAGE:                string;
@@ -134,7 +136,9 @@ const DEFAULT: SettingsData = {
   OPAC_FONT_KM:                      "default",
   OPAC_CUSTOM_FONTS:                 "[]",
   PUBLIC_PAGINATION_MODE:            "loadmore",
-  PUBLIC_PAGINATION_LIMIT:           "20",
+  PUBLIC_PAGINATION_LIMIT:           "30",
+  BOOK_COVER_STYLE:                  "spine",
+  BOOK_COVER_FRAME:                  "none",
   BOOK_SALE_ENABLED:                 "false",
   BOOK_SALE_QR_IMAGE:                "",
   BOOK_SALE_BANK_NAME:               "",
@@ -200,6 +204,46 @@ const THEMES = [
     header:  "#ffffff",
     border:  "#bbf7d0",
     accent:  "#059669",
+  },
+  {
+    id:      "academic",
+    nameKey: "themeAcademicName",
+    descKey: "themeAcademicDesc",
+    sidebar: "#0f766e",
+    pageBg:  "#f0fdfa",
+    header:  "#ffffff",
+    border:  "#99f6e4",
+    accent:  "#0f766e",
+  },
+  {
+    id:      "parchment",
+    nameKey: "themeParchmentName",
+    descKey: "themeParchmentDesc",
+    sidebar: "#5c3d2e",
+    pageBg:  "#fffbf0",
+    header:  "#fffbf5",
+    border:  "#e8dcc8",
+    accent:  "#b45309",
+  },
+  {
+    id:      "slate",
+    nameKey: "themeSlateColorName",
+    descKey: "themeSlateColorDesc",
+    sidebar: "#1e293b",
+    pageBg:  "#f8fafc",
+    header:  "#ffffff",
+    border:  "#e2e8f0",
+    accent:  "#0284c7",
+  },
+  {
+    id:      "terminal",
+    nameKey: "themeTerminalName",
+    descKey: "themeTerminalDesc",
+    sidebar: "#0a1a0a",
+    pageBg:  "#0a0a0a",
+    header:  "#0d110d",
+    border:  "#1a2e1a",
+    accent:  "#22c55e",
   },
 ];
 
@@ -522,10 +566,8 @@ export default function SettingsPage() {
       </Section>
 
       {/* ── Public Catalog Theme ──────────────────────────────────────── */}
-      <Section title="Public Catalog Theme" icon={<Palette className="w-4 h-4 text-pink-500" />}>
-        <p className="text-xs text-gray-400 -mt-2">
-          Applied to the <strong>Discover</strong> and <strong>E-Library</strong> pages visible to all members and visitors.
-        </p>
+      <Section title={t("sectionCatalog")} icon={<Palette className="w-4 h-4 text-pink-500" />}>
+        <p className="text-xs text-gray-400 -mt-2">{t("catalogSectionNote")}</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {(Object.entries(OPAC_THEMES) as [OpacThemeKey, typeof OPAC_THEMES[OpacThemeKey]][]).map(([key, thm]) => {
             const labels: Record<OpacThemeKey, { name: string; desc: string }> = {
@@ -577,16 +619,24 @@ export default function SettingsPage() {
         {/* Full-width layout toggle */}
         <div className="pt-2 border-t border-gray-100">
           <Field
-            label="Full-Width Layout"
-            hint="When on, Discover, E-Library and Shop pages stretch edge-to-edge instead of being centred in a max-width container. Ideal for large monitors."
+            label={t("fullWidthLabel")}
+            hint={t("fullWidthHint")}
             icon={<Monitor className="w-4 h-4 text-gray-400" />}
           >
             <div className="flex gap-3 mt-1">
-              {([["false", "Centred (max-w)"], ["true", "Full Width"]] as const).map(([val, label]) => (
+              {([["false", t("fullWidthCentred"), "30"], ["true", t("fullWidthFull"), "36"]] as const).map(([val, label, defaultLimit]) => (
                 <button
                   key={val}
                   type="button"
-                  onClick={() => set("OPAC_FULL_WIDTH", val)}
+                  onClick={() => {
+                    set("OPAC_FULL_WIDTH", val);
+                    // Auto-set Items Per Page only when the value still matches
+                    // the other layout's default — preserves manual edits.
+                    const otherDefault = val === "true" ? "30" : "36";
+                    if (data.PUBLIC_PAGINATION_LIMIT === otherDefault || data.OPAC_FULL_WIDTH !== val) {
+                      set("PUBLIC_PAGINATION_LIMIT", defaultLimit);
+                    }
+                  }}
                   disabled={busy}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
                     ${data.OPAC_FULL_WIDTH === val
@@ -600,15 +650,15 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Page Background"
-            hint="Background colour for Discover, E-Library and Shop pages."
+            label={t("pageBgLabel")}
+            hint={t("pageBgHint")}
             icon={<Monitor className="w-4 h-4 text-gray-400" />}
           >
             <div className="flex gap-3 mt-1">
               {([
-                { val: "light", label: "Light",  preview: "bg-gray-200",  ring: "ring-gray-300" },
-                { val: "white", label: "White",  preview: "bg-white",     ring: "ring-gray-300" },
-                { val: "dark",  label: "Dark",   preview: "bg-slate-950", ring: "ring-slate-700" },
+                { val: "light", label: t("pageBgLight"), preview: "bg-gray-200",  ring: "ring-gray-300" },
+                { val: "white", label: t("pageBgWhite"), preview: "bg-white",     ring: "ring-gray-300" },
+                { val: "dark",  label: t("pageBgDark"),  preview: "bg-slate-950", ring: "ring-slate-700" },
               ] as const).map(({ val, label, preview, ring }) => (
                 <button
                   key={val}
@@ -631,7 +681,7 @@ export default function SettingsPage() {
           <div className="col-span-full space-y-4">
             <p className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
               <Monitor className="w-4 h-4 text-gray-400" />
-              Page Fonts — per language
+              {t("fontsPerLanguage")}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FontPickerField
@@ -660,15 +710,165 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Book Cover Style */}
+        <div className="pt-2 border-t border-gray-100 space-y-3">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+            <BookOpen className="w-4 h-4 text-gray-400" />
+            {t("coverStyleLabel")}
+          </p>
+          <p className="text-xs text-gray-400 -mt-1">{t("coverStyleHint")}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {([
+              {
+                id: "spine", name: t("coverStyleSpineName"),
+                desc: t("coverStyleSpineDesc"),
+                preview: (
+                  <div className="relative w-full h-full">
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#3b4a6b,#1e3a5f)" }} />
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ background: "linear-gradient(to right,rgba(0,0,0,.4),transparent)" }} />
+                    <div className="absolute right-0 top-0 bottom-0 w-1" style={{ background: "repeating-linear-gradient(to bottom,#e8dcc8 0,#e8dcc8 1px,#f5ead5 1px,#f5ead5 3px)", opacity: .7 }} />
+                  </div>
+                ),
+              },
+              {
+                id: "vignette", name: t("coverStyleVignetteName"),
+                desc: t("coverStyleVignetteDesc"),
+                preview: (
+                  <div className="relative w-full h-full">
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(160deg,#d97706,#b45309)" }} />
+                    <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 50%,transparent 25%,rgba(0,0,0,.7) 100%)" }} />
+                  </div>
+                ),
+              },
+              {
+                id: "tilt", name: t("coverStyleTiltName"),
+                desc: t("coverStyleTiltDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center" style={{ perspective: "200px" }}>
+                    <div className="w-[75%] h-[88%] rounded-sm overflow-hidden"
+                      style={{ transform: "rotateY(-14deg) rotateX(2deg)", background: "linear-gradient(135deg,#7c3aed,#4c1d95)", position: "relative", boxShadow: "-4px 6px 12px rgba(0,0,0,.4)" }}>
+                      <div className="absolute inset-0" style={{ background: "linear-gradient(110deg,rgba(255,255,255,.22) 0%,transparent 46%)" }} />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                id: "hardcover", name: t("coverStyleHardcoverName"),
+                desc: t("coverStyleHardcoverDesc"),
+                preview: (
+                  <div className="relative w-full h-full overflow-hidden" style={{ background: "linear-gradient(160deg,#064e3b,#022c22)" }}>
+                    <div className="absolute left-0 top-0 bottom-0 w-2" style={{ background: "rgba(0,0,0,.28)", zIndex: 2 }} />
+                    <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(155deg,rgba(255,255,255,.04) 0,rgba(255,255,255,.04) 1px,transparent 1px,transparent 7px)" }} />
+                    <div className="absolute top-0 right-0 w-3 h-3" style={{ background: "linear-gradient(135deg,rgba(255,255,255,.22) 50%,transparent 50%)" }} />
+                    <div className="absolute inset-0 flex flex-col p-1.5" style={{ paddingLeft: 10, zIndex: 3 }}>
+                      <div className="text-[5px] font-bold leading-tight" style={{ color: "rgba(255,255,255,.85)" }}>Hardcover</div>
+                      <div className="text-[4px] mt-0.5" style={{ color: "rgba(255,255,255,.4)" }}>Classic binding</div>
+                    </div>
+                  </div>
+                ),
+              },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => set("BOOK_COVER_STYLE", opt.id)}
+                disabled={busy}
+                className={`relative rounded-xl border-2 p-3 text-left transition-all focus:outline-none hover:shadow-md disabled:opacity-60
+                  ${data.BOOK_COVER_STYLE === opt.id
+                    ? "border-indigo-500 shadow-md ring-2 ring-indigo-100"
+                    : "border-gray-100 hover:border-gray-200"}`}
+              >
+                <div className="h-16 rounded-lg overflow-hidden mb-2.5 bg-gray-100">
+                  {opt.preview}
+                </div>
+                <p className="font-semibold text-gray-800 text-xs">{opt.name}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 leading-snug">{opt.desc}</p>
+                {data.BOOK_COVER_STYLE === opt.id && (
+                  <span className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[9px]">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Cover Frame ──────────────────────────────────────────── */}
+        <div className="pt-4 border-t border-gray-100">
+          <p className="text-sm font-semibold text-gray-700 mb-1">{t("coverFrameLabel")}</p>
+          <p className="text-xs text-gray-400 mb-3">{t("coverFrameHint")}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {([
+              { id: "none",    name: t("coverFrameNoneName"),    desc: t("coverFrameNoneDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-12 rounded bg-gradient-to-b from-indigo-400 to-indigo-700" />
+                  </div>
+                ),
+              },
+              { id: "accent",  name: t("coverFrameAccentName"),  desc: t("coverFrameAccentDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-12 rounded bg-gradient-to-b from-indigo-400 to-indigo-700"
+                      style={{ boxShadow: "0 0 0 2.5px #6366f1" }} />
+                  </div>
+                ),
+              },
+              { id: "glow",    name: t("coverFrameGlowName"),    desc: t("coverFrameGlowDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-12 rounded bg-gradient-to-b from-indigo-400 to-indigo-700"
+                      style={{ boxShadow: "0 0 0 2px #6366f1, 0 0 14px 4px rgba(99,102,241,0.45)" }} />
+                  </div>
+                ),
+              },
+              { id: "classic", name: t("coverFrameClassicName"), desc: t("coverFrameClassicDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-12 rounded bg-gradient-to-b from-indigo-400 to-indigo-700"
+                      style={{ boxShadow: "0 0 0 1.5px rgba(255,255,255,0.9), 0 0 0 4px #6366f1, 0 0 0 5.5px rgba(255,255,255,0.4)" }} />
+                  </div>
+                ),
+              },
+              { id: "shadow",  name: t("coverFrameShadowName"),  desc: t("coverFrameShadowDesc"),
+                preview: (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-12 rounded bg-gradient-to-b from-indigo-400 to-indigo-700"
+                      style={{ boxShadow: "5px 8px 20px rgba(0,0,0,0.45), 2px 3px 6px rgba(0,0,0,0.2)" }} />
+                  </div>
+                ),
+              },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => set("BOOK_COVER_FRAME", opt.id)}
+                disabled={busy}
+                className={`relative rounded-xl border-2 p-3 text-left transition-all focus:outline-none hover:shadow-md disabled:opacity-60
+                  ${data.BOOK_COVER_FRAME === opt.id
+                    ? "border-indigo-500 shadow-md ring-2 ring-indigo-100"
+                    : "border-gray-100 hover:border-gray-200"}`}
+              >
+                <div className="h-16 rounded-lg overflow-hidden mb-2.5 bg-gray-100">
+                  {opt.preview}
+                </div>
+                <p className="font-semibold text-gray-800 text-xs">{opt.name}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 leading-snug">{opt.desc}</p>
+                {data.BOOK_COVER_FRAME === opt.id && (
+                  <span className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[9px]">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Pagination mode */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-gray-100">
           <Field
-            label="Catalog Pagination Style"
-            hint="How Discover, E-Library and Shop load more items."
+            label={t("paginationStyleLabel")}
+            hint={t("paginationStyleHint")}
             icon={<Monitor className="w-4 h-4 text-gray-400" />}
           >
             <div className="flex gap-3 mt-1">
-              {([["loadmore", "Load More Button"], ["numbers", "Page Numbers"]] as const).map(([val, label]) => (
+              {([["loadmore", t("paginationLoadMore")], ["numbers", t("paginationNumbers")]] as const).map(([val, label]) => (
                 <button
                   key={val}
                   type="button"
@@ -686,8 +886,8 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Items Per Page"
-            hint="Number of books / e-resources shown per page or per load."
+            label={t("itemsPerPageLabel")}
+            hint={t("itemsPerPageHint")}
             icon={<BookOpen className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -709,16 +909,7 @@ export default function SettingsPage() {
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
           <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800 min-w-0">
-            <strong>These are global fallback defaults.</strong> When a loan is created, the system first
-            checks your{" "}
-            <Link
-              href={`/${locale}/admin/circulation-rules`}
-              className="font-semibold underline hover:text-amber-900"
-            >
-              Circulation Rules
-            </Link>
-            {" "}for a matching rule (by patron type, material type, or branch). If a rule matches, its
-            values override these settings. If no rule matches, these defaults apply.
+            {t("loanPolicyNote")}
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -875,14 +1066,12 @@ export default function SettingsPage() {
       </Section>
 
       {/* ── Telegram Notifications ───────────────────────────────────── */}
-      <Section title="Telegram Notifications" icon={<Send className="w-4 h-4 text-sky-500" />}>
-        <p className="text-xs text-gray-400 -mt-2 mb-4">
-          Send loan reminders, membership expiry alerts, and reservation notices to members via Telegram bot.
-        </p>
+      <Section title={t("sectionTelegram")} icon={<Send className="w-4 h-4 text-sky-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">{t("telegramSectionNote")}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Field
-            label="Enable Telegram Notifications"
-            hint="Master switch — when disabled, no Telegram messages will be sent regardless of other settings."
+            label={t("telegramEnabledLabel")}
+            hint={t("telegramEnabledHint")}
             icon={<Send className="w-4 h-4 text-gray-400" />}
           >
             <select value={data.TELEGRAM_NOTIFICATIONS_ENABLED} onChange={(e) => set("TELEGRAM_NOTIFICATIONS_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
@@ -892,8 +1081,8 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Admin / Staff Alert Chat ID"
-            hint="Telegram chat ID for the admin or a staff group. When set, the bot sends alerts for new orders, payment proofs awaiting confirmation, and return requests."
+            label={t("telegramAdminChatLabel")}
+            hint={t("telegramAdminChatHint")}
             icon={<Bot className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -907,8 +1096,8 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Membership Expiry Warning (days)"
-            hint="How many days before membership expiry to send a Telegram reminder."
+            label={t("telegramExpiryLabel")}
+            hint={t("telegramExpiryHint")}
             icon={<Clock className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -921,26 +1110,26 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Allow Members to Link Telegram"
-            hint="When enabled, members can connect their Telegram account from the member portal to receive push notifications."
+            label={t("telegramLinkMemberLabel")}
+            hint={t("telegramLinkMemberHint")}
             icon={<Send className="w-4 h-4 text-gray-400" />}
           >
             <select value={data.TELEGRAM_LINK_MEMBER} onChange={(e) => set("TELEGRAM_LINK_MEMBER", e.target.value)} disabled={busy} className={inputCls}>
-              <option value="true">Allowed — members can link</option>
-              <option value="false">Disabled — staff only</option>
+              <option value="true">{t("telegramLinkAllowed")}</option>
+              <option value="false">{t("telegramLinkDisabled")}</option>
             </select>
           </Field>
 
           <Field
-            label="Phone Number Click Action"
-            hint="What happens when staff click a phone number in the Members list — dial, open Telegram, both, or plain text."
+            label={t("phoneClickLabel")}
+            hint={t("phoneClickHint")}
             icon={<Activity className="w-4 h-4 text-gray-400" />}
           >
             <select value={data.PHONE_CLICK_ACTION} onChange={(e) => set("PHONE_CLICK_ACTION", e.target.value)} disabled={busy} className={inputCls}>
-              <option value="both">Both — dial &amp; open Telegram</option>
-              <option value="dial">Dial only (tel: link)</option>
-              <option value="telegram">Telegram only (t.me link)</option>
-              <option value="disabled">Disabled — plain text</option>
+              <option value="both">{t("phoneClickBoth")}</option>
+              <option value="dial">{t("phoneClickDial")}</option>
+              <option value="telegram">{t("phoneClickTelegram")}</option>
+              <option value="disabled">{t("phoneClickDisabled")}</option>
             </select>
           </Field>
         </div>
@@ -949,7 +1138,7 @@ export default function SettingsPage() {
         <WebhookRegister />
 
         <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 text-xs text-sky-700 space-y-1">
-          <p className="font-semibold">How to set up the Telegram bot</p>
+          <p className="font-semibold">{t("telegramSetupTitle")}</p>
           <p>• Create a bot via <strong>@BotFather</strong> on Telegram and copy the bot token</p>
           <p>• Add <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> and <code className="bg-sky-100 px-1 rounded">TELEGRAM_BOT_USERNAME</code> to your <code className="bg-sky-100 px-1 rounded">.env</code> file</p>
           <p>• Click <strong>Register Webhook</strong> above — this tells Telegram where to send messages</p>
@@ -960,11 +1149,11 @@ export default function SettingsPage() {
       </Section>
 
       {/* ── Member Self-Registration ──────────────────────────────────── */}
-      <Section title="Member Self-Registration" icon={<UserPlus className="w-4 h-4 text-emerald-500" />}>
+      <Section title={t("sectionSelfReg")} icon={<UserPlus className="w-4 h-4 text-emerald-500" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Field
-            label="Allow Self-Registration"
-            hint='When enabled, a "Create account" button appears on the member login page and the /member/register page is accessible.'
+            label={t("selfRegLabel")}
+            hint={t("selfRegHint")}
             icon={<UserPlus className="w-4 h-4 text-gray-400" />}
           >
             <select
@@ -973,14 +1162,14 @@ export default function SettingsPage() {
               disabled={busy}
               className={inputCls}
             >
-              <option value="true">Open — anyone can register</option>
-              <option value="false">Closed — staff only</option>
+              <option value="true">{t("selfRegOpen")}</option>
+              <option value="false">{t("selfRegClosed")}</option>
             </select>
           </Field>
 
           <Field
-            label="Auto-Approve New Accounts"
-            hint="Enabled: new members can log in immediately. Disabled: accounts are inactive until a staff member approves them."
+            label={t("selfRegAutoApproveLabel")}
+            hint={t("selfRegAutoApproveHint")}
             icon={<Users className="w-4 h-4 text-gray-400" />}
           >
             <select
@@ -989,31 +1178,31 @@ export default function SettingsPage() {
               disabled={busy || data.MEMBER_SELF_REGISTER !== "true"}
               className={inputCls}
             >
-              <option value="false">Pending approval (recommended)</option>
-              <option value="true">Auto-approve (instant access)</option>
+              <option value="false">{t("selfRegPending")}</option>
+              <option value="true">{t("selfRegAutoApprove")}</option>
             </select>
           </Field>
         </div>
 
         {data.MEMBER_SELF_REGISTER === "true" && data.MEMBER_SELF_REGISTER_AUTO_APPROVE === "false" && (
           <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-xs text-amber-700">
-            ⚠️ <strong>Pending approval mode:</strong> New registrations will appear in the Members list with <code>isActive = false</code>. A staff member must manually activate the account before the member can log in.
+            {t("selfRegPendingNote")}
           </div>
         )}
 
         {data.MEMBER_SELF_REGISTER === "false" && (
           <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 text-xs text-gray-500">
-            Registration is closed. Only staff can create member accounts via the admin panel.
+            {t("selfRegClosedNote")}
           </div>
         )}
       </Section>
 
       {/* ── Member ID Format ──────────────────────────────────────────────── */}
-      <Section title="Member ID Format" icon={<Users className="w-4 h-4 text-indigo-500" />}>
+      <Section title={t("sectionMemberId")} icon={<Users className="w-4 h-4 text-indigo-500" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Field
-            label="ID Format"
-            hint="Template for auto-generated Member IDs. Use tokens: {YYYY} {YY} {MM} {SEQ4} {SEQ5} {SEQ6} {RAND4} {RAND6}"
+            label={t("memberIdFormatLabel")}
+            hint={t("memberIdFormatHint")}
             icon={<Users className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -1027,8 +1216,8 @@ export default function SettingsPage() {
           </Field>
 
           <Field
-            label="Sequence Counter"
-            hint="Current value of the sequence counter used by {SEQ*} tokens. Set to 0 to reset, or any number to continue from."
+            label={t("memberIdCounterLabel")}
+            hint={t("memberIdCounterHint")}
             icon={<Users className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -1059,15 +1248,15 @@ export default function SettingsPage() {
             .replace(/{RAND4}/g, "4821");
           return (
             <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-xs text-indigo-700 flex items-center gap-2">
-              <span className="font-medium">Preview:</span>
+              <span className="font-medium">{t("memberIdPreview")}</span>
               <code className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-200">{preview}</code>
-              <span className="text-indigo-400">(random digits shown as example)</span>
+              <span className="text-indigo-400">{t("memberIdRandomNote")}</span>
             </div>
           );
         })()}
 
         <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 text-xs text-gray-500 space-y-1">
-          <p className="font-semibold text-gray-700 mb-1">Available tokens</p>
+          <p className="font-semibold text-gray-700 mb-1">{t("memberIdTokensTitle")}</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
             <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"YYYY}"}</code> — 4-digit year (e.g. 2026)</p>
             <p><code className="bg-white border border-gray-200 px-1 rounded">{"{"+"YY}"}</code> — 2-digit year (e.g. 26)</p>
@@ -1083,28 +1272,26 @@ export default function SettingsPage() {
       </Section>
 
       {/* ── Book Sale / Shop ──────────────────────────────────────────── */}
-      <Section title="Book Sale & Shop" icon={<DollarSign className="w-4 h-4 text-violet-500" />}>
-        <p className="text-xs text-gray-400 -mt-2 mb-4">
-          Allow members to purchase FOR_SALE copies directly from the portal. Enable the feature, configure currency and payment QR.
-        </p>
+      <Section title={t("sectionSale")} icon={<DollarSign className="w-4 h-4 text-violet-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">{t("saleSectionNote")}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <Field label="Enable Book Sale" hint="Master switch — shows the /shop page to members and allows adding to sale cart." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleEnabledLabel")} hint={t("saleEnabledHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <select value={data.BOOK_SALE_ENABLED} onChange={(e) => set("BOOK_SALE_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
+              <option value="true">{t("saleOn")}</option>
+              <option value="false">{t("saleOff")}</option>
             </select>
           </Field>
 
-          <Field label="Primary Currency" hint="Currency symbol used for all sale prices (USD, KHR, THB, …)." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleCurrencyLabel")} hint={t("saleCurrencyHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input value={data.STOCK_CURRENCY} onChange={(e) => set("STOCK_CURRENCY", e.target.value)} placeholder="USD" disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Secondary Currency" hint="Optional second currency shown alongside prices (e.g. KHR). Leave blank to disable." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
-            <input value={data.STOCK_SECONDARY_CURRENCY} onChange={(e) => set("STOCK_SECONDARY_CURRENCY", e.target.value)} placeholder="KHR (leave blank to disable)" disabled={busy} className={inputCls} />
+          <Field label={t("saleSecCurLabel")} hint={t("saleSecCurHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <input value={data.STOCK_SECONDARY_CURRENCY} onChange={(e) => set("STOCK_SECONDARY_CURRENCY", e.target.value)} placeholder="KHR" disabled={busy} className={inputCls} />
           </Field>
 
           {data.STOCK_SECONDARY_CURRENCY && (
-            <Field label="Exchange Rate" hint={`1 ${data.STOCK_CURRENCY} = X ${data.STOCK_SECONDARY_CURRENCY}`} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+            <Field label={t("saleRateLabel")} hint={`1 ${data.STOCK_CURRENCY} = X ${data.STOCK_SECONDARY_CURRENCY}`} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
               <input type="number" value={data.STOCK_SECONDARY_RATE} onChange={(e) => set("STOCK_SECONDARY_RATE", e.target.value)} disabled={busy} className={inputCls} />
             </Field>
           )}
@@ -1112,9 +1299,9 @@ export default function SettingsPage() {
           {/* ── Payment QR Image ── */}
           <div className="space-y-3 rounded-xl border border-amber-100 bg-amber-50/40 p-4">
             <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <ImagePlus className="w-4 h-4 text-amber-600" /> Payment QR Code
+              <ImagePlus className="w-4 h-4 text-amber-600" /> {t("saleQrSectionLabel")}
             </p>
-            <p className="text-xs text-gray-500">Upload your KHQR / ABA / bank QR image. Members will see this at checkout when paying by QR transfer.</p>
+            <p className="text-xs text-gray-500">{t("saleQrHint")}</p>
 
             {/* Preview + upload */}
             <div className="flex items-start gap-4">
@@ -1133,13 +1320,13 @@ export default function SettingsPage() {
               ) : (
                 <div className="w-28 h-28 rounded-xl border-2 border-dashed border-amber-200 flex flex-col items-center justify-center bg-white text-amber-400 flex-shrink-0">
                   <ImagePlus className="w-6 h-6 mb-1" />
-                  <span className="text-[10px]">No QR yet</span>
+                  <span className="text-[10px]">{t("saleNoQr")}</span>
                 </div>
               )}
               <div className="flex-1 space-y-2">
                 <label className="flex items-center gap-2 px-3 py-2 bg-white border border-amber-200 rounded-lg text-sm font-medium text-amber-700 hover:bg-amber-50 cursor-pointer transition-colors w-fit">
                   <ImagePlus className="w-4 h-4" />
-                  {data.BOOK_SALE_QR_IMAGE ? "Replace QR image" : "Upload QR image"}
+                  {data.BOOK_SALE_QR_IMAGE ? t("saleReplaceQr") : t("saleUploadQr")}
                   <input
                     type="file"
                     accept="image/*"
@@ -1157,58 +1344,58 @@ export default function SettingsPage() {
                     }}
                   />
                 </label>
-                <p className="text-xs text-gray-400">Or paste a URL directly:</p>
+                <p className="text-xs text-gray-400">{t("salePasteUrl")}</p>
                 <input value={data.BOOK_SALE_QR_IMAGE} onChange={(e) => set("BOOK_SALE_QR_IMAGE", e.target.value)} placeholder="https://…/qr.png" disabled={busy} className={inputCls} />
               </div>
             </div>
           </div>
 
-          <Field label="Bank / Payment Name" hint="e.g. ABA Bank, ACLEDA, Wing" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleBankNameLabel")} hint={t("saleBankNameHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input value={data.BOOK_SALE_BANK_NAME} onChange={(e) => set("BOOK_SALE_BANK_NAME", e.target.value)} placeholder="ABA Bank" disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Account Holder Name" hint="Name shown on the transfer screen" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleAccountNameLabel")} hint={t("saleAccountNameHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input value={data.BOOK_SALE_ACCOUNT_NAME} onChange={(e) => set("BOOK_SALE_ACCOUNT_NAME", e.target.value)} placeholder="PVD Library" disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Account Number / Phone" hint="Bank account number or mobile number for the QR" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleAccountNumberLabel")} hint={t("saleAccountNumberHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input value={data.BOOK_SALE_ACCOUNT_NUMBER} onChange={(e) => set("BOOK_SALE_ACCOUNT_NUMBER", e.target.value)} placeholder="012 345 678" disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Payment Instructions" hint="Extra instructions shown to member below the QR code (optional)" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleInstructionsLabel")} hint={t("saleInstructionsHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <textarea value={data.BOOK_SALE_PAYMENT_INSTRUCTIONS} onChange={(e) => set("BOOK_SALE_PAYMENT_INSTRUCTIONS", e.target.value)} placeholder="Scan, pay, then upload your payment screenshot on the order page." disabled={busy} rows={2} className={`${inputCls} resize-none`} />
           </Field>
 
-          <Field label="Payment Methods" hint="Comma-separated: qr, cash_on_pickup" icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleMethodsLabel")} hint={t("saleMethodsHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input value={data.BOOK_SALE_PAYMENT_METHODS} onChange={(e) => set("BOOK_SALE_PAYMENT_METHODS", e.target.value)} placeholder="qr,cash_on_pickup" disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Enable Delivery" hint="Members can choose home delivery at checkout." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleDeliveryLabel")} hint={t("saleDeliveryHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <select value={data.BOOK_SALE_DELIVERY_ENABLED} onChange={(e) => set("BOOK_SALE_DELIVERY_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
+              <option value="true">{t("saleOn")}</option>
+              <option value="false">{t("saleOff")}</option>
             </select>
           </Field>
 
-          <Field label="Enable Pickup" hint="Members can choose to collect at a library branch." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("salePickupLabel")} hint={t("salePickupHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <select value={data.BOOK_SALE_PICKUP_ENABLED} onChange={(e) => set("BOOK_SALE_PICKUP_ENABLED", e.target.value)} disabled={busy} className={inputCls}>
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
+              <option value="true">{t("saleOn")}</option>
+              <option value="false">{t("saleOff")}</option>
             </select>
           </Field>
 
-          <Field label="Delivery / Shipping Fee" hint={`Default shipping fee in ${data.STOCK_CURRENCY || "USD"}.`} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleShippingLabel")} hint={t("saleShippingHint", { currency: data.STOCK_CURRENCY || "USD" })} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input type="number" step="0.01" min="0" value={data.BOOK_SALE_SHIPPING_FEE} onChange={(e) => set("BOOK_SALE_SHIPPING_FEE", e.target.value)} disabled={busy} className={inputCls} />
           </Field>
 
-          <Field label="Tax Rate (%)" hint="Applied on top of book prices. Set 0 to disable tax. e.g. 10 = 10% VAT." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleTaxLabel")} hint={t("saleTaxHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <div className="relative">
               <input type="number" step="0.01" min="0" max="100" value={data.BOOK_SALE_TAX_RATE} onChange={(e) => set("BOOK_SALE_TAX_RATE", e.target.value)} disabled={busy} className={inputCls} placeholder="0" />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">%</span>
             </div>
           </Field>
 
-          <Field label="Return Window (days)" hint="How many days after purchase a member can request a return." icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("saleReturnWindowLabel")} hint={t("saleReturnWindowHint")} icon={<DollarSign className="w-4 h-4 text-gray-400" />}>
             <input type="number" min="0" value={data.BOOK_SALE_RETURN_WINDOW_DAYS} onChange={(e) => set("BOOK_SALE_RETURN_WINDOW_DAYS", e.target.value)} disabled={busy} className={inputCls} />
           </Field>
 
@@ -1216,17 +1403,14 @@ export default function SettingsPage() {
       </Section>
 
       {/* ── Public Footer ─────────────────────────────────────────────── */}
-      <Section title="Public Contact Footer" icon={<MapPin className="w-4 h-4 text-teal-500" />}>
-        <p className="text-xs text-gray-400 -mt-2 mb-4">
-          Show library contact info in the footer of Discover, E-Library, and Bookstore pages.
-          Contact details come from <strong>Library Information</strong> below.
-        </p>
+      <Section title={t("sectionFooter")} icon={<MapPin className="w-4 h-4 text-teal-500" />}>
+        <p className="text-xs text-gray-400 -mt-2 mb-4">{t("footerSectionNote")}</p>
 
         {/* Master toggle */}
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 mb-4">
           <div>
-            <p className="text-sm font-semibold text-gray-800">Enable Public Footer</p>
-            <p className="text-xs text-gray-500 mt-0.5">Show contact footer on all public-facing pages</p>
+            <p className="text-sm font-semibold text-gray-800">{t("footerEnabledLabel")}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{t("footerEnabledDesc")}</p>
           </div>
           <button
             type="button"
@@ -1235,9 +1419,9 @@ export default function SettingsPage() {
             className="flex items-center gap-2 text-sm font-medium transition-colors"
           >
             {data.PUBLIC_FOOTER_ENABLED === "true" ? (
-              <><ToggleRight className="w-8 h-8 text-teal-500" /><span className="text-teal-600">On</span></>
+              <><ToggleRight className="w-8 h-8 text-teal-500" /><span className="text-teal-600">{t("footerToggleOn")}</span></>
             ) : (
-              <><ToggleLeft className="w-8 h-8 text-gray-400" /><span className="text-gray-400">Off</span></>
+              <><ToggleLeft className="w-8 h-8 text-gray-400" /><span className="text-gray-400">{t("footerToggleOff")}</span></>
             )}
           </button>
         </div>
@@ -1246,7 +1430,7 @@ export default function SettingsPage() {
           <>
             {/* Which contact types to show */}
             <div className="mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Show on footer</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">{t("footerShowLabel")}</p>
               <div className="flex flex-wrap gap-2">
                 {([
                   { key: "phone",    label: "Phone"    },
@@ -1281,22 +1465,20 @@ export default function SettingsPage() {
                   );
                 })}
               </div>
-              <p className="text-xs text-gray-400 mt-1.5">
-                Click to toggle. Items only show if the corresponding field in Library Information is filled in.
-              </p>
+              <p className="text-xs text-gray-400 mt-1.5">{t("footerShowHint")}</p>
             </div>
 
             {/* Extra fields not in Library Information */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <Field label="Opening Hours" hint='e.g. "Mon–Fri 8am–5pm, Sat 8am–12pm"' icon={<Clock className="w-4 h-4 text-gray-400" />}>
+              <Field label={t("footerHoursLabel")} hint={t("footerHoursHint")} icon={<Clock className="w-4 h-4 text-gray-400" />}>
                 <input value={data.LIBRARY_HOURS} onChange={(e) => set("LIBRARY_HOURS", e.target.value)}
                   placeholder="Mon–Fri 8am–5pm" disabled={busy} className={inputCls} />
               </Field>
-              <Field label="WhatsApp Number" hint='Include country code, e.g. "+85512345678"' icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+              <Field label={t("footerWhatsappLabel")} hint={t("footerWhatsappHint")} icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
                 <input value={data.LIBRARY_WHATSAPP} onChange={(e) => set("LIBRARY_WHATSAPP", e.target.value)}
                   placeholder="+855 12 345 678" disabled={busy} className={inputCls} />
               </Field>
-              <Field label="Website URL" hint='e.g. "https://pvdlibrary.org"' icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+              <Field label={t("footerWebsiteLabel")} hint={t("footerWebsiteHint")} icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
                 <input value={data.LIBRARY_WEBSITE} onChange={(e) => set("LIBRARY_WEBSITE", e.target.value)}
                   placeholder="https://..." disabled={busy} className={inputCls} />
               </Field>
@@ -1304,7 +1486,7 @@ export default function SettingsPage() {
 
             {/* ── Description ── */}
             <div className="mt-6">
-              <Field label="Footer Description" hint="Short tagline shown under the library logo" icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
+              <Field label={t("footerDescriptionLabel")} hint={t("footerDescriptionHint")} icon={<ExternalLink className="w-4 h-4 text-gray-400" />}>
                 <textarea value={data.PUBLIC_FOOTER_DESCRIPTION} onChange={(e) => set("PUBLIC_FOOTER_DESCRIPTION", e.target.value)}
                   rows={2} placeholder="Your gateway to knowledge…" disabled={busy}
                   className={`${inputCls} resize-none`} />
@@ -1437,7 +1619,7 @@ export default function SettingsPage() {
               placeholder="+855 23 000 000"
             />
           </Field>
-          <Field label="Library Address" hint="Shown on POS thermal receipts" icon={<Building2 className="w-4 h-4 text-gray-400" />}>
+          <Field label={t("libraryAddressLabel")} hint={t("libraryAddressHint")} icon={<Building2 className="w-4 h-4 text-gray-400" />}>
             <input
               type="text"
               value={data.LIBRARY_ADDRESS}
@@ -1448,8 +1630,8 @@ export default function SettingsPage() {
             />
           </Field>
           <Field
-            label="Librarian Telegram"
-            hint="Username shown to members when they need to contact staff — e.g. to cancel a deposit pre-order. Include the @ symbol."
+            label={t("libraryTelegramLabel")}
+            hint={t("libraryTelegramHint")}
             icon={<Phone className="w-4 h-4 text-gray-400" />}
           >
             <input
@@ -1533,15 +1715,13 @@ export default function SettingsPage() {
 
         {/* Link to Translations manager */}
         <div className="flex items-center justify-between gap-4 pt-2 border-t border-gray-100">
-          <p className="text-xs text-gray-400">
-            To add a new language or edit translations, use the Translations manager.
-          </p>
+          <p className="text-xs text-gray-400">{t("translationsNote")}</p>
           <button
             type="button"
             onClick={() => router.push(`/${(typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "en")}/admin/translations`)}
             className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors shrink-0"
           >
-            <Globe className="w-3.5 h-3.5" /> Manage Translations →
+            <Globe className="w-3.5 h-3.5" /> {t("manageTranslations")}
           </button>
         </div>
       </Section>
@@ -1558,6 +1738,7 @@ export default function SettingsPage() {
 
 /* ── Webhook register button ───────────────────────────────────────────── */
 function WebhookRegister() {
+  const t = useTranslations("settings");
   const [status,  setStatus]  = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [url,     setUrl]     = useState("");
   const [errMsg,  setErrMsg]  = useState("");
@@ -1599,13 +1780,13 @@ function WebhookRegister() {
           className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
         >
           {status === "loading"
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering…</>
-            : <><Send className="w-4 h-4" /> Register Webhook</>}
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("webhookRegistering")}</>
+            : <><Send className="w-4 h-4" /> {t("webhookRegister")}</>}
         </button>
       </div>
       {status === "ok" && (
         <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-          ✓ Webhook registered → <code className="font-mono break-all">{url}</code>
+          {t("webhookRegistered")} → <code className="font-mono break-all">{url}</code>
         </p>
       )}
       {status === "error" && (

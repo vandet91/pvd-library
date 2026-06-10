@@ -3,10 +3,10 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 
-export type ThemeName     = "ocean" | "midnight" | "emerald" | "academic";
+export type ThemeName     = "ocean" | "midnight" | "emerald" | "academic" | "parchment" | "slate" | "terminal";
 export type AuthStyleName = "split" | "glass" | "minimal";
 
-const VALID_THEMES:      ThemeName[]     = ["ocean", "midnight", "emerald", "academic"];
+const VALID_THEMES:      ThemeName[]     = ["ocean", "midnight", "emerald", "academic", "parchment", "slate", "terminal"];
 const VALID_AUTH_STYLES: AuthStyleName[] = ["split", "glass", "minimal"];
 
 interface ThemeCtx {

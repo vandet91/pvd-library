@@ -13,7 +13,7 @@ const bookUpdateSchema = z.object({
   titleKm: z.string().optional(),
   subtitle: z.string().optional(),
   edition: z.string().optional(),
-  isbn: z.string().optional(),
+  isbn: z.string().transform((v) => v.trim() || null).optional().nullable(),
   description: z.string().optional(),
   coverImage: z.string().optional(),
   publishYear: z.number().optional(),
@@ -75,18 +75,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const before = await prisma.book.findUnique({ where: { id }, select: { title: true, totalCopies: true, availableCopies: true } });
 
-  const book = await prisma.book.update({
-    where: { id },
-    data: {
-      ...bookData,
-      ...locationUpdate,
-      ...(branchIdFromForm !== undefined && { branchId: branchIdFromForm ?? null }),
-      ...(coAuthorIds !== undefined && {
-        coAuthors: { set: coAuthorIds.map((cid) => ({ id: cid })) },
-      }),
-    },
-    include: { category: true, author: true, coAuthors: true },
-  });
+  let book;
+  try {
+    book = await prisma.book.update({
+      where: { id },
+      data: {
+        ...bookData,
+        ...locationUpdate,
+        ...(branchIdFromForm !== undefined && { branchId: branchIdFromForm ?? null }),
+        ...(coAuthorIds !== undefined && {
+          coAuthors: { set: coAuthorIds.map((cid) => ({ id: cid })) },
+        }),
+      },
+      include: { category: true, author: true, coAuthors: true },
+    });
+  } catch (err: unknown) {
+    // P2002 = unique constraint violation
+    if (
+      typeof err === "object" && err !== null &&
+      "code" in err && (err as { code: string }).code === "P2002"
+    ) {
+      const target = ((err as { meta?: { target?: string[] } }).meta?.target ?? []).join(", ");
+      const field  = target.includes("isbn") ? "ISBN" : target || "a field";
+      return NextResponse.json(
+        { error: `Another book already uses this ${field}. Please use a unique value.` },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   if (callNumber !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Book" SET "callNumber" = $1 WHERE id = $2`, callNumber || null, id);

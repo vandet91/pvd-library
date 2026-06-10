@@ -18,6 +18,7 @@ import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
 import { formatPrice, formatSecondary } from "@/lib/price-format";
 import { getOpacTheme } from "@/lib/opac-theme";
+import { BookCover, type BookCoverStyle, type BookCoverFrame, coverFrameStyle } from "@/components/BookCover";
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -107,6 +108,8 @@ export default function ShopClient({
   pageFontKm = "default",
   pageCustomFonts = [] as {name:string;url:string}[],
   fullWidth = false,
+  coverStyle = "spine" as BookCoverStyle,
+  coverFrame = "none" as BookCoverFrame,
 }: {
   opacTheme:       string;
   initialEnabled:  boolean;
@@ -125,9 +128,12 @@ export default function ShopClient({
   pageFontKm?: string;
   pageCustomFonts?: {name:string;url:string}[];
   fullWidth?: boolean;
+  coverStyle?: BookCoverStyle;
+  coverFrame?: BookCoverFrame;
 }) {
   const cx = fullWidth ? "w-full px-4" : "max-w-6xl mx-auto px-4";
   const t                 = useTranslations("shop");
+  const to                = useTranslations("opac");
   const { data: session } = useSession();
   const locale            = useLocale();
   const libraryName       = useLibraryName();
@@ -462,17 +468,11 @@ export default function ShopClient({
                   <div key={book.id} className="group flex flex-col">
                     {/* Cover */}
                     <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden relative
-                      shadow-[0_4px_16px_rgba(0,0,0,0.12)]
-                      group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
-                      transition-all duration-300 bg-gray-100 flex-shrink-0">
+                      group-hover:-translate-y-2
+                      transition-all duration-300 bg-gray-100 flex-shrink-0"
+                      style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
 
-                      {book.coverImage ? (
-                        <Image src={book.coverImage} alt={book.title} fill className="object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-amber-100 to-stone-200 flex items-center justify-center">
-                          <BookOpen className="w-10 h-10 text-stone-300" />
-                        </div>
-                      )}
+                      <BookCover coverImage={book.coverImage} title={book.title} style={coverStyle} />
 
                       {/* Condition badge — top right */}
                       <span className={`absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${condColor}`}>
@@ -620,7 +620,7 @@ export default function ShopClient({
                     disabled={loadingMore}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50">
                     {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {loadingMore ? "Loading…" : "Load more"}
+                    {loadingMore ? to("loadingMore") : to("loadMore")}
                   </button>
                 </div>
               )

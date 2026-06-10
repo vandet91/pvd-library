@@ -16,6 +16,7 @@ import MemberHeader from "@/components/shared/MemberHeader";
 import Pagination from "@/components/shared/Pagination";
 import BookSearchChat from "@/components/BookSearchChat";
 import { StarDisplay, StarInput } from "@/components/shared/StarRating";
+import { BookCover, type BookCoverStyle, type BookCoverFrame, coverFrameStyle } from "@/components/BookCover";
 import { getOpacTheme } from "@/lib/opac-theme";
 import { useLibraryName } from "@/context/library-name";
 import { useLibraryLogo } from "@/context/library-logo";
@@ -52,32 +53,6 @@ function allAuthors(b: Pick<Book, "author" | "coAuthors">): string {
   return names.join(", ");
 }
 
-const COVER_GRADIENTS = [
-  "from-blue-500 to-blue-700", "from-violet-500 to-violet-700",
-  "from-emerald-500 to-emerald-700", "from-rose-500 to-rose-700",
-  "from-amber-500 to-amber-600", "from-cyan-500 to-cyan-700",
-  "from-indigo-500 to-indigo-700", "from-pink-500 to-pink-700",
-];
-function coverGradient(title: string) {
-  return COVER_GRADIENTS[(title.charCodeAt(0) ?? 0) % COVER_GRADIENTS.length];
-}
-
-function BookCover({ coverImage, title, className = "" }: {
-  coverImage?: string | null; title: string; className?: string;
-}) {
-  if (coverImage) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={coverImage} alt={title} className={`w-full h-full object-cover ${className}`} />;
-  }
-  const initials = title.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
-  return (
-    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(title)} flex flex-col items-center justify-center gap-2 ${className}`}>
-      <BookOpen className="w-10 h-10 text-white/50" />
-      <span className="text-white/90 text-sm font-bold px-3 text-center leading-tight line-clamp-3">{title}</span>
-      <span className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">{initials}</span>
-    </div>
-  );
-}
 
 const MATERIAL_TYPE_KEYS = ["BOOK","MAGAZINE","JOURNAL","NEWSPAPER","DVD","AUDIO_CD","THESIS","MAP","OTHER"] as const;
 const MAT_CLS: Record<string, string> = {
@@ -113,6 +88,8 @@ export default function DiscoverClient({
   pageFontKm = "default",
   pageCustomFonts = [] as {name:string;url:string}[],
   fullWidth = false,
+  coverStyle = "spine" as BookCoverStyle,
+  coverFrame = "none" as BookCoverFrame,
 }: {
   opacTheme: string;
   initialSaleEnabled: boolean;
@@ -131,6 +108,8 @@ export default function DiscoverClient({
   pageFontKm?: string;
   pageCustomFonts?: {name:string;url:string}[];
   fullWidth?: boolean;
+  coverStyle?: BookCoverStyle;
+  coverFrame?: BookCoverFrame;
 }) {
   const cx = fullWidth ? "w-full px-4" : "max-w-6xl mx-auto px-4";
   const t   = useTranslations("opac");
@@ -507,7 +486,7 @@ export default function DiscoverClient({
                         <span className="font-black text-white text-sm tracking-tight">BOOK</span>
                         <span className="text-white/40 font-light text-sm tracking-[0.18em]">store</span>
                       </div>
-                      <span className="text-white/35 text-[11px]">Browse &amp; Buy</span>
+                      <span className="text-white/35 text-[11px]">{t("browseAndBuy")}</span>
                     </div>
 
                     {/* Warm cream bookshelf */}
@@ -544,10 +523,10 @@ export default function DiscoverClient({
 
                     {/* Cream CTA footer */}
                     <div className="flex items-center justify-between px-4 py-2.5" style={{ background: "#f5ead5" }}>
-                      <span className="text-xs font-medium" style={{ color: "#5c4535" }}>Books for purchase</span>
+                      <span className="text-xs font-medium" style={{ color: "#5c4535" }}>{t("booksForPurchase")}</span>
                       <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-gray-900 group-hover:gap-1.5 transition-all"
                         style={{ background: "#f5b731" }}>
-                        Visit Store <ArrowRight className="w-3 h-3" />
+                        {t("visitStore")} <ArrowRight className="w-3 h-3" />
                       </span>
                     </div>
 
@@ -616,29 +595,29 @@ export default function DiscoverClient({
                     <button className="w-full text-left group flex flex-col" onClick={() => setSelected(book)}>
                       {/* Cover */}
                       <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden
-                        shadow-[0_4px_16px_rgba(0,0,0,0.12)]
-                        group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
-                        transition-all duration-300 bg-gray-100 flex-shrink-0 relative">
-                        <BookCover coverImage={book.coverImage} title={book.title} />
+                        group-hover:-translate-y-2
+                        transition-all duration-300 bg-gray-100 flex-shrink-0 relative"
+                        style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                        <BookCover coverImage={book.coverImage} title={book.title} author={book.author?.name} style={coverStyle} />
 
-                        {/* NEW badge */}
-                        <div className="absolute top-2.5 left-2.5 bg-yellow-400 text-gray-900
-                          text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wide uppercase shadow-sm">
-                          NEW
-                        </div>
-
-                        {/* Rating */}
-                        {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                          <div className="absolute bottom-2.5 left-2.5 flex items-center gap-0.5
-                            bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
-                            <span className="text-amber-400 text-xs">★</span>
-                            <span className="text-xs font-bold">{book.avgRating?.toFixed(1)}</span>
-                          </div>
-                        )}
-
-                        {/* Availability */}
+                        {/* Availability dot — top right only */}
                         <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow
                           ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
+
+                        {/* Bottom bar — NEW badge + rating, no top-left overlap */}
+                        <div className="absolute bottom-0 left-0 right-0 flex items-center gap-1.5 px-2 py-1.5
+                          bg-gradient-to-t from-black/75 via-black/40 to-transparent">
+                          <span className="flex-shrink-0 bg-yellow-400 text-gray-900 text-[10px] font-extrabold
+                            px-1.5 py-0.5 rounded tracking-wide uppercase leading-none">
+                            {t("newBadge")}
+                          </span>
+                          {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
+                            <span className="ml-auto flex items-center gap-0.5 text-[11px] font-semibold text-white">
+                              <span className="text-amber-400">★</span>
+                              {book.avgRating?.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Text */}
@@ -690,45 +669,44 @@ export default function DiscoverClient({
 
                   {/* Cover */}
                   <div className="w-full aspect-[2/3] rounded-2xl overflow-hidden relative
-                    shadow-[0_4px_16px_rgba(0,0,0,0.12)]
-                    group-hover:shadow-[0_12px_32px_rgba(0,0,0,0.18)] group-hover:-translate-y-2
-                    transition-all duration-300 bg-gray-100 flex-shrink-0">
-                    <BookCover coverImage={book.coverImage} title={book.title} />
+                    group-hover:-translate-y-2
+                    transition-all duration-300 bg-gray-100 flex-shrink-0"
+                    style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                    <BookCover coverImage={book.coverImage} title={book.title} author={book.author?.name} style={coverStyle} />
 
-                    {/* Rank badge */}
-                    <div className={`absolute top-2.5 left-2.5 w-7 h-7 rounded-lg flex items-center justify-center
-                      text-xs font-extrabold shadow-md border border-white/30
-                      ${idx === 0 ? "bg-yellow-400 text-gray-900"
-                        : idx === 1 ? "bg-gray-300 text-gray-700"
-                        : idx === 2 ? "bg-amber-600 text-white"
-                        : "bg-black/60 backdrop-blur-sm text-white"}`}>
-                      {idx + 1}
-                    </div>
-
-                    {/* Borrow count */}
-                    {(book._count?.loans ?? 0) > 0 && (
-                      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1
-                        bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
-                        <Flame className="w-3 h-3 text-orange-400" />
-                        <span className="text-xs font-bold">
-                          {(book._count!.loans) > 999
-                            ? `${((book._count!.loans) / 1000).toFixed(1)}k`
-                            : book._count!.loans}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Rating */}
-                    {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                      <div className="absolute bottom-2.5 right-2.5 flex items-center gap-0.5
-                        bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-lg">
-                        <span className="text-amber-400 text-xs">★</span>
-                        <span className="text-xs font-bold">{book.avgRating?.toFixed(1)}</span>
-                      </div>
-                    )}
-
+                    {/* Availability dot — top right, safe for all styles */}
                     <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow
                       ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
+
+                    {/* Bottom bar — rank + borrow count + rating in one strip */}
+                    <div className="absolute bottom-0 left-0 right-0 flex items-center gap-1.5 px-2 py-1.5
+                      bg-gradient-to-t from-black/75 via-black/40 to-transparent">
+                      {/* Rank pill */}
+                      <span className={`flex-shrink-0 min-w-[22px] h-[22px] px-1 rounded-md flex items-center justify-center
+                        text-[11px] font-extrabold leading-none
+                        ${idx === 0 ? "bg-yellow-400 text-gray-900"
+                          : idx === 1 ? "bg-slate-300 text-gray-700"
+                          : idx === 2 ? "bg-amber-600 text-white"
+                          : "bg-white/20 text-white"}`}>
+                        {idx + 1}
+                      </span>
+                      {/* Borrow count */}
+                      {(book._count?.loans ?? 0) > 0 && (
+                        <span className="flex items-center gap-0.5 text-white text-[11px] font-semibold">
+                          <Flame className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                          {book._count!.loans > 999
+                            ? `${(book._count!.loans / 1000).toFixed(1)}k`
+                            : book._count!.loans}
+                        </span>
+                      )}
+                      {/* Rating — pushed right */}
+                      {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
+                        <span className="ml-auto flex items-center gap-0.5 text-[11px] font-semibold text-white">
+                          <span className="text-amber-400">★</span>
+                          {book.avgRating?.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Text */}
@@ -813,12 +791,12 @@ export default function DiscoverClient({
             {/* Sort */}
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
-              <option value="barcode">№ Number</option>
-              <option value="title">Title A → Z</option>
-              <option value="title_z">Title Z → A</option>
-              <option value="newest">Newest</option>
-              <option value="year">Year ↓</option>
-              <option value="avail">Available first</option>
+              <option value="barcode">{t("sortNumber")}</option>
+              <option value="title">{t("sortTitleAZ")}</option>
+              <option value="title_z">{t("sortTitleZA")}</option>
+              <option value="newest">{t("sortNewest")}</option>
+              <option value="year">{t("sortYearDesc")}</option>
+              <option value="avail">{t("sortAvailableFirst")}</option>
             </select>
 
             {/* Category */}
@@ -840,7 +818,7 @@ export default function DiscoverClient({
             {/* Audience level */}
             <select value={audienceLevel} onChange={(e) => setAudienceLevel(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Audience — All</option>
+              <option value="">{t("audienceAll")}</option>
               <option value="CHILDREN">{audienceLabels["CHILDREN"] ?? "Children"}</option>
               <option value="YOUTH">{audienceLabels["YOUTH"] ?? "Youth"}</option>
               <option value="ADULTS">{audienceLabels["ADULTS"] ?? "Adults"}</option>
@@ -857,7 +835,7 @@ export default function DiscoverClient({
             {(query || categoryId || materialType || audienceLevel || availableOnly) && (
               <button onClick={() => { setQuery(""); setCategoryId(""); setMaterialType(""); setAudienceLevel(""); setAvailableOnly(false); }}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                <X className="w-3 h-3" /> {t("allBooks") ? "Clear" : "Clear"}
+                <X className="w-3 h-3" /> {t("clearFilters")}
               </button>
             )}
 
@@ -887,18 +865,23 @@ export default function DiscoverClient({
                 <div key={book.id} className="group cursor-pointer flex flex-col" onClick={() => setSelected(book)}>
                   {/* ── Cover — fixed aspect, all identical ── */}
                   <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-gray-100
-                    shadow-md group-hover:shadow-xl group-hover:-translate-y-1.5
-                    transition-all duration-300 ease-out flex-shrink-0">
-                    <BookCover coverImage={book.coverImage} title={book.title} />
+                    group-hover:-translate-y-1.5
+                    transition-all duration-300 ease-out flex-shrink-0"
+                    style={coverFrame !== "none" ? coverFrameStyle(coverFrame) : undefined}>
+                    <BookCover coverImage={book.coverImage} title={book.title} author={book.author?.name} style={coverStyle} />
 
+                    {/* Availability dot — top right only */}
                     <div className={`absolute top-2.5 right-2.5 w-3 h-3 rounded-full border-2 border-white shadow-sm
                       ${book.availableCopies > 0 ? "bg-emerald-400" : "bg-red-400"}`} />
 
+                    {/* Bottom bar — rating only, clears hardcover text */}
                     {(book.avgRating || (book.ratingCount ?? 0) > 0) && (
-                      <div className="absolute top-2.5 left-2.5 flex items-center gap-0.5
-                        bg-black/55 backdrop-blur-sm text-white px-2 py-0.5 rounded-full">
-                        <span className="text-amber-400 text-[11px] leading-none">★</span>
-                        <span className="text-[11px] font-semibold leading-none">{book.avgRating?.toFixed(1)}</span>
+                      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-end px-2 py-1.5
+                        bg-gradient-to-t from-black/70 via-black/35 to-transparent">
+                        <span className="flex items-center gap-0.5 text-[11px] font-semibold text-white">
+                          <span className="text-amber-400">★</span>
+                          {book.avgRating?.toFixed(1)}
+                        </span>
                       </div>
                     )}
 
@@ -953,7 +936,7 @@ export default function DiscoverClient({
                   disabled={loadingMore}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50">
                   {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {loadingMore ? "Loading…" : "Load more"}
+                  {loadingMore ? t("loadingMore") : t("loadMore")}
                 </button>
               </div>
             )
@@ -986,7 +969,7 @@ export default function DiscoverClient({
             <div className="animate-modal-in bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="flex gap-4 p-5">
                 <div className="flex-shrink-0 w-28 aspect-[2/3] rounded-xl overflow-hidden shadow-md bg-gray-100">
-                  <BookCover coverImage={selected.coverImage} title={selected.title} />
+                  <BookCover coverImage={selected.coverImage} title={selected.title} author={selected.author?.name} style={coverStyle} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-2">

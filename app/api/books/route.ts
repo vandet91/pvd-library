@@ -15,7 +15,7 @@ const bookSchema = z.object({
   titleKm: z.string().optional(),
   subtitle: z.string().optional(),
   edition: z.string().optional(),
-  isbn: z.string().optional(),
+  isbn: z.string().transform((v) => v.trim() || null).optional().nullable(),
   description: z.string().optional(),
   coverImage: z.string().optional(),
   publishYear: z.number().optional(),
@@ -222,7 +222,9 @@ export async function POST(request: NextRequest) {
     : await resolveLocationId(bookData.location);
   const branchId = branchIdFromForm ?? undefined;
 
-  const book = await prisma.$transaction(async (tx) => {
+  let book;
+  try {
+    book = await prisma.$transaction(async (tx) => {
     const created = await tx.book.create({
       data: {
         ...bookData,
@@ -253,8 +255,22 @@ export async function POST(request: NextRequest) {
         },
       });
     }
-    return created;
-  });
+      return created;
+    });
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" && err !== null &&
+      "code" in err && (err as { code: string }).code === "P2002"
+    ) {
+      const target = ((err as { meta?: { target?: string[] } }).meta?.target ?? []).join(", ");
+      const field  = target.includes("isbn") ? "ISBN" : target || "a field";
+      return NextResponse.json(
+        { error: `Another book already uses this ${field}. Please use a unique value.` },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   if (callNumber) {
     await prisma.$executeRawUnsafe(`UPDATE "Book" SET "callNumber" = $1 WHERE id = $2`, callNumber, book.id);

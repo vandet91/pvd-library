@@ -7,6 +7,7 @@ import LanguageToggle from "@/components/shared/LanguageToggle";
 import { useLoginForm } from "../useLoginForm";
 import { useAuthMethod } from "../useAuthMethod";
 import { useLibraryName } from "@/context/library-name";
+import { useLibraryLogo } from "@/context/library-logo";
 
 function GoogleIcon() {
   return (
@@ -22,6 +23,7 @@ function GoogleIcon() {
 export default function AuthMinimal() {
   const locale = useLocale();
   const libraryName = useLibraryName();
+  const libraryLogo = useLibraryLogo();
   const {
     identifier, setIdentifier,
     password, setPassword,
@@ -36,9 +38,11 @@ export default function AuthMinimal() {
       {/* Top bar */}
       <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-               style={{ background: "var(--accent)" }}>
-            <BookOpen className="w-3.5 h-3.5 text-white" />
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center overflow-hidden"
+               style={{ background: libraryLogo ? "transparent" : "var(--accent)" }}>
+            {libraryLogo
+              ? <img src={libraryLogo} alt={libraryName} className="w-full h-full object-contain" />
+              : <BookOpen className="w-3.5 h-3.5 text-white" />}
           </div>
           <span className="text-sm font-semibold text-gray-800">{libraryName}</span>
         </div>
@@ -51,9 +55,11 @@ export default function AuthMinimal() {
 
           {/* Icon + heading */}
           <div className="mb-8 text-center">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm"
-                 style={{ background: "var(--login-from)" }}>
-              <BookOpen className="w-7 h-7 text-white" />
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm overflow-hidden"
+                 style={{ background: libraryLogo ? "transparent" : "var(--login-from)" }}>
+              {libraryLogo
+                ? <img src={libraryLogo} alt={libraryName} className="w-full h-full object-contain p-1" />
+                : <BookOpen className="w-7 h-7 text-white" />}
             </div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{t("login")}</h1>
             <p className="text-gray-400 text-sm mt-1.5">{t("loginSubtitle")}</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Calendar, Clock, Plus, Trash2, Check, X,
   Loader2, RefreshCw, Info, ChevronLeft, ChevronRight, RotateCcw,
@@ -21,9 +22,8 @@ interface ClosedDay {
   isRecurring: boolean;
 }
 
-const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const DAY_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+// Day/month names are defined inside the component using t()
+
 
 const KH_HOLIDAYS = [
   { date: "01-01", name: "International New Year" },
@@ -47,6 +47,12 @@ const KH_HOLIDAYS = [
 ];
 
 export default function CalendarPage() {
+  const t = useTranslations("calendar");
+
+  const DAY_NAMES = [t("daySun"),t("dayMon"),t("dayTue"),t("dayWed"),t("dayThu"),t("dayFri"),t("daySat")];
+  const DAY_SHORT = [t("dayShortSun"),t("dayShortMon"),t("dayShortTue"),t("dayShortWed"),t("dayShortThu"),t("dayShortFri"),t("dayShortSat")];
+  const MONTH_NAMES = [t("monthJan"),t("monthFeb"),t("monthMar"),t("monthApr"),t("monthMay"),t("monthJun"),t("monthJul"),t("monthAug"),t("monthSep"),t("monthOct"),t("monthNov"),t("monthDec")];
+
   const [hours,      setHours]      = useState<HourRow[]>([]);
   const [closedDays, setClosedDays] = useState<ClosedDay[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -98,7 +104,7 @@ export default function CalendarPage() {
 
   /* ── add closed day ──────────────────────────────────────────── */
   async function addClosedDay() {
-    if (!addDate) { setAddErr("Select a date"); return; }
+    if (!addDate) { setAddErr(t("errSelectDate")); return; }
     setAddBusy(true); setAddErr(null);
     const res = await fetch("/api/calendar/closed-days", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -174,8 +180,8 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Library Calendar</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Configure opening hours and closed days — affects due dates and fine calculations</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t("subtitle")}</p>
         </div>
         <button onClick={fetchAll} className="p-2 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
           <RefreshCw className="w-4 h-4" />
@@ -186,13 +192,12 @@ export default function CalendarPage() {
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
         <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500" />
         <div>
-          <strong>How this works:</strong> Loan due dates are calculated using open days only — closed days
-          and non-opening weekdays are skipped. Fines are also only charged for days the library was open.
+          <strong>{t("infoTitle")}</strong> {t("infoText")}
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+        <div className="flex items-center gap-2 py-12 justify-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> {t("loading")}</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -202,7 +207,7 @@ export default function CalendarPage() {
             {/* Opening hours */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" /> Opening Hours</h2>
+                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" /> {t("sectionHours")}</h2>
               </div>
               <div className="divide-y divide-gray-50">
                 {hours.map((h, idx) => (
@@ -210,7 +215,7 @@ export default function CalendarPage() {
                     <button
                       onClick={() => setHours(prev => prev.map((r, i) => i === idx ? { ...r, isOpen: !r.isOpen } : r))}
                       className={`w-16 text-xs font-semibold py-1 rounded-full transition-colors ${h.isOpen ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
-                      {h.isOpen ? "Open" : "Closed"}
+                      {h.isOpen ? t("open") : t("closed")}
                     </button>
                     <span className="w-24 text-sm font-medium text-gray-700">{DAY_NAMES[h.dayOfWeek]}</span>
                     {h.isOpen ? (
@@ -218,23 +223,23 @@ export default function CalendarPage() {
                         <input type="time" value={h.openTime ?? "08:00"}
                           onChange={e => setHours(prev => prev.map((r, i) => i === idx ? { ...r, openTime: e.target.value } : r))}
                           className="px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="text-gray-400 text-xs">to</span>
+                        <span className="text-gray-400 text-xs">{t("timeTo")}</span>
                         <input type="time" value={h.closeTime ?? "17:00"}
                           onChange={e => setHours(prev => prev.map((r, i) => i === idx ? { ...r, closeTime: e.target.value } : r))}
                           className="px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                     ) : (
-                      <span className="text-xs text-gray-300 flex-1">Not open</span>
+                      <span className="text-xs text-gray-300 flex-1">{t("notOpen")}</span>
                     )}
                   </div>
                 ))}
               </div>
               <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
                 {hoursErr && <p className="text-xs text-red-600 flex-1">{hoursErr}</p>}
-                {hoursSaved && <p className="text-xs text-green-600 flex-1 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Saved</p>}
+                {hoursSaved && <p className="text-xs text-green-600 flex-1 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> {t("savedMsg")}</p>}
                 <button onClick={saveHours} disabled={hoursSaving}
                   className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition-colors">
-                  {hoursSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Hours
+                  {hoursSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t("saveHours")}
                 </button>
               </div>
             </div>
@@ -242,34 +247,34 @@ export default function CalendarPage() {
             {/* Add closed day */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Calendar className="w-4 h-4 text-red-400" /> Closed Days & Holidays</h2>
+                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Calendar className="w-4 h-4 text-red-400" /> {t("sectionClosedDays")}</h2>
                 <button onClick={addKhHolidays}
                   className="flex items-center gap-1.5 text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors">
-                  <RotateCcw className="w-3.5 h-3.5" /> Add KH Holidays
+                  <RotateCcw className="w-3.5 h-3.5" /> {t("addKhHolidays")}
                 </button>
               </div>
               <div className="px-5 py-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldDate")}</label>
                     <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("fieldReason")}</label>
                     <input type="text" value={addReason} onChange={e => setAddReason(e.target.value)}
-                      placeholder="e.g. Khmer New Year, Staff Training"
+                      placeholder={t("reasonPlaceholder")}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={addRecurring} onChange={e => setAddRecurring(e.target.checked)} className="w-4 h-4 accent-blue-600" />
-                  <span className="text-sm text-gray-700">Recurring every year on this date</span>
+                  <span className="text-sm text-gray-700">{t("recurring")}</span>
                 </label>
                 {addErr && <p className="text-xs text-red-600">{addErr}</p>}
                 <button onClick={addClosedDay} disabled={addBusy || !addDate}
                   className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
-                  {addBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Closed Day
+                  {addBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t("addClosedDay")}
                 </button>
               </div>
 
@@ -277,7 +282,9 @@ export default function CalendarPage() {
               {monthClosedDays.length > 0 && (
                 <div className="border-t border-gray-100">
                   <p className="px-5 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                    {MONTH_NAMES[viewMonth]} {viewYear} — {monthClosedDays.length} closed day{monthClosedDays.length !== 1 ? "s" : ""}
+                    {monthClosedDays.length === 1
+                      ? t("closedDaySummary_one", { month: MONTH_NAMES[viewMonth], year: viewYear, count: monthClosedDays.length })
+                      : t("closedDaySummaryPlural", { month: MONTH_NAMES[viewMonth], year: viewYear, count: monthClosedDays.length })}
                   </p>
                   <div className="divide-y divide-gray-50">
                     {monthClosedDays.map(cd => {
@@ -287,9 +294,9 @@ export default function CalendarPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium text-gray-800">
-                                {DAY_SHORT[d.getDay()]} {d.getDate()} {cd.isRecurring ? `(every year)` : d.getFullYear()}
+                                {DAY_SHORT[d.getDay()]} {d.getDate()} {cd.isRecurring ? `(${t("everyYear")})` : d.getFullYear()}
                               </span>
-                              {cd.isRecurring && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-bold">ANNUAL</span>}
+                              {cd.isRecurring && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-bold">{t("annual")}</span>}
                             </div>
                             {cd.reason && <p className="text-xs text-gray-500">{cd.reason}</p>}
                           </div>
@@ -355,7 +362,7 @@ export default function CalendarPage() {
                       <span className="text-[8px] text-red-500 leading-tight text-center line-clamp-2 mt-0.5">{closedEntry.reason}</span>
                     )}
                     {!closedEntry && weekdayClosed && (
-                      <span className="text-[8px] text-gray-300 leading-tight mt-0.5">Closed</span>
+                      <span className="text-[8px] text-gray-300 leading-tight mt-0.5">{t("closed")}</span>
                     )}
                   </div>
                 );
@@ -364,9 +371,9 @@ export default function CalendarPage() {
 
             {/* Legend */}
             <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> Today</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block border border-red-200" /> Closed</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-white inline-block border border-gray-200" /> Open</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> {t("legendToday")}</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block border border-red-200" /> {t("legendClosed")}</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-white inline-block border border-gray-200" /> {t("legendOpen")}</span>
             </div>
           </div>
         </div>

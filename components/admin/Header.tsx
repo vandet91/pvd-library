@@ -169,10 +169,13 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
     .slice(0, 2);
 
   const THEME_SWATCHES: { id: ThemeName; color: string; label: string }[] = [
-    { id: "ocean",    color: "#1d4ed8", label: "Ocean"    },
-    { id: "midnight", color: "#7c3aed", label: "Midnight" },
-    { id: "emerald",  color: "#059669", label: "Emerald"  },
-    { id: "academic", color: "#0f766e", label: "Academic" },
+    { id: "ocean",     color: "#1d4ed8", label: "Ocean"     },
+    { id: "midnight",  color: "#7c3aed", label: "Midnight"  },
+    { id: "emerald",   color: "#059669", label: "Emerald"   },
+    { id: "academic",  color: "#0f766e", label: "Academic"  },
+    { id: "parchment", color: "#b45309", label: "Parchment" },
+    { id: "slate",     color: "#0284c7", label: "Slate"     },
+    { id: "terminal",  color: "#22c55e", label: "Terminal"  },
   ];
 
   /* ── render ── */
