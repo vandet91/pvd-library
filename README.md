@@ -327,6 +327,18 @@ EMAIL_FROM=
 - PostgreSQL 15+ running and accessible
 - PM2 installed globally: `npm install -g pm2`
 
+### 0. Create the PostgreSQL database and user
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE USER library WITH PASSWORD 'your_password';
+CREATE DATABASE library OWNER library;
+GRANT ALL PRIVILEGES ON DATABASE library TO library;
+SQL
+```
+
+> Replace `your_password` with a strong password. Use the same value in `DATABASE_URL` below.
+
 ### First-time setup
 
 ```bash
@@ -335,13 +347,23 @@ git clone https://github.com/vandet91/pvd-library.git
 cd pvd-library
 
 # 2. Install dependencies (must run on the Linux host — do NOT copy node_modules from Windows)
-npm install
+npm install --legacy-peer-deps
 
 # 3. Create and fill in the environment file
 cp .env.example .env
-nano .env   # set DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL at minimum
+nano .env
+```
 
-# 4. Set up the database
+Set at minimum:
+
+```env
+DATABASE_URL="postgresql://library:your_password@localhost:5432/library"
+NEXTAUTH_SECRET="your-random-secret"
+NEXTAUTH_URL="http://your-server-ip-or-domain:3000"
+```
+
+```bash
+# 4. Set up the database (must re-run after every git pull that changes schema.prisma)
 npx prisma generate
 npx prisma db push
 
@@ -393,9 +415,11 @@ pm2 startup
 ### Update / redeploy
 
 ```bash
-git pull
-npm install          # pick up any new packages
-npm run build        # rebuild
+git pull origin new-feature2
+npm install --legacy-peer-deps   # pick up any new packages
+npx prisma generate              # regenerate client if schema changed
+npx prisma db push               # apply any schema changes to the database
+npm run build                    # rebuild
 pm2 restart pvd-library
 ```
 
