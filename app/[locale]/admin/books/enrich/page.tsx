@@ -214,7 +214,7 @@ export default function IsbnEnrichPage() {
   const totalMissingSelected = stats
     ? Array.from(selectedFields).reduce((sum, key) => {
         const field = FIELDS.find((f) => f.key === key);
-        return sum + (field ? (stats[field.statKey] ?? 0) : 0);
+        return sum + (field ? ((stats[field.statKey] as number) ?? 0) : 0);
       }, 0)
     : 0;
 
@@ -283,7 +283,7 @@ export default function IsbnEnrichPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {FIELDS.map((field) => {
-            const count   = stats ? (stats[field.statKey] ?? 0) : null;
+            const count   = stats ? ((stats[field.statKey] as number) ?? 0) : null;
             const checked = selectedFields.has(field.key);
             return (
               <button
