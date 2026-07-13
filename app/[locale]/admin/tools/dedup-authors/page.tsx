@@ -229,7 +229,7 @@ export default function DedupAuthorsPage() {
                         <tr key={a.id} className={`transition-colors ${isKeep ? "bg-green-50" : "hover:bg-gray-50"}`}>
                           <td className="px-4 py-3">
                             {isKeep
-                              ? <ShieldCheck className="w-4 h-4 text-green-600" title="Will be kept" />
+                              ? <ShieldCheck className="w-4 h-4 text-green-600" />
                               : hasData
                                 ? <span className="text-amber-500 text-xs font-bold" title="Has books — will be re-pointed">↗</span>
                                 : <span className="text-gray-300 text-xs">–</span>}
