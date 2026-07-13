@@ -656,7 +656,7 @@ export default function BasketDetailPage() {
                           </div>
                           <p className="text-xs text-gray-400">
                             {book.author?.name ?? "—"}
-                            {(book.shelfLocation?.name ?? book.location) ? ` · ${book.shelfLocation?.name ?? book.location}` : ""}
+                            {book.location ? ` · ${book.location}` : ""}
                           </p>
                         </div>
                         <button
