@@ -136,7 +136,7 @@ async function main() {
   const overdueWithNoFine = await prisma.loan.findMany({
     where: {
       status: "OVERDUE",
-      fine: { is: null },
+      fines: { none: {} },
     },
     select: { id: true, memberId: true, dueDate: true },
   });

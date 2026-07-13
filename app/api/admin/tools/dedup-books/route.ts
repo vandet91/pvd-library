@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { action, deleteIds } = await req.json() as {
-    action:    "delete" | "delete-all-empty";
+    action:    "delete" | "delete-all-empty" | "merge-all" | "merge";
     deleteIds?: string[];
   };
 

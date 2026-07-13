@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/rbac";
@@ -15,25 +16,20 @@ export async function GET(request: NextRequest) {
   const page     = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit    = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
 
-  const where = {
+  const searchOR: Prisma.FineWhereInput["OR"] = search ? [
+    { member: { name:     { contains: search, mode: "insensitive" as const } } },
+    { member: { memberId: { contains: search, mode: "insensitive" as const } } },
+  ] : undefined;
+
+  const where: Prisma.FineWhereInput = {
     ...(status   ? { status }   : {}),
     ...(memberId ? { memberId } : {}),
-    ...(search   ? {
-      OR: [
-        { member: { name:     { contains: search, mode: "insensitive" } } },
-        { member: { memberId: { contains: search, mode: "insensitive" } } },
-      ],
-    } : {}),
+    ...(searchOR ? { OR: searchOR } : {}),
   };
 
-  const baseWhere = {
+  const baseWhere: Prisma.FineWhereInput = {
     ...(memberId ? { memberId } : {}),
-    ...(search   ? {
-      OR: [
-        { member: { name:     { contains: search, mode: "insensitive" } } },
-        { member: { memberId: { contains: search, mode: "insensitive" } } },
-      ],
-    } : {}),
+    ...(searchOR ? { OR: searchOR } : {}),
   };
 
   const [fines, total, unpaidSum, paidSum, waivedCount] = await Promise.all([

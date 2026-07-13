@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { deliveryType, branchId, deliveryAddress, paymentMethod, memberNote } = parsed.data;
 

@@ -57,7 +57,6 @@ export async function POST(req: Request) {
     assignments.map(({ id, barcode }) =>
       prisma.book.update({ where: { id }, data: { barcode } })
     ),
-    { timeout: 60000 }
   );
 
   return NextResponse.json({

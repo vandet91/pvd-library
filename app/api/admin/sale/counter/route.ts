@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { items, paymentMethod, currency, memberId, walkInName, walkInPhone, staffNote, taxRate } = parsed.data;
 

@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest) {
   const body   = await request.json();
   const parsed = prefSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const data: { theme?: string; authStyle?: string } = {};
   if (parsed.data.theme     !== undefined) data.theme     = parsed.data.theme;

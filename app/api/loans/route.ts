@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const parsed = loanSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { memberId, bookId, copyId } = parsed.data;
 

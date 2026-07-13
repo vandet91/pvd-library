@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const body = await request.json();
   const parsed = bookUpdateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   // coAuthorIds is a relation — use `set` so the full list is replaced atomically
   const { coAuthorIds, locationId: locationIdFromForm, branchId: branchIdFromForm, callNumber, ...bookData } = parsed.data;

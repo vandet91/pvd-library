@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
   const body   = await request.json();
   const parsed = ebookSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const ebook = await prisma.ebook.create({
     data:    parsed.data,

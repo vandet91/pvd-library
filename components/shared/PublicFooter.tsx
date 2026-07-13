@@ -14,7 +14,8 @@ export interface PublicFooterProps {
   address:      string;
   telegram:     string;
   hours:        string;
-  whatsapp:     string;
+  whatsapp?:    string;
+  facebook?:    string;
   website:      string;
   description?: string;
   fullWidth?:   boolean;
@@ -29,7 +30,7 @@ function WhatsappIcon({ className }: { className?: string }) {
 
 export default function PublicFooter({
   enabled, show, navCss, accentHex,
-  phone, email, address, telegram, hours, whatsapp, website,
+  phone, email, address, telegram, hours, whatsapp = "", website,
   description = "",
   fullWidth = false,
 }: PublicFooterProps) {

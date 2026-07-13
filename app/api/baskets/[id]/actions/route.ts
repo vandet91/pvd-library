@@ -93,7 +93,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       await Promise.all(
         items.map((item) =>
           prisma.book.update({
-            where: { id: item.bookId },
+            where: { id: item.bookId as string },
             data:  {
               condition:       BookCondition.GOOD,
               withdrawnAt:     null,

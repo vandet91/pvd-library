@@ -259,7 +259,7 @@ export default function DedupMembersPage() {
                             }`}>
                               <td className="px-4 py-3">
                                 {isKeep ? (
-                                  <ShieldCheck className="w-4 h-4 text-green-600" title="Will be kept" />
+                                  <ShieldCheck className="w-4 h-4 text-green-600" />
                                 ) : hasData ? (
                                   <span title="Has loans/fines — protected" className="text-amber-500 text-xs font-bold">!</span>
                                 ) : (

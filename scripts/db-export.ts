@@ -128,7 +128,7 @@ async function main() {
     include: {
       member: { select: { name: true, memberId: true } },
       book:   { select: { title: true, isbn: true   } },
-      fine:   { select: { amount: true, status: true } },
+      fines:  { select: { amount: true, status: true }, take: 1 },
     },
     orderBy: { borrowDate: "desc" },
   });
@@ -142,8 +142,8 @@ async function main() {
     ReturnDate:   fmt(l.returnDate),
     Status:       l.status,
     RenewalCount: l.renewalCount,
-    FineAmount:   l.fine ? `$${l.fine.amount.toFixed(2)}` : "",
-    FineStatus:   l.fine?.status ?? "",
+    FineAmount:   l.fines[0] ? `$${l.fines[0].amount.toFixed(2)}` : "",
+    FineStatus:   l.fines[0]?.status ?? "",
   }));
   writeFileSync(join(exportDir, "loans.csv"), toCSV(loans), "utf-8");
   console.log(`  📖  loans           ${loans.length} rows → loans.csv`);

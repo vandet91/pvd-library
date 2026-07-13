@@ -55,7 +55,7 @@ interface MigrateResult {
   dryRun:     boolean;
 }
 
-function mapAudienceLevel(s: string): string {
+function mapAudienceLevel(s: string): "ADULTS" | "YOUTH" | "CHILDREN" | "UNSPECIFIED" {
   const v = s.trim().toLowerCase();
   if (v === "1" || v === "adulte" || v === "adult" || v === "adults") return "ADULTS";
   if (v === "2" || v === "jeune" || v === "jeunesse" || v === "youth" || v === "young") return "YOUTH";

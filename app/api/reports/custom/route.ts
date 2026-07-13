@@ -961,11 +961,11 @@ async function buildReport(
       });
       const rows: Row[] = items.map((i) => ({
         Basket:     i.basket.name,
-        BookTitle:  i.book.title,
-        ISBN:       i.book.isbn ?? "",
-        CopyNumber: i.copy.copyNumber,
-        Barcode:    i.copy.barcode ?? "",
-        Condition:  i.copy.condition,
+        BookTitle:  i.book?.title ?? "",
+        ISBN:       i.book?.isbn ?? "",
+        CopyNumber: i.copy?.copyNumber ?? 0,
+        Barcode:    i.copy?.barcode ?? "",
+        Condition:  i.copy?.condition ?? "",
         AddedAt:    fmtDate(i.addedAt),
       }));
       return {
@@ -996,11 +996,11 @@ async function buildReport(
       });
       const rows: Row[] = items.map((i) => ({
         Basket:     i.basket.name,
-        BookTitle:  i.book.title,
-        ISBN:       i.book.isbn ?? "",
-        CopyNumber: i.copy.copyNumber,
-        Barcode:    i.copy.barcode ?? "",
-        Condition:  i.copy.condition,
+        BookTitle:  i.book?.title ?? "",
+        ISBN:       i.book?.isbn ?? "",
+        CopyNumber: i.copy?.copyNumber ?? 0,
+        Barcode:    i.copy?.barcode ?? "",
+        Condition:  i.copy?.condition ?? "",
         AddedAt:    fmtDate(i.addedAt),
       }));
       return {
@@ -1033,8 +1033,8 @@ async function buildReport(
       });
       const rows: Row[] = orders.map((o) => ({
         OrderNumber:   o.orderNumber,
-        Member:        o.memberRel.name,
-        MemberID:      o.memberRel.memberId,
+        Member:        o.memberRel?.name ?? "",
+        MemberID:      o.memberRel?.memberId ?? "",
         Items:         o.items.length,
         Subtotal:      o.subtotal,
         Tax:           o.taxAmount,

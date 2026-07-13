@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id }   = await params;
   const body     = await request.json().catch(() => ({}));
   const parsed   = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const order = await prisma.saleOrder.findUnique({
     where:   { id },
@@ -141,8 +141,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   // ── Telegram notification (fire-and-forget) ──────────────────────────────
-  const memberName  = order.memberRel.name;
-  const memberId    = order.memberRel.id;
+  const memberName  = order.memberRel?.name ?? "";
+  const memberId    = order.memberRel?.id ?? "";
   const branchName  = order.branch?.name ?? null;
 
   const notifyMap: Record<string, string> = {

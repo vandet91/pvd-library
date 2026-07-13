@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body   = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    const msg = parsed.error.errors.map((e) => e.message).join(", ");
+    const msg = parsed.error.issues.map((e) => e.message).join(", ");
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 

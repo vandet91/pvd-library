@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
 
   const statusFilter =
     statusParam === "all"     ? undefined :
-    statusParam === "active"  ? { in: ["PENDING", "IN_PROGRESS"] as const } :
-    statusParam === "done"    ? { in: ["DONE", "CANCELLED"]      as const } :
+    statusParam === "active"  ? { in: ["PENDING", "IN_PROGRESS"] as ("PENDING" | "IN_PROGRESS")[] } :
+    statusParam === "done"    ? { in: ["DONE", "CANCELLED"]      as ("DONE" | "CANCELLED")[] } :
     { equals: statusParam as "PENDING" | "IN_PROGRESS" | "DONE" | "CANCELLED" };
 
   const tasks = await prisma.staffTask.findMany({
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   const body   = await request.json().catch(() => ({}));
   const parsed = createSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const { dueDate, ...rest } = parsed.data;
 

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const body = await request.json();
   const parsed = createSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const member = await prisma.member.findUnique({ where: { id }, select: { name: true } });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!incidentId) return NextResponse.json({ error: "incidentId required" }, { status: 400 });
 
   const parsed = resolveSchema.safeParse({ resolution });
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors.map((e) => e.message).join(", ") }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
 
   const incident = await prisma.memberIncident.update({
     where: { id: incidentId, memberId: id },

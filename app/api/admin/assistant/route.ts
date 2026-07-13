@@ -490,9 +490,9 @@ async function runGetProcessingQueue(args: Record<string, unknown>) {
       count:      b.count,
       // Include labelPrinted status so AI can report per-copy label state
       books: b.items.slice(0, 5).map((i) => ({
-        title:        i.book.title,
-        copyNumber:   i.copy.copyNumber,
-        labelPrinted: i.copy.labelPrinted,
+        title:        i.book?.title ?? "",
+        copyNumber:   i.copy?.copyNumber ?? 0,
+        labelPrinted: i.copy?.labelPrinted ?? false,
       })),
     }));
   }
