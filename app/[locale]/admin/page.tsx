@@ -509,7 +509,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
                     className="flex items-center justify-between py-2.5 hover:bg-gray-50/50 -mx-2 px-2 rounded-lg transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-mono font-semibold text-gray-800">{order.orderNumber}</p>
-                      <p className="text-xs text-gray-400 truncate">{order.memberRel.name}</p>
+                      <p className="text-xs text-gray-400 truncate">{order.memberRel?.name ?? "—"}</p>
                     </div>
                     <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${ORDER_STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-600"}`}>
