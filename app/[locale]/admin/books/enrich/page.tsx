@@ -133,7 +133,7 @@ export default function IsbnEnrichPage() {
   function selectNone() { setSelectedFields(new Set()); }
   function selectMissingOnly() {
     if (!stats) return;
-    setSelectedFields(new Set(FIELDS.filter((f) => (stats[f.statKey] ?? 0) > 0).map((f) => f.key)));
+    setSelectedFields(new Set(FIELDS.filter((f) => ((stats[f.statKey] as number) ?? 0) > 0).map((f) => f.key)));
   }
 
   /* ── Run enrichment ── */
