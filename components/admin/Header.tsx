@@ -406,6 +406,7 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
                           value={pwCurrent}
                           onChange={(e) => setPwCurrent(e.target.value)}
                           required
+                          autoComplete="current-password"
                           placeholder={th("currentPassword")}
                           className="w-full pr-9 pl-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
                         />
@@ -422,6 +423,7 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
                           value={pwNew}
                           onChange={(e) => setPwNew(e.target.value)}
                           required minLength={8}
+                          autoComplete="new-password"
                           placeholder={th("newPassword")}
                           className="w-full pr-9 pl-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
                         />
@@ -437,6 +439,7 @@ export default function Header({ title, adminName = "Admin", adminEmail = "", ro
                         value={pwConfirm}
                         onChange={(e) => setPwConfirm(e.target.value)}
                         required minLength={8}
+                        autoComplete="new-password"
                         placeholder={th("confirmPassword")}
                         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
                       />

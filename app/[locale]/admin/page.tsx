@@ -131,7 +131,7 @@ async function getStats() {
   let revenueThisMonth     = 0;
   let ordersToday          = 0;
   let revenueTodayAmount   = 0;
-  let recentOrders: { id: string; orderNumber: string; status: string; total: number; currency: string; memberRel: { name: string } }[] = [];
+  let recentOrders: { id: string; orderNumber: string; status: string; total: number; currency: string; memberRel: { name: string } | null }[] = [];
 
   if (saleEnabled) {
     const [pendingAgg, revenueAgg, ordersTodayCount, revTodayAgg, latestOrders] = await Promise.all([
