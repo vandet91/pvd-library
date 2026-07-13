@@ -317,6 +317,137 @@ EMAIL_FROM=
 
 ---
 
+## Deploying with PM2 (Linux)
+
+[PM2](https://pm2.keymetrics.io/) keeps the app running as a background service and restarts it automatically on crash or reboot.
+
+### Prerequisites
+
+- Node.js 20+
+- PostgreSQL 15+ running and accessible
+- PM2 installed globally: `npm install -g pm2`
+
+### First-time setup
+
+```bash
+# 1. Clone the repo and enter the project directory
+git clone https://github.com/vandet91/pvd-library.git
+cd pvd-library
+
+# 2. Install dependencies (must run on the Linux host — do NOT copy node_modules from Windows)
+npm install
+
+# 3. Create and fill in the environment file
+cp .env.example .env
+nano .env   # set DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL at minimum
+
+# 4. Set up the database
+npx prisma generate
+npx prisma db push
+
+# 5. Seed the admin account (first time only)
+npm run db:seed
+
+# 6. Build for production
+npm run build
+```
+
+### Create the PM2 ecosystem file
+
+Save this as `ecosystem.config.js` in the project root:
+
+```js
+module.exports = {
+  apps: [
+    {
+      name: "pvd-library",
+      script: "node_modules/.bin/next",
+      args: "start",
+      cwd: "/home/your-user/pvd-library",   // ← change to your actual path
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+        PORT: 3000,
+      },
+    },
+  ],
+};
+```
+
+> **Note:** Replace `/home/your-user/pvd-library` with the absolute path to the project on your server.
+
+### Start the service
+
+```bash
+pm2 start ecosystem.config.js
+
+# Save the process list so PM2 restores it after a server reboot
+pm2 save
+
+# Register PM2 to start on system boot (run the command it prints)
+pm2 startup
+```
+
+### Update / redeploy
+
+```bash
+git pull
+npm install          # pick up any new packages
+npm run build        # rebuild
+pm2 restart pvd-library
+```
+
+### Useful PM2 commands
+
+| Command | Description |
+|---|---|
+| `pm2 status` | Show all running processes |
+| `pm2 logs pvd-library` | Stream live logs |
+| `pm2 logs pvd-library --lines 100` | Show last 100 log lines |
+| `pm2 restart pvd-library` | Restart after a new build |
+| `pm2 stop pvd-library` | Stop the service |
+| `pm2 delete pvd-library` | Remove from PM2 |
+| `pm2 monit` | Real-time CPU / memory monitor |
+
+### Running on a custom port
+
+Change `PORT` in `ecosystem.config.js`, or pass it inline:
+
+```bash
+PORT=4000 pm2 start ecosystem.config.js
+```
+
+### Reverse proxy with Nginx (recommended)
+
+For HTTPS and a clean domain, put Nginx in front of the Node process:
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Then get a free TLS certificate with Certbot:
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
+
+---
+
 ## License
 
 Private project — all rights reserved.
