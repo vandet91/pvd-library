@@ -116,6 +116,7 @@ export default function Sidebar({ role }: { role: string }) {
 
   const [aiAdminEnabled, setAiAdminEnabled] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateUrl, setUpdateUrl] = useState<string>("");
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -142,6 +143,7 @@ export default function Sidebar({ role }: { role: string }) {
       .then((d: Record<string, string>) => {
         setAiAdminEnabled(d.AI_SEARCH_ADMIN !== "false");
         setUpdateAvailable(d.__UPDATE_AVAILABLE || null);
+        setUpdateUrl(d.__UPDATE_URL || "");
       })
       .catch(() => {});
   }, []);
@@ -498,13 +500,25 @@ export default function Sidebar({ role }: { role: string }) {
       {/* ── Bottom bar ── */}
       <div className="p-4 border-t border-white/10 space-y-3">
         {role === "ADMIN" && updateAvailable && (
-          <Link
-            href={`/${locale}/admin/settings`}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 transition-colors"
-          >
-            <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>Update available: v{updateAvailable}</span>
-          </Link>
+          updateUrl ? (
+            <a
+              href={updateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 transition-colors"
+            >
+              <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Update available: v{updateAvailable}</span>
+            </a>
+          ) : (
+            <Link
+              href={`/${locale}/admin/settings`}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 transition-colors"
+            >
+              <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Update available: v{updateAvailable}</span>
+            </Link>
+          )
         )}
         <form action="/api/auth/signout" method="POST">
           <input type="hidden" name="callbackUrl" value={`/${locale}/auth/login`} />

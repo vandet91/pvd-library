@@ -66,13 +66,19 @@ export async function sendHeartbeat(): Promise<void> {
 
     const json = await res.json().catch(() => null);
     if (json?.updateAvailable && typeof json.latestVersion === "string") {
+      const releaseUrl = typeof json.releaseUrl === "string" ? json.releaseUrl : (typeof json.githubUrl === "string" ? json.githubUrl : "");
       await prisma.settings.upsert({
         where:  { key: "__UPDATE_AVAILABLE" },
         update: { value: json.latestVersion },
         create: { key: "__UPDATE_AVAILABLE", value: json.latestVersion },
       });
+      await prisma.settings.upsert({
+        where:  { key: "__UPDATE_URL" },
+        update: { value: releaseUrl },
+        create: { key: "__UPDATE_URL", value: releaseUrl },
+      });
     } else {
-      await prisma.settings.deleteMany({ where: { key: "__UPDATE_AVAILABLE" } });
+      await prisma.settings.deleteMany({ where: { key: { in: ["__UPDATE_AVAILABLE", "__UPDATE_URL"] } } });
     }
   } catch {
     // Never let a failed check-in affect the app.
