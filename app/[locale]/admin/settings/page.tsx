@@ -41,6 +41,7 @@ import Link from "next/link";
 interface SettingsData {
   DEFAULT_LOAN_DAYS:                string;
   FINE_PER_DAY:                     string;
+  FINES_ENABLED:                    string;
   MAX_RENEWALS:                     string;
   MAX_LOANS_PER_MEMBER:             string;
   RESERVATION_EXPIRE_DAYS:          string;
@@ -103,11 +104,13 @@ interface SettingsData {
   PHONE_CLICK_ACTION:               string;
   MEMBER_ID_FORMAT:                 string;
   MEMBER_ID_COUNTER:                string;
+  TELEMETRY_ENABLED:                string;
 }
 
 const DEFAULT: SettingsData = {
   DEFAULT_LOAN_DAYS:                "14",
   FINE_PER_DAY:                     "0.50",
+  FINES_ENABLED:                    "true",
   MAX_RENEWALS:                     "2",
   MAX_LOANS_PER_MEMBER:             "3",
   RESERVATION_EXPIRE_DAYS:          "7",
@@ -169,6 +172,7 @@ const DEFAULT: SettingsData = {
   PHONE_CLICK_ACTION:               "both",
   MEMBER_ID_FORMAT:                 "MEM-{YYYY}-{RAND4}",
   MEMBER_ID_COUNTER:                "0",
+  TELEMETRY_ENABLED:                "false",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -944,6 +948,63 @@ export default function SettingsPage() {
               className={inputCls}
             />
           </Field>
+
+          <Field
+            label="Fines Enabled"
+            hint="Enable or disable fines feature in the system"
+            icon={data.FINES_ENABLED === "true" ? <ToggleRight className="w-4 h-4 text-green-500" /> : <ToggleLeft className="w-4 h-4 text-gray-400" />}
+          >
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => set("FINES_ENABLED", data.FINES_ENABLED === "true" ? "false" : "true")}
+                disabled={busy}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                  data.FINES_ENABLED === "true" ? "bg-green-500" : "bg-gray-300"
+                } ${busy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <span
+                  className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                    data.FINES_ENABLED === "true" ? "translate-x-7" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <span className="text-sm text-gray-600">{data.FINES_ENABLED === "true" ? "Enabled" : "Disabled"}</span>
+            </div>
+          </Field>
+
+          {data.FINES_ENABLED === "true" && (
+            <Field
+              label="Reset Active Fines"
+              hint="Recalculate all unpaid fines with the current fine per day rate"
+              icon={<RefreshCw className="w-4 h-4 text-blue-500" />}
+            >
+              <button
+                onClick={async () => {
+                  if (!confirm("This will recalculate all unpaid fines with the new rate. Continue?")) return;
+                  try {
+                    const res = await fetch("/api/admin/fines/reset", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ finePerDay: parseFloat(data.FINE_PER_DAY) }),
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                      alert(`✓ ${result.message}`);
+                    } else {
+                      alert(`✗ Error: ${result.error}`);
+                    }
+                  } catch (err) {
+                    alert(`✗ Failed to reset fines: ${err}`);
+                  }
+                }}
+                disabled={busy || !data.FINE_PER_DAY}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
+              >
+                <RefreshCw className="w-4 h-4 inline mr-2" />
+                Reset Fines Now
+              </button>
+            </Field>
+          )}
 
           <Field
             label={t("fieldReplaceCostLabel")}
@@ -1724,6 +1785,32 @@ export default function SettingsPage() {
             <Globe className="w-3.5 h-3.5" /> {t("manageTranslations")}
           </button>
         </div>
+      </Section>
+
+      {/* ── System ───────────────────────────────────────────────────── */}
+      <Section title="System" icon={<Activity className="w-4 h-4 text-gray-500" />}>
+        <Field
+          label="Version check-in"
+          hint="When enabled, this server periodically sends the maintainer its hostname, library name, app version, and rough book/member counts, so they can notify you about important updates. No member, book, or loan data is ever included. Disabled by default."
+          icon={<Activity className="w-4 h-4 text-gray-400" />}
+        >
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => set("TELEMETRY_ENABLED", data.TELEMETRY_ENABLED === "true" ? "false" : "true")}
+              disabled={busy}
+              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                data.TELEMETRY_ENABLED === "true" ? "bg-green-500" : "bg-gray-300"
+              } ${busy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              <span
+                className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                  data.TELEMETRY_ENABLED === "true" ? "translate-x-7" : "translate-x-1"
+                }`}
+              />
+            </button>
+            <span className="text-sm text-gray-600">{data.TELEMETRY_ENABLED === "true" ? "Enabled" : "Disabled"}</span>
+          </div>
+        </Field>
       </Section>
 
       {/* Loading skeleton overlay */}

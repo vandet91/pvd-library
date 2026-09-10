@@ -9,6 +9,7 @@ import { LOCALE_META } from "@/lib/locale-meta";
 const DEFAULTS: Record<string, string> = {
   DEFAULT_LOAN_DAYS:        "14",
   FINE_PER_DAY:             "0.50",
+  FINES_ENABLED:            "true",
   MAX_RENEWALS:             "2",
   MAX_LOANS_PER_MEMBER:     "3",
   LIBRARY_NAME:             "PVD Library",
@@ -19,6 +20,8 @@ const DEFAULTS: Record<string, string> = {
   BARCODE_PREFIX:           "PVD",
   BARCODE_PADDING:          "6",
   RESERVATION_EXPIRE_DAYS:  "7",
+  MAX_RESERVATION_QUEUE_MULTIPLIER: "3",
+  DEFAULT_REPLACEMENT_COST:         "20.00",
   // Defaults applied to newly-created staff accounts
   DEFAULT_STAFF_THEME:        "ocean",
   DEFAULT_STAFF_AUTH_STYLE:   "split",
@@ -33,9 +36,14 @@ const DEFAULTS: Record<string, string> = {
   DUE_SOON_DAYS:                     "3",
   // Telegram bot notifications
   TELEGRAM_NOTIFICATIONS_ENABLED:   "true",
+  TELEGRAM_ADMIN_CHAT_ID:            "",
   TELEGRAM_MEMBERSHIP_EXPIRY_DAYS:   "7",
   TELEGRAM_LINK_MEMBER:              "true",
   PHONE_CLICK_ACTION:                "both",
+  // Version check-in (opt-in) — see lib/telemetry.ts. Off unless the admin
+  // enables it here, and only sends data if the server also has
+  // TELEMETRY_ENDPOINT / TELEMETRY_KEY configured.
+  TELEMETRY_ENABLED:                 "false",
   // Stock & sales
   STOCK_CURRENCY:                    "USD",   // primary currency (USD / KHR / THB …)
   STOCK_SECONDARY_CURRENCY:          "",      // optional second currency (e.g. KHR); empty = off
