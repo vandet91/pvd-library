@@ -4,6 +4,15 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Force dynamic (locale-dependent) pages to always be refetched on
+    // client-side navigation instead of serving a stale cached RSC payload
+    // from a previously-visited locale. Without this, navigating away from
+    // a page and back can show content rendered in the wrong language.
+    staleTimes: {
+      dynamic: 0,
+    },
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "covers.openlibrary.org" },

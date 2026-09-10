@@ -21,14 +21,15 @@ interface GlobalDefaults {
 
 async function getGlobalDefaults(): Promise<GlobalDefaults> {
   const rows = await prisma.settings.findMany({
-    where: { key: { in: ["DEFAULT_LOAN_DAYS", "MAX_LOANS_PER_MEMBER", "MAX_RENEWALS", "FINE_PER_DAY"] } },
+    where: { key: { in: ["DEFAULT_LOAN_DAYS", "MAX_LOANS_PER_MEMBER", "MAX_RENEWALS", "FINE_PER_DAY", "FINES_ENABLED"] } },
   });
   const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const finesEnabled = m.FINES_ENABLED !== "false";
   return {
     DEFAULT_LOAN_DAYS:    Number(m.DEFAULT_LOAN_DAYS    ?? "14"),
     MAX_LOANS_PER_MEMBER: Number(m.MAX_LOANS_PER_MEMBER ?? "3"),
     MAX_RENEWALS:         Number(m.MAX_RENEWALS         ?? "2"),
-    FINE_PER_DAY:         Number(m.FINE_PER_DAY         ?? "0.50"),
+    FINE_PER_DAY:         finesEnabled ? Number(m.FINE_PER_DAY ?? "0.50") : 0,
   };
 }
 
@@ -60,6 +61,12 @@ export async function resolveCirculationRule(opts: {
     where: { isActive: true },
   });
 
+  // Check if fines are enabled
+  const finesEnabledRow = await prisma.settings.findUnique({
+    where: { key: "FINES_ENABLED" },
+  });
+  const finesEnabled = finesEnabledRow?.value !== "false";
+
   function score(r: typeof allRules[number]): number {
     return (r.memberType   ? 4 : 0)
          + (r.materialType ? 2 : 0)
@@ -81,7 +88,7 @@ export async function resolveCirculationRule(opts: {
       maxLoans:      best.maxLoans,
       maxRenewals:   best.maxRenewals,
       renewalDays:   best.renewalDays,
-      finePerDay:    best.finePerDay,
+      finePerDay:    finesEnabled ? best.finePerDay : 0,
       allowHomeLoan: best.allowHomeLoan,
       isDefault:     false,
       ruleName:      best.name,

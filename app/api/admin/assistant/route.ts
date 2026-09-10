@@ -1188,6 +1188,21 @@ function parseDeepSeekToolCalls(
   return results.length ? results : null;
 }
 
+/**
+ * Strip any raw tool-call markup a model may have left in its final reply
+ * (e.g. when it emits a malformed/duplicate tool-call attempt as plain text
+ * instead of a structured tool_calls field). Must be applied to every reply
+ * that reaches the user, not just the no-tool-call branch — otherwise a
+ * stray tool-call attempt on a later round leaks straight into the chat.
+ */
+function cleanAssistantReply(content: string | null | undefined): string {
+  return (content ?? "")
+    .replace(/<[｜|]{2}DSML[｜|]{2}tool_calls>[\s\S]*?<\/[｜|]{2}DSML[｜|]{2}tool_calls>/g, "")
+    .replace(/<[｜|]{2}DSML[｜|]{2}invoke[\s\S]*?<\/[｜|]{2}DSML[｜|]{2}invoke>/g, "")
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+    .trim();
+}
+
 /* ── POST /api/admin/assistant ───────────────────────────────────────────── */
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -1221,72 +1236,76 @@ export async function POST(request: NextRequest) {
   ];
 
   try {
-    // ── Round 1 ─────────────────────────────────────────────────────────────
-    const r1  = await withRetry(() =>
-      aiClient.chat.completions.create({
-        model: AI_MODEL, messages: msgs, tools: TOOLS, tool_choice: "auto", max_tokens: 2048,
-      }),
-    );
-    const m1  = r1.choices[0]?.message;
-    if (!m1) throw new Error("Empty AI response");
-
-    // Some models (DeepSeek) return tool calls as raw text rather than structured tool_calls
-    const effectiveToolCalls =
-      (m1.tool_calls?.length ? m1.tool_calls : null) ??
-      parseDeepSeekToolCalls(m1.content);
-
-    if (!effectiveToolCalls?.length) {
-      // Strip any raw tool-call markup from the reply before returning
-      const cleanReply = (m1.content ?? "")
-        .replace(/<[｜|]{2}DSML[｜|]{2}tool_calls>[\s\S]*?<\/[｜|]{2}DSML[｜|]{2}tool_calls>/g, "")
-        .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
-        .trim();
-      return NextResponse.json({ reply: cleanReply, data: null });
-    }
-
-    // ── Execute tools ────────────────────────────────────────────────────────
-    const toolMsgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [m1 as never];
+    const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [...msgs];
     const collectedData: Record<string, unknown> = {};
+    const MAX_ROUNDS = 5; // hard cap so a model that keeps requesting tools can't loop forever
 
-    for (const tc of effectiveToolCalls as { id: string; function: { name: string; arguments: string } }[]) {
-      const args = safeArgs(tc.function.arguments);
-      let result: unknown;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const r = await withRetry(() =>
+        aiClient.chat.completions.create({
+          model: AI_MODEL, messages: conversation, tools: TOOLS, tool_choice: "auto", max_tokens: 2048,
+        }),
+      );
+      const m = r.choices[0]?.message;
+      if (!m) throw new Error("Empty AI response");
 
-      switch (tc.function.name) {
-        case "search_books":              result = await runSearchBooks(args);             break;
-        case "get_trending_books":        result = await runGetTrendingBooks(args);        break;
-        case "get_new_arrivals":          result = await runGetNewArrivals(args);          break;
-        case "get_collection_stats":      result = await runGetCollectionStats();          break;
-        case "get_processing_queue":      result = await runGetProcessingQueue(args);      break;
-        case "get_weeding_candidates":    result = await runGetWeedingCandidates(args);    break;
-        case "get_acquisition_suggestions": result = await runGetAcquisitionSuggestions(args); break;
-        case "get_member_risk_report":    result = await runGetMemberRiskReport(args);    break;
-        case "get_daily_briefing":        result = await runGetDailyBriefing();            break;
-        case "lookup_member":             result = await runLookupMember(args);            break;
-        case "get_overdue_report":        result = await runGetOverdueReport(args);        break;
-        case "get_expiring_memberships":  result = await runGetExpiringMemberships(args);  break;
-        case "get_reservation_pipeline":  result = await runGetReservationPipeline(args);  break;
-        case "get_fine_report":           result = await runGetFineReport(args);           break;
-        case "get_idle_members":          result = await runGetIdleMembers(args);          break;
-        case "get_low_stock_alert":       result = await runGetLowStockAlert(args);                              break;
-        case "create_staff_task":         result = await runCreateStaffTask(args, session.user?.id ?? null);  break;
-        default:                          result = { error: "Unknown tool" };
+      // Some models (DeepSeek) return tool calls as raw text rather than structured tool_calls
+      const effectiveToolCalls =
+        (m.tool_calls?.length ? m.tool_calls : null) ??
+        parseDeepSeekToolCalls(m.content);
+
+      if (!effectiveToolCalls?.length) {
+        // Final answer — strip any stray tool-call markup before returning.
+        // This must run here (not just on the "no tool calls" path above) because
+        // a later round's reply can also contain a malformed tool-call attempt
+        // instead of clean prose, and that must never reach the user as-is.
+        return NextResponse.json({
+          reply: cleanAssistantReply(m.content),
+          data:  Object.keys(collectedData).length ? collectedData : null,
+        });
       }
 
-      collectedData[tc.function.name] = result;
-      toolMsgs.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
+      // ── Execute requested tools, then loop back for the model's next round ──
+      conversation.push(m as never);
+
+      for (const tc of effectiveToolCalls as { id: string; function: { name: string; arguments: string } }[]) {
+        const args = safeArgs(tc.function.arguments);
+        let result: unknown;
+
+        switch (tc.function.name) {
+          case "search_books":              result = await runSearchBooks(args);             break;
+          case "get_trending_books":        result = await runGetTrendingBooks(args);        break;
+          case "get_new_arrivals":          result = await runGetNewArrivals(args);          break;
+          case "get_collection_stats":      result = await runGetCollectionStats();          break;
+          case "get_processing_queue":      result = await runGetProcessingQueue(args);      break;
+          case "get_weeding_candidates":    result = await runGetWeedingCandidates(args);    break;
+          case "get_acquisition_suggestions": result = await runGetAcquisitionSuggestions(args); break;
+          case "get_member_risk_report":    result = await runGetMemberRiskReport(args);    break;
+          case "get_daily_briefing":        result = await runGetDailyBriefing();            break;
+          case "lookup_member":             result = await runLookupMember(args);            break;
+          case "get_overdue_report":        result = await runGetOverdueReport(args);        break;
+          case "get_expiring_memberships":  result = await runGetExpiringMemberships(args);  break;
+          case "get_reservation_pipeline":  result = await runGetReservationPipeline(args);  break;
+          case "get_fine_report":           result = await runGetFineReport(args);           break;
+          case "get_idle_members":          result = await runGetIdleMembers(args);          break;
+          case "get_low_stock_alert":       result = await runGetLowStockAlert(args);                              break;
+          case "create_staff_task":         result = await runCreateStaffTask(args, session.user?.id ?? null);  break;
+          default:                          result = { error: "Unknown tool" };
+        }
+
+        collectedData[tc.function.name] = result;
+        conversation.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
+      }
     }
 
-    // ── Round 2 ─────────────────────────────────────────────────────────────
-    const r2 = await withRetry(() =>
-      aiClient.chat.completions.create({
-        model: AI_MODEL, messages: [...msgs, ...toolMsgs], max_tokens: 2048,
-      }),
+    // Hit MAX_ROUNDS without a final answer — ask once more without tools so
+    // the model is forced to summarise instead of requesting yet another call.
+    const finalR = await withRetry(() =>
+      aiClient.chat.completions.create({ model: AI_MODEL, messages: conversation, max_tokens: 2048 }),
     );
-
     return NextResponse.json({
-      reply: r2.choices[0]?.message?.content ?? "",
-      data:  collectedData,
+      reply: cleanAssistantReply(finalR.choices[0]?.message?.content),
+      data:  Object.keys(collectedData).length ? collectedData : null,
     });
 
   } catch (err: unknown) {

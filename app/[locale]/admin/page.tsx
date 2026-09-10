@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
@@ -249,6 +249,14 @@ function TrendBadge({ delta, suffix }: { delta: number; suffix: string }) {
 
 export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
+
+  // Required even though the root [locale]/layout.tsx also calls this:
+  // client-side navigation between sibling pages under a shared layout
+  // does not always re-invoke that layout on the server, so the locale
+  // must be (re-)set here too or getTranslations() can fall back to the
+  // default locale for this render pass.
+  setRequestLocale(locale);
+
   const [t, tc, s, session] = await Promise.all([
     getTranslations("dashboard"),
     getTranslations("common"),

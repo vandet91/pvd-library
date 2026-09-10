@@ -10,8 +10,9 @@ const INSTANCE_ID_KEY = "__INSTANCE_ID";
  * Disabled by default. Enable in Settings → System, or by setting
  * TELEMETRY_ENABLED=true / TELEMETRY_ENDPOINT in the environment.
  * Sends only: an anonymous instance id, hostname, library name, app
- * version, and rough book/member counts. Never throws — a failed
- * check-in never affects the app.
+ * version, rough book/member counts, and basic runtime info (Node/Next
+ * version, OS, process uptime). Never throws — a failed check-in never
+ * affects the app.
  */
 async function getOrCreateInstanceId(): Promise<string> {
   const existing = await prisma.settings.findUnique({ where: { key: INSTANCE_ID_KEY } });
@@ -42,7 +43,7 @@ export async function sendHeartbeat(): Promise<void> {
       prisma.member.count(),
     ]);
 
-    await fetch(endpoint, {
+    const res = await fetch(endpoint, {
       method:  "POST",
       headers: { "Content-Type": "application/json", "x-telemetry-key": key },
       body: JSON.stringify({
@@ -51,10 +52,28 @@ export async function sendHeartbeat(): Promise<void> {
         hostname:    os.hostname(),
         libraryName: libraryNameRow?.value ?? null,
         version:     process.env.npm_package_version ?? "0.1.0",
-        meta:        { totalBooks, totalMembers },
+        meta: {
+          totalBooks,
+          totalMembers,
+          nodeVersion: process.version,
+          nextVersion: (await import("next/package.json")).version,
+          platform:    `${os.platform()} ${os.release()}`,
+          uptimeSecs:  Math.floor(process.uptime()),
+        },
       }),
       signal: AbortSignal.timeout(5000),
     });
+
+    const json = await res.json().catch(() => null);
+    if (json?.updateAvailable && typeof json.latestVersion === "string") {
+      await prisma.settings.upsert({
+        where:  { key: "__UPDATE_AVAILABLE" },
+        update: { value: json.latestVersion },
+        create: { key: "__UPDATE_AVAILABLE", value: json.latestVersion },
+      });
+    } else {
+      await prisma.settings.deleteMany({ where: { key: "__UPDATE_AVAILABLE" } });
+    }
   } catch {
     // Never let a failed check-in affect the app.
   }

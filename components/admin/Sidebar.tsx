@@ -60,29 +60,6 @@ interface Alerts {
   ordersAwaitingReceive: number;
 }
 
-/* ── Rotating daily quote ───────────────────────────────────────── */
-const QUOTES = [
-  { text: "A library is not a luxury but one of the necessities of life.", author: "Henry Ward Beecher" },
-  { text: "The only thing that you absolutely have to know is the location of the library.", author: "Albert Einstein" },
-  { text: "A great library contains the diary of the human race.", author: "George Mercer Dawson" },
-  { text: "Libraries store the energy that fuels the imagination.", author: "Sidney Sheldon" },
-  { text: "A library is the delivery room for the birth of ideas.", author: "Norman Cousins" },
-  { text: "The reading of all good books is like a conversation with the finest minds.", author: "René Descartes" },
-  { text: "Libraries are the thinking centres of the world.", author: "Walter Savage Landor" },
-];
-
-function QuoteCard() {
-  const quote = QUOTES[new Date().getDay() % QUOTES.length];
-  return (
-    <div className="mx-4 mb-3 p-3 rounded-xl bg-white/5 border border-white/10">
-      <p className="text-[11px] leading-relaxed text-white/60 italic line-clamp-3">
-        &ldquo;{quote.text}&rdquo;
-      </p>
-      <p className="text-[10px] text-white/35 mt-1.5 font-medium">— {quote.author}</p>
-    </div>
-  );
-}
-
 /* ── Reusable collapsible section ──────────────────────────────── */
 function CollapsibleSection({
   label, icon: Icon, open, onToggle, children,
@@ -138,6 +115,7 @@ export default function Sidebar({ role }: { role: string }) {
   });
 
   const [aiAdminEnabled, setAiAdminEnabled] = useState(true);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -163,6 +141,7 @@ export default function Sidebar({ role }: { role: string }) {
       .then((r) => r.ok ? r.json() : {})
       .then((d: Record<string, string>) => {
         setAiAdminEnabled(d.AI_SEARCH_ADMIN !== "false");
+        setUpdateAvailable(d.__UPDATE_AVAILABLE || null);
       })
       .catch(() => {});
   }, []);
@@ -255,7 +234,7 @@ export default function Sidebar({ role }: { role: string }) {
     },
     {
       href: `/${locale}/admin/serials`,
-      label: "Serials",
+      label: t("serials"),
       icon: Newspaper,
       minRole: "LIBRARIAN",
       badge: (() => {
@@ -289,7 +268,7 @@ export default function Sidebar({ role }: { role: string }) {
     // ── Acquisitions & Stock ──────────────────────────────────────
     {
       href: `/${locale}/admin/acquisitions`,
-      label: "Acquisitions",
+      label: t("acquisitions"),
       icon: PackagePlus,
       minRole: "LIBRARIAN",
       badge: alerts.ordersAwaitingReceive > 0
@@ -298,7 +277,7 @@ export default function Sidebar({ role }: { role: string }) {
     },
     {
       href: `/${locale}/admin/books/acquisition`,
-      label: "Demand Intel",
+      label: t("demandIntel"),
       icon: TrendingUp,
       minRole: "LIBRARIAN",
     },
@@ -368,8 +347,8 @@ export default function Sidebar({ role }: { role: string }) {
   /* ── Settings section (collapsible) ── */
   const allSettingsLinks: NavLink[] = [
     { href: `/${locale}/admin/settings`,          label: t("settings"),      icon: Settings,    minRole: "ADMIN"     },
-    { href: `/${locale}/admin/circulation-rules`, label: "Circ. Rules",      icon: ScrollText,  minRole: "LIBRARIAN" },
-    { href: `/${locale}/admin/calendar`,          label: "Calendar",         icon: CalendarDays,minRole: "ADMIN"     },
+    { href: `/${locale}/admin/circulation-rules`, label: t("circulationRules"), icon: ScrollText,  minRole: "LIBRARIAN" },
+    { href: `/${locale}/admin/calendar`,          label: t("calendar"),         icon: CalendarDays,minRole: "ADMIN"     },
     { href: `/${locale}/admin/taxonomy`,          label: t("taxonomy"),      icon: Tags,        minRole: "LIBRARIAN" },
     { href: `/${locale}/admin/notifications`,     label: t("notifications"), icon: Bell,        minRole: "ADMIN"     },
     { href: `/${locale}/admin/logs`,              label: t("activityLogs"),  icon: Activity,    minRole: "ADMIN"     },
@@ -516,11 +495,17 @@ export default function Sidebar({ role }: { role: string }) {
         })}
       </nav>
 
-      {/* ── Daily quote ── */}
-      <QuoteCard />
-
-      {/* ── Bottom bar — logout only ── */}
-      <div className="p-4 border-t border-white/10">
+      {/* ── Bottom bar ── */}
+      <div className="p-4 border-t border-white/10 space-y-3">
+        {role === "ADMIN" && updateAvailable && (
+          <Link
+            href={`/${locale}/admin/settings`}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 transition-colors"
+          >
+            <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Update available: v{updateAvailable}</span>
+          </Link>
+        )}
         <form action="/api/auth/signout" method="POST">
           <input type="hidden" name="callbackUrl" value={`/${locale}/auth/login`} />
           <button type="submit"

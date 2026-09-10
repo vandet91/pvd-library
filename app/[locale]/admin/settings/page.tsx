@@ -1791,7 +1791,7 @@ export default function SettingsPage() {
       <Section title="System" icon={<Activity className="w-4 h-4 text-gray-500" />}>
         <Field
           label="Version check-in"
-          hint="When enabled, this server periodically sends the maintainer its hostname, library name, app version, and rough book/member counts, so they can notify you about important updates. No member, book, or loan data is ever included. Disabled by default."
+          hint="When enabled, this server periodically sends the maintainer its hostname, library name, app version, rough book/member counts, and basic runtime info (Node/Next version, OS, uptime) — the maintainer's server also notes an approximate country/city from the request, never a raw IP address. No member, book, or loan data is ever included. Disabled by default."
           icon={<Activity className="w-4 h-4 text-gray-400" />}
         >
           <div className="flex items-center gap-4">

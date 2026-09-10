@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Tag, Barcode, Loader2, RefreshCw, CheckCheck, Printer,
   ShoppingBasket, AlertCircle, BookOpen, Filter,
@@ -93,6 +93,7 @@ function printLabels(locale: string, copyIds: string[]) {
 /* ── Page ───────────────────────────────────────────────────────────────── */
 export default function ProcessingQueuePage() {
   const locale = useLocale();
+  const t = useTranslations("processingQueue");
 
   const [data,     setData]    = useState<ProcessingData | null>(null);
   const [loading,  setLoading] = useState(true);
@@ -134,7 +135,7 @@ export default function ProcessingQueuePage() {
       }
       setData(await res.json() as ProcessingData);
     } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : "Failed to load processing queue");
+      setLoadErr(e instanceof Error ? e.message : t("failedToLoad"));
     } finally {
       setLoading(false);
     }
@@ -184,7 +185,7 @@ export default function ProcessingQueuePage() {
         copyId: "", copyNumber: 0, barcode, alreadyLabeled: false,
         book: { id: "", title: barcode, author: null },
         scannedAt: new Date(),
-        error: "Network error",
+        error: t("networkError"),
       };
       setScanHistory((prev) => [entry, ...prev].slice(0, 15));
     } finally {
@@ -213,12 +214,12 @@ export default function ProcessingQueuePage() {
           body:    JSON.stringify({ copyId: item.id, tagged: true }),
         }).catch(() => {});
       }
-      toast("Label marked as applied ✓");
+      toast(t("labelMarkedApplied"));
       setData((prev) => prev
         ? { ...prev, needsLabel: prev.needsLabel.filter((n) => n.id !== item.id) }
         : prev);
     } else {
-      toast("Failed to update", false);
+      toast(t("failedToUpdate"), false);
     }
   }
 
@@ -237,7 +238,7 @@ export default function ProcessingQueuePage() {
       ),
     );
     setLabeling(new Set());
-    toast(`${visible.length} copies marked as labeled`);
+    toast(t("copiesMarkedLabeled", { count: visible.length }));
     const ids = new Set(visible.map((i) => i.id));
     setData((prev) => prev
       ? { ...prev, needsLabel: prev.needsLabel.filter((n) => !ids.has(n.id)) }
@@ -259,12 +260,12 @@ export default function ProcessingQueuePage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ labelPrinted: true }),
       }).catch(() => {});
-      toast("Marked as labeled ✓");
+      toast(t("markedAsLabeledCheck"));
       setData((prev) => prev
         ? { ...prev, untagged: prev.untagged.filter((u) => u.id !== item.id) }
         : prev);
     } else {
-      toast("Failed to update", false);
+      toast(t("failedToUpdate"), false);
     }
   }
 
@@ -288,12 +289,12 @@ export default function ProcessingQueuePage() {
           body:    JSON.stringify({ labelPrinted: true }),
         }).catch(() => {}),
       );
-      toast(`All items in "${basketName}" marked as labeled`);
+      toast(t("allInBasketMarked", { name: basketName }));
       setData((prev) => prev
         ? { ...prev, untagged: prev.untagged.filter((u) => u.basketId !== basketId) }
         : prev);
     } else {
-      toast("Failed to update basket", false);
+      toast(t("failedToUpdateBasket"), false);
     }
   }
 
@@ -365,7 +366,7 @@ export default function ProcessingQueuePage() {
     return (
       <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
         <Loader2 className="w-5 h-5 animate-spin" />
-        <span>Loading processing queue…</span>
+        <span>{t("loading")}</span>
       </div>
     );
   }
@@ -379,7 +380,7 @@ export default function ProcessingQueuePage() {
           onClick={load}
           className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
         >
-          <RefreshCw className="w-4 h-4" /> Retry
+          <RefreshCw className="w-4 h-4" /> {t("retry")}
         </button>
       </div>
     );
@@ -393,17 +394,17 @@ export default function ProcessingQueuePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Tag className="w-6 h-6 text-indigo-600" />
-            Processing Queue
+            {t("pageTitle")}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Books awaiting physical spine labels or barcode assignment
+            {t("pageSubtitle")}
           </p>
         </div>
         <button
           onClick={load}
           className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
         >
-          <RefreshCw className="w-4 h-4" /> Refresh
+          <RefreshCw className="w-4 h-4" /> {t("refresh")}
         </button>
       </div>
 
@@ -411,16 +412,16 @@ export default function ProcessingQueuePage() {
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm text-indigo-700 flex items-start gap-3">
         <Package className="w-4 h-4 mt-0.5 flex-shrink-0" />
         <div>
-          <span className="font-semibold">Workflow: </span>
-          New copy added to catalog
+          <span className="font-semibold">{t("workflowLabel")} </span>
+          {t("workflowStep1")}
           <span className="mx-2 text-indigo-400">→</span>
-          Appears here automatically under <strong>Needs Label</strong>
+          {t("workflowStep2")} <strong>{t("workflowNeedsLabel")}</strong>
           <span className="mx-2 text-indigo-400">→</span>
-          Print &amp; apply spine label
+          {t("workflowStep3")}
           <span className="mx-2 text-indigo-400">→</span>
-          Click <strong>Mark Labeled</strong>
+          {t("workflowStep4")} <strong>{t("workflowMarkLabeled")}</strong>
           <span className="mx-2 text-indigo-400">→</span>
-          Done. <span className="text-indigo-500">Baskets are optional — use them to organise batches.</span>
+          {t("workflowStep5")} <span className="text-indigo-500">{t("workflowNote")}</span>
         </div>
       </div>
 
@@ -439,15 +440,15 @@ export default function ProcessingQueuePage() {
         >
           <div className="flex items-center gap-2">
             <ScanLine className="w-4 h-4 text-indigo-600" />
-            <span className="text-sm font-semibold text-gray-800">Barcode Scanner</span>
+            <span className="text-sm font-semibold text-gray-800">{t("scannerTitle")}</span>
             <span className="text-xs text-gray-400">
-              — scan after sticking the label to mark it done instantly
+              {t("scannerHint")}
             </span>
           </div>
           <div className="flex items-center gap-2">
             {scanHistory.length > 0 && (
               <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                {scanHistory.filter((s) => !s.error && !s.alreadyLabeled).length} labeled this session
+                {t("labeledThisSession", { count: scanHistory.filter((s) => !s.error && !s.alreadyLabeled).length })}
               </span>
             )}
             <span className="text-xs text-gray-400">{scannerOpen ? "▲" : "▼"}</span>
@@ -475,7 +476,7 @@ export default function ProcessingQueuePage() {
                       handleScan(scanValue);
                     }
                   }}
-                  placeholder={scanBusy ? "Processing…" : "Point scanner here and scan barcode…"}
+                  placeholder={scanBusy ? t("scannerBusy") : t("scannerPlaceholder")}
                   disabled={scanBusy}
                   className="w-full pl-10 pr-4 py-2.5 border-2 border-indigo-300 focus:border-indigo-500 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-50 transition-colors"
                 />
@@ -485,14 +486,14 @@ export default function ProcessingQueuePage() {
                   type="button"
                   onClick={() => setScanHistory([])}
                   className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
-                  title="Clear scan history"
+                  title={t("clearScanHistory")}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Clear
+                  <RotateCcw className="w-3.5 h-3.5" /> {t("clear")}
                 </button>
               )}
             </div>
             <p className="text-xs text-gray-400">
-              Scanners send Enter automatically — just point and scan. Manual entry also works.
+              {t("scannerHelp")}
             </p>
 
             {/* Scan history */}
@@ -546,10 +547,10 @@ export default function ProcessingQueuePage() {
                             : "bg-green-100 text-green-700"
                       }`}>
                         {entry.error
-                          ? "Not found"
+                          ? t("notFound")
                           : entry.alreadyLabeled
-                            ? "Already labeled"
-                            : "✓ Labeled"}
+                            ? t("alreadyLabeled")
+                            : t("labeledCheck")}
                       </span>
                       <span className="text-xs text-gray-300">
                         {entry.scannedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -570,7 +571,7 @@ export default function ProcessingQueuePage() {
             key:   "needslabel" as Tab,
             icon:  Tag,
             count: needsLabelCount,
-            label: "Needs Label",
+            label: t("needsLabel"),
             bg:    "bg-amber-100",
             text:  "text-amber-600",
             active:"border-amber-400 bg-amber-50",
@@ -580,7 +581,7 @@ export default function ProcessingQueuePage() {
             key:   "inbaskets" as Tab,
             icon:  ShoppingBasket,
             count: inBasketsCount,
-            label: "In Baskets",
+            label: t("inBaskets"),
             bg:    "bg-purple-100",
             text:  "text-purple-600",
             active:"border-purple-400 bg-purple-50",
@@ -590,7 +591,7 @@ export default function ProcessingQueuePage() {
             key:   "nobarcode" as Tab,
             icon:  Barcode,
             count: noBarcodeCount,
-            label: "No Barcode",
+            label: t("noBarcode"),
             bg:    "bg-blue-100",
             text:  "text-blue-600",
             active:"border-blue-400 bg-blue-50",
@@ -622,9 +623,9 @@ export default function ProcessingQueuePage() {
       {/* ── Tabs ───────────────────────────────────────────────────────── */}
       <div className="flex gap-1 border-b border-gray-200">
         {([
-          { key: "needslabel" as Tab, label: `Needs Label (${needsLabelCount > 200 ? "200+" : needsLabelCount})`, icon: Tag },
-          { key: "inbaskets"  as Tab, label: `In Baskets (${inBasketsCount})`,   icon: ShoppingBasket },
-          { key: "nobarcode"  as Tab, label: `No Barcode (${noBarcodeCount})`,   icon: Barcode },
+          { key: "needslabel" as Tab, label: `${t("needsLabel")} (${needsLabelCount > 200 ? "200+" : needsLabelCount})`, icon: Tag },
+          { key: "inbaskets"  as Tab, label: `${t("inBaskets")} (${inBasketsCount})`,   icon: ShoppingBasket },
+          { key: "nobarcode"  as Tab, label: `${t("noBarcode")} (${noBarcodeCount})`,   icon: Barcode },
         ]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -651,8 +652,8 @@ export default function ProcessingQueuePage() {
           {needsLabelCount === 0 ? (
             <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
               <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
-              <p className="font-semibold text-gray-700">All copies have labels applied!</p>
-              <p className="text-sm text-gray-400 mt-1">Nothing left to label.</p>
+              <p className="font-semibold text-gray-700">{t("allLabeledDone")}</p>
+              <p className="text-sm text-gray-400 mt-1">{t("nothingToLabel")}</p>
             </div>
           ) : (
             <>
@@ -664,13 +665,13 @@ export default function ProcessingQueuePage() {
                     type="text"
                     value={labelFilter}
                     onChange={(e) => { setLabelFilter(e.target.value); clearSelection(); }}
-                    placeholder="Filter by title, barcode, or ISBN…"
+                    placeholder={t("filterByTitle")}
                     className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
                 <span className="text-sm text-gray-500">
-                  {filteredNeedsLabel.length} of {needsLabelCount} shown
-                  {needsLabelCount > 200 && " (limited to 200)"}
+                  {t("shownOfTotal", { shown: filteredNeedsLabel.length, total: needsLabelCount })}
+                  {needsLabelCount > 200 && t("limitedTo200")}
                 </span>
 
                 {/* Print Selected — shown when anything is checked */}
@@ -681,13 +682,13 @@ export default function ProcessingQueuePage() {
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
                     >
                       <Printer className="w-3.5 h-3.5" />
-                      Print Selected ({selected.size})
+                      {t("printSelected", { count: selected.size })}
                     </button>
                     <button
                       onClick={clearSelection}
                       className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors"
                     >
-                      <X className="w-3 h-3" /> Clear
+                      <X className="w-3 h-3" /> {t("clear")}
                     </button>
                   </>
                 )}
@@ -698,7 +699,7 @@ export default function ProcessingQueuePage() {
                       onClick={() => printLabels(locale, filteredNeedsLabel.map((i) => i.id))}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                     >
-                      <Printer className="w-3.5 h-3.5" /> Print All
+                      <Printer className="w-3.5 h-3.5" /> {t("printAll")}
                     </button>
                     <button
                       onClick={markAllVisible}
@@ -708,7 +709,7 @@ export default function ProcessingQueuePage() {
                       {labeling.size > 0
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <CheckCheck className="w-3.5 h-3.5" />}
-                      Mark All Labeled
+                      {t("markAllLabeled")}
                     </button>
                   </>
                 )}
@@ -731,14 +732,14 @@ export default function ProcessingQueuePage() {
                           }
                           onChange={toggleAll}
                           className="w-3.5 h-3.5 rounded accent-indigo-600"
-                          title="Select all printable copies"
+                          title={t("selectAllPrintable")}
                         />
                       </th>
-                      <th className="px-4 py-2.5 text-left">Book / Copy</th>
-                      <th className="px-4 py-2.5 text-left w-36">Barcode</th>
-                      <th className="px-4 py-2.5 text-left w-24">Condition</th>
-                      <th className="px-4 py-2.5 text-left w-32">Basket</th>
-                      <th className="px-4 py-2.5 text-right w-32">Actions</th>
+                      <th className="px-4 py-2.5 text-left">{t("colBookCopy")}</th>
+                      <th className="px-4 py-2.5 text-left w-36">{t("colBarcode")}</th>
+                      <th className="px-4 py-2.5 text-left w-24">{t("colCondition")}</th>
+                      <th className="px-4 py-2.5 text-left w-32">{t("colBasket")}</th>
+                      <th className="px-4 py-2.5 text-right w-32">{t("colActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -775,14 +776,14 @@ export default function ProcessingQueuePage() {
                                   {group.author && <span className="text-xs text-indigo-400">— {group.author}</span>}
                                   {group.isbn   && <span className="text-xs font-mono text-indigo-300">{group.isbn}</span>}
                                   <span className="ml-auto text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
-                                    {group.copies.length} copies
+                                    {t("copiesCount", { count: group.copies.length })}
                                   </span>
                                   {printableIds.length > 0 && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); printLabels(locale, printableIds); }}
                                       className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 px-2 py-0.5 rounded-lg hover:bg-indigo-100 transition-colors"
                                     >
-                                      <Printer className="w-3 h-3" /> Print this book
+                                      <Printer className="w-3 h-3" /> {t("printThisBook")}
                                     </button>
                                   )}
                                 </div>
@@ -810,7 +811,7 @@ export default function ProcessingQueuePage() {
                                     onChange={() => toggleCopy(item.id)}
                                     onClick={(e) => e.stopPropagation()}
                                     className="w-3.5 h-3.5 rounded accent-indigo-600 disabled:opacity-30"
-                                    title={item.barcode ? "Select for printing" : "No barcode — cannot print"}
+                                    title={item.barcode ? t("selectForPrinting") : t("noBarcodeCannotPrint")}
                                   />
                                 </td>
                                 <td className="px-4 py-2.5">
@@ -819,17 +820,17 @@ export default function ProcessingQueuePage() {
                                     <>
                                       <p className="font-medium text-gray-800 text-sm">{item.book.title}</p>
                                       {item.book.author && <p className="text-xs text-gray-400">{item.book.author.name}</p>}
-                                      {item.book.isbn   && <p className="text-xs font-mono text-gray-400">ISBN: {item.book.isbn}</p>}
+                                      {item.book.isbn   && <p className="text-xs font-mono text-gray-400">{t("isbnLabel", { isbn: item.book.isbn })}</p>}
                                     </>
                                   )}
                                   <span className={`text-xs font-mono ${group.copies.length > 1 ? "text-gray-500 ml-2" : "text-gray-600 mt-0.5 block"}`}>
-                                    Copy #{item.copyNumber}
+                                    {t("copyNumber", { n: item.copyNumber })}
                                   </span>
                                 </td>
                                 <td className="px-4 py-2.5">
                                   {item.barcode
                                     ? <span className="text-xs font-mono text-gray-600">{item.barcode}</span>
-                                    : <span className="text-xs text-gray-300 italic">No barcode</span>}
+                                    : <span className="text-xs text-gray-300 italic">{t("noBarcodeShort")}</span>}
                                 </td>
                                 <td className="px-4 py-2.5">{conditionBadge(item.condition)}</td>
                                 <td className="px-4 py-2.5">
@@ -851,7 +852,7 @@ export default function ProcessingQueuePage() {
                                     <button
                                       onClick={() => printLabels(locale, [item.id])}
                                       disabled={!item.barcode}
-                                      title={item.barcode ? "Print this copy's label" : "No barcode — assign one first"}
+                                      title={item.barcode ? t("printThisCopyLabel") : t("noBarcodeAssignFirst")}
                                       className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 transition-colors"
                                     >
                                       <Printer className="w-3.5 h-3.5" />
@@ -864,7 +865,7 @@ export default function ProcessingQueuePage() {
                                       {labeling.has(item.id)
                                         ? <Loader2 className="w-3 h-3 animate-spin" />
                                         : <CheckCircle2 className="w-3 h-3" />}
-                                      Labeled
+                                      {t("labeled")}
                                     </button>
                                   </div>
                                 </td>
@@ -879,7 +880,7 @@ export default function ProcessingQueuePage() {
                 </div>
                 {needsLabelCount > 200 && (
                   <div className="px-4 py-3 bg-amber-50 border-t border-amber-100 text-xs text-amber-700 text-center">
-                    Showing the 200 most recently acquired copies. Mark them as labeled to reveal older ones.
+                    {t("showingLimited")}
                   </div>
                 )}
               </div>
@@ -898,9 +899,9 @@ export default function ProcessingQueuePage() {
           {inBasketsCount === 0 ? (
             <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
               <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
-              <p className="font-semibold text-gray-700">All basket items are labeled!</p>
+              <p className="font-semibold text-gray-700">{t("allBasketLabeled")}</p>
               <p className="text-sm text-gray-400 mt-1">
-                No pending basket labels. Use the <strong>Needs Label</strong> tab to see all unlabeled copies.
+                {t("noPendingBasketPre")} <strong>{t("needsLabel")}</strong> {t("noPendingBasketPost")}
               </p>
             </div>
           ) : (
@@ -912,12 +913,12 @@ export default function ProcessingQueuePage() {
                     type="text"
                     value={basketFilter}
                     onChange={(e) => setBasketFilter(e.target.value)}
-                    placeholder="Filter by basket name…"
+                    placeholder={t("filterByBasketName")}
                     className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
                 <p className="text-sm text-gray-500">
-                  {groupedByBasket.reduce((s, g) => s + g.items.length, 0)} item(s) across {groupedByBasket.length} basket(s)
+                  {t("itemsAcrossBaskets", { items: groupedByBasket.reduce((s, g) => s + g.items.length, 0), baskets: groupedByBasket.length })}
                 </p>
               </div>
 
@@ -928,7 +929,7 @@ export default function ProcessingQueuePage() {
                       <ShoppingBasket className="w-4 h-4 text-purple-600" />
                       <span className="font-semibold text-gray-800 text-sm">{basket.name}</span>
                       <span className="text-xs bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full font-medium">
-                        {items.length} unlabeled
+                        {t("unlabeledCount", { count: items.length })}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -940,13 +941,13 @@ export default function ProcessingQueuePage() {
                         {tagging.has(basket.id)
                           ? <Loader2 className="w-3 h-3 animate-spin" />
                           : <CheckCheck className="w-3 h-3" />}
-                        Mark All Labeled
+                        {t("markAllLabeled")}
                       </button>
                       <Link
                         href={`/${locale}/admin/baskets/${basket.id}`}
                         className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-white transition-colors"
                       >
-                        Open <ChevronRight className="w-3 h-3" />
+                        {t("open")} <ChevronRight className="w-3 h-3" />
                       </Link>
                       <button
                         onClick={() => setExpandedBaskets((prev) => {
@@ -956,7 +957,7 @@ export default function ProcessingQueuePage() {
                         })}
                         className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
                       >
-                        {expandedBaskets.has(basket.id) ? "▲ Collapse" : "▼ Expand"}
+                        {expandedBaskets.has(basket.id) ? t("collapse") : t("expand")}
                       </button>
                     </div>
                   </div>
@@ -966,12 +967,12 @@ export default function ProcessingQueuePage() {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
                         <tr>
-                          <th className="px-4 py-2 text-left">Book</th>
-                          <th className="px-4 py-2 text-center w-16">Copy#</th>
-                          <th className="px-4 py-2 text-left w-32">Barcode</th>
-                          <th className="px-4 py-2 text-left w-24">Condition</th>
-                          <th className="px-4 py-2 text-center w-24">Label</th>
-                          <th className="px-4 py-2 text-right w-24">Action</th>
+                          <th className="px-4 py-2 text-left">{t("colBook")}</th>
+                          <th className="px-4 py-2 text-center w-16">{t("colCopyHash")}</th>
+                          <th className="px-4 py-2 text-left w-32">{t("colBarcode")}</th>
+                          <th className="px-4 py-2 text-left w-24">{t("colCondition")}</th>
+                          <th className="px-4 py-2 text-center w-24">{t("colLabel")}</th>
+                          <th className="px-4 py-2 text-right w-24">{t("colAction")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -983,7 +984,7 @@ export default function ProcessingQueuePage() {
                                 <p className="text-xs text-gray-400">{item.book.author.name}</p>
                               )}
                               {item.book.isbn && (
-                                <p className="text-xs font-mono text-gray-400">ISBN: {item.book.isbn}</p>
+                                <p className="text-xs font-mono text-gray-400">{t("isbnLabel", { isbn: item.book.isbn })}</p>
                               )}
                             </td>
                             <td className="px-4 py-2.5 text-center">
@@ -998,11 +999,11 @@ export default function ProcessingQueuePage() {
                             <td className="px-4 py-2.5 text-center">
                               {item.copy.labelPrinted ? (
                                 <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Applied
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> {t("applied")}
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-xs text-amber-500 font-medium">
-                                  <Circle className="w-3.5 h-3.5" /> Pending
+                                  <Circle className="w-3.5 h-3.5" /> {t("pending")}
                                 </span>
                               )}
                             </td>
@@ -1015,7 +1016,7 @@ export default function ProcessingQueuePage() {
                                 {tagging.has(item.id)
                                   ? <Loader2 className="w-3 h-3 animate-spin" />
                                   : <CheckCircle2 className="w-3 h-3" />}
-                                Labeled
+                                {t("labeled")}
                               </button>
                             </td>
                           </tr>
@@ -1039,26 +1040,26 @@ export default function ProcessingQueuePage() {
           {noBarcodeCount === 0 ? (
             <div className="p-12 text-center">
               <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
-              <p className="font-semibold text-gray-700">All copies have barcodes!</p>
-              <p className="text-sm text-gray-400 mt-1">No copies are missing barcodes or RFID tags.</p>
+              <p className="font-semibold text-gray-700">{t("allHaveBarcodes")}</p>
+              <p className="text-sm text-gray-400 mt-1">{t("noMissingBarcodes")}</p>
             </div>
           ) : (
             <>
               <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-blue-600" />
                 <span className="text-sm text-blue-800 font-medium">
-                  {noBarcodeCount} copy/copies have no barcode or RFID — assign one before printing labels.
+                  {t("barcodeWarning", { count: noBarcodeCount })}
                 </span>
               </div>
               <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-3 text-left">Book</th>
-                    <th className="px-4 py-3 text-center w-16">Copy#</th>
-                    <th className="px-4 py-3 text-left w-24">Status</th>
-                    <th className="px-4 py-3 text-left w-24">Condition</th>
-                    <th className="px-4 py-3 text-right w-28">Action</th>
+                    <th className="px-4 py-3 text-left">{t("colBook")}</th>
+                    <th className="px-4 py-3 text-center w-16">{t("colCopyHash")}</th>
+                    <th className="px-4 py-3 text-left w-24">{t("colStatus")}</th>
+                    <th className="px-4 py-3 text-left w-24">{t("colCondition")}</th>
+                    <th className="px-4 py-3 text-right w-28">{t("colAction")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -1070,7 +1071,7 @@ export default function ProcessingQueuePage() {
                           <p className="text-xs text-gray-400">{copy.book.author.name}</p>
                         )}
                         {copy.book.isbn && (
-                          <p className="text-xs font-mono text-gray-400">ISBN: {copy.book.isbn}</p>
+                          <p className="text-xs font-mono text-gray-400">{t("isbnLabel", { isbn: copy.book.isbn })}</p>
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-center">
@@ -1090,7 +1091,7 @@ export default function ProcessingQueuePage() {
                           className="flex items-center gap-1 text-xs px-2.5 py-1 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors ml-auto w-fit"
                         >
                           <BookOpen className="w-3 h-3" />
-                          Manage
+                          {t("manage")}
                         </Link>
                       </td>
                     </tr>
@@ -1107,8 +1108,8 @@ export default function ProcessingQueuePage() {
       {needsLabelCount === 0 && inBasketsCount === 0 && noBarcodeCount === 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-          <p className="font-semibold text-emerald-800">Processing queue is clear!</p>
-          <p className="text-sm text-emerald-600 mt-1">All copies are labeled and have barcodes.</p>
+          <p className="font-semibold text-emerald-800">{t("queueClear")}</p>
+          <p className="text-sm text-emerald-600 mt-1">{t("queueClearSub")}</p>
         </div>
       )}
 
