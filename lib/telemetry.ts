@@ -30,17 +30,22 @@ async function getOrCreateInstanceId(): Promise<string> {
   return id;
 }
 
-export async function sendHeartbeat(): Promise<void> {
+export interface HeartbeatResult {
+  ok: boolean;
+  message: string;
+}
+
+export async function sendHeartbeat(): Promise<HeartbeatResult> {
   const [enabledSetting, endpointSetting, keySetting] = await Promise.all([
     prisma.settings.findUnique({ where: { key: "TELEMETRY_ENABLED" } }),
     prisma.settings.findUnique({ where: { key: "TELEMETRY_ENDPOINT" } }),
     prisma.settings.findUnique({ where: { key: "TELEMETRY_KEY" } }),
   ]).catch(() => [null, null, null]);
-  if (enabledSetting?.value !== "true") return;
+  if (enabledSetting?.value !== "true") return { ok: false, message: "Version check-in is disabled" };
 
   const endpoint = endpointSetting?.value;
   const key = keySetting?.value;
-  if (!endpoint || !key) return;
+  if (!endpoint || !key) return { ok: false, message: "Endpoint and key must both be set" };
 
   try {
     const [instanceId, libraryNameRow, totalBooks, totalMembers] = await Promise.all([
@@ -71,7 +76,22 @@ export async function sendHeartbeat(): Promise<void> {
       signal: AbortSignal.timeout(5000),
     });
 
-    const json = await res.json().catch(() => null);
+    interface TelemetryResponse {
+      ok?: boolean;
+      updateAvailable?: boolean;
+      latestVersion?: string;
+      releaseUrl?: string;
+      githubUrl?: string;
+    }
+    const json = (await res.json().catch(() => null)) as TelemetryResponse | null;
+
+    if (!res.ok || json?.ok === false) {
+      return {
+        ok: false,
+        message: `Endpoint rejected the check-in (HTTP ${res.status}) — check the key matches the server's TELEMETRY_SECRET`,
+      };
+    }
+
     if (json?.updateAvailable && typeof json.latestVersion === "string") {
       const releaseUrl = typeof json.releaseUrl === "string" ? json.releaseUrl : (typeof json.githubUrl === "string" ? json.githubUrl : "");
       await prisma.settings.upsert({
@@ -84,10 +104,12 @@ export async function sendHeartbeat(): Promise<void> {
         update: { value: releaseUrl },
         create: { key: "__UPDATE_URL", value: releaseUrl },
       });
+      return { ok: true, message: `Connected — update available: v${json.latestVersion}` };
     } else {
       await prisma.settings.deleteMany({ where: { key: { in: ["__UPDATE_AVAILABLE", "__UPDATE_URL"] } } });
+      return { ok: true, message: json?.latestVersion ? `Connected — up to date (v${json.latestVersion})` : "Connected" };
     }
-  } catch {
-    // Never let a failed check-in affect the app.
+  } catch (err) {
+    return { ok: false, message: (err as Error).message || "Request failed" };
   }
 }

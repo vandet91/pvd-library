@@ -324,6 +324,24 @@ export default function SettingsPage() {
   // Keep local logo state in sync whenever context refreshes (after router.refresh())
   useEffect(() => { setLogoUrl(contextLogo); }, [contextLogo]);
 
+  /* ── Telemetry check-in state ── */
+  const [telemetryTesting, setTelemetryTesting] = useState(false);
+  const [telemetryResult, setTelemetryResult]   = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function testTelemetry() {
+    setTelemetryTesting(true);
+    setTelemetryResult(null);
+    try {
+      const res = await fetch("/api/admin/telemetry/test", { method: "POST" });
+      const json = await res.json();
+      setTelemetryResult(res.ok ? json : { ok: false, message: json.error ?? "Check-in failed" });
+    } catch (err) {
+      setTelemetryResult({ ok: false, message: (err as Error).message ?? "Check-in failed" });
+    } finally {
+      setTelemetryTesting(false);
+    }
+  }
+
   async function handleLogoFile(file: File) {
     setLogoStatus("uploading");
     setLogoMsg("");
@@ -1847,6 +1865,24 @@ export default function SettingsPage() {
                 placeholder={data.TELEMETRY_KEY_SET === "true" ? "•••••••• (unchanged)" : "shared secret"}
                 className={inputCls}
               />
+            </Field>
+
+            <Field label="Check in now" hint="Send a heartbeat immediately, without waiting for the next scheduled check-in." icon={<Activity className="w-4 h-4 text-gray-400" />}>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={testTelemetry}
+                  disabled={busy || telemetryTesting}
+                  className="px-3 py-2 bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                >
+                  {telemetryTesting ? "Checking in…" : "Check in now"}
+                </button>
+                {telemetryResult && (
+                  <span className={`text-xs font-medium ${telemetryResult.ok ? "text-green-600" : "text-red-600"}`}>
+                    {telemetryResult.message}
+                  </span>
+                )}
+              </div>
             </Field>
           </>
         )}
