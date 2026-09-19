@@ -7,10 +7,13 @@ const INSTANCE_ID_KEY = "__INSTANCE_ID";
  * Version check-in — lets the maintainer know this deployment is on an
  * older version so they can proactively reach out about updates.
  *
- * Disabled by default. Enable in Settings → System, or by setting
- * TELEMETRY_ENABLED=true / TELEMETRY_ENDPOINT in the environment.
- * Sends only: an anonymous instance id, hostname, library name, app
- * version, rough book/member counts, and basic runtime info (Node/Next
+ * Disabled by default. Enable and configure entirely from Settings →
+ * System: TELEMETRY_ENABLED, TELEMETRY_ENDPOINT (e.g. a route on
+ * https://me.mrsloth.org), and TELEMETRY_KEY (shared secret that endpoint
+ * expects) all live in the settings table, not environment variables —
+ * so this can be turned on and pointed at a real endpoint without a
+ * redeploy. Sends only: an anonymous instance id, hostname, library name,
+ * app version, rough book/member counts, and basic runtime info (Node/Next
  * version, OS, process uptime). Never throws — a failed check-in never
  * affects the app.
  */
@@ -28,12 +31,16 @@ async function getOrCreateInstanceId(): Promise<string> {
 }
 
 export async function sendHeartbeat(): Promise<void> {
-  const endpoint = process.env.TELEMETRY_ENDPOINT;
-  const key = process.env.TELEMETRY_KEY;
-  if (!endpoint || !key) return;
-
-  const enabledSetting = await prisma.settings.findUnique({ where: { key: "TELEMETRY_ENABLED" } }).catch(() => null);
+  const [enabledSetting, endpointSetting, keySetting] = await Promise.all([
+    prisma.settings.findUnique({ where: { key: "TELEMETRY_ENABLED" } }),
+    prisma.settings.findUnique({ where: { key: "TELEMETRY_ENDPOINT" } }),
+    prisma.settings.findUnique({ where: { key: "TELEMETRY_KEY" } }),
+  ]).catch(() => [null, null, null]);
   if (enabledSetting?.value !== "true") return;
+
+  const endpoint = endpointSetting?.value;
+  const key = keySetting?.value;
+  if (!endpoint || !key) return;
 
   try {
     const [instanceId, libraryNameRow, totalBooks, totalMembers] = await Promise.all([

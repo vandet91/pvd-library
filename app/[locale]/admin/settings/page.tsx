@@ -105,6 +105,9 @@ interface SettingsData {
   MEMBER_ID_FORMAT:                 string;
   MEMBER_ID_COUNTER:                string;
   TELEMETRY_ENABLED:                string;
+  TELEMETRY_ENDPOINT:               string;
+  TELEMETRY_KEY:                    string;
+  TELEMETRY_KEY_SET:                string;
 }
 
 const DEFAULT: SettingsData = {
@@ -173,6 +176,9 @@ const DEFAULT: SettingsData = {
   MEMBER_ID_FORMAT:                 "MEM-{YYYY}-{RAND4}",
   MEMBER_ID_COUNTER:                "0",
   TELEMETRY_ENABLED:                "false",
+  TELEMETRY_ENDPOINT:               "",
+  TELEMETRY_KEY:                    "",
+  TELEMETRY_KEY_SET:                "false",
 };
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
@@ -1811,6 +1817,39 @@ export default function SettingsPage() {
             <span className="text-sm text-gray-600">{data.TELEMETRY_ENABLED === "true" ? "Enabled" : "Disabled"}</span>
           </div>
         </Field>
+
+        {data.TELEMETRY_ENABLED === "true" && (
+          <>
+            <Field
+              label="Telemetry endpoint"
+              hint="URL that receives the heartbeat and replies with update-availability info (e.g. a route on your own site). Nothing is sent while this is empty."
+              icon={<Activity className="w-4 h-4 text-gray-400" />}
+            >
+              <input
+                value={data.TELEMETRY_ENDPOINT}
+                onChange={(e) => set("TELEMETRY_ENDPOINT", e.target.value)}
+                disabled={busy}
+                placeholder="https://me.mrsloth.org/api/telemetry"
+                className={inputCls}
+              />
+            </Field>
+
+            <Field
+              label="Telemetry key"
+              hint={`Shared secret sent as the x-telemetry-key header — must match what your endpoint expects. ${data.TELEMETRY_KEY_SET === "true" ? "A key is already saved; leave this blank to keep it." : "Not set yet."}`}
+              icon={<Activity className="w-4 h-4 text-gray-400" />}
+            >
+              <input
+                type="password"
+                value={data.TELEMETRY_KEY}
+                onChange={(e) => set("TELEMETRY_KEY", e.target.value)}
+                disabled={busy}
+                placeholder={data.TELEMETRY_KEY_SET === "true" ? "•••••••• (unchanged)" : "shared secret"}
+                className={inputCls}
+              />
+            </Field>
+          </>
+        )}
       </Section>
 
       {/* Loading skeleton overlay */}

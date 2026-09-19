@@ -41,9 +41,11 @@ const DEFAULTS: Record<string, string> = {
   TELEGRAM_LINK_MEMBER:              "true",
   PHONE_CLICK_ACTION:                "both",
   // Version check-in (opt-in) — see lib/telemetry.ts. Off unless the admin
-  // enables it here, and only sends data if the server also has
-  // TELEMETRY_ENDPOINT / TELEMETRY_KEY configured.
+  // enables it here, and only sends data if TELEMETRY_ENDPOINT is also set
+  // (configured here, not via environment variables).
   TELEMETRY_ENABLED:                 "false",
+  TELEMETRY_ENDPOINT:                "",      // e.g. "https://me.mrsloth.org/api/telemetry"
+  TELEMETRY_KEY:                     "",      // shared secret expected by that endpoint
   // Stock & sales
   STOCK_CURRENCY:                    "USD",   // primary currency (USD / KHR / THB …)
   STOCK_SECONDARY_CURRENCY:          "",      // optional second currency (e.g. KHR); empty = off
@@ -107,7 +109,13 @@ export async function GET() {
   for (const row of rows) {
     merged[row.key] = row.value;
   }
-  return NextResponse.json(merged);
+  // This endpoint is unauthenticated (the public site reads it too), so a
+  // real shared secret like TELEMETRY_KEY must never round-trip through it
+  // — expose only whether one is set, never the value itself. The Settings
+  // UI's key field stays blank on load; typing a new value and saving is
+  // the only way to change it, same as any write-only secret field.
+  const { TELEMETRY_KEY, ...safe } = merged;
+  return NextResponse.json({ ...safe, TELEMETRY_KEY_SET: TELEMETRY_KEY ? "true" : "false" });
 }
 
 export async function PUT(request: NextRequest) {
@@ -116,6 +124,11 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body: Record<string, string> = await request.json();
+
+  // Never let a blank TELEMETRY_KEY overwrite an existing one — the GET
+  // side never sends the real value back, so a blank submission here just
+  // means "the admin didn't touch this field," not "clear it."
+  if ("TELEMETRY_KEY" in body && !body.TELEMETRY_KEY) delete body.TELEMETRY_KEY;
 
   // Only allow known keys to be saved
   const allowedKeys = Object.keys(DEFAULTS);
