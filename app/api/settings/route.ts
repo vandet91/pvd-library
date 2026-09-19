@@ -41,10 +41,11 @@ const DEFAULTS: Record<string, string> = {
   TELEGRAM_LINK_MEMBER:              "true",
   PHONE_CLICK_ACTION:                "both",
   // Version check-in (opt-in) — see lib/telemetry.ts. Off unless the admin
-  // enables it here, and only sends data if TELEMETRY_ENDPOINT is also set
-  // (configured here, not via environment variables).
+  // enables it here. Endpoint defaults to the maintainer's own collector so
+  // no manual setup is needed there; the key still has to be entered (or
+  // set via the TELEMETRY_KEY env var) since it's a real secret.
   TELEMETRY_ENABLED:                 "false",
-  TELEMETRY_ENDPOINT:                "",      // e.g. "https://me.mrsloth.org/api/telemetry"
+  TELEMETRY_ENDPOINT:                "https://me.mrsloth.org/api/telemetry",
   TELEMETRY_KEY:                     "",      // shared secret expected by that endpoint
   // Stock & sales
   STOCK_CURRENCY:                    "USD",   // primary currency (USD / KHR / THB …)

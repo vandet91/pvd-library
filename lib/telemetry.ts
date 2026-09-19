@@ -3,19 +3,24 @@ import { prisma } from "@/lib/prisma";
 
 const INSTANCE_ID_KEY = "__INSTANCE_ID";
 
+/** Safe to hardcode — just a URL, not a secret. Settings → System can override it. */
+export const DEFAULT_TELEMETRY_ENDPOINT = "https://me.mrsloth.org/api/telemetry";
+
 /**
  * Version check-in — lets the maintainer know this deployment is on an
  * older version so they can proactively reach out about updates.
  *
- * Disabled by default. Enable and configure entirely from Settings →
- * System: TELEMETRY_ENABLED, TELEMETRY_ENDPOINT (e.g. a route on
- * https://me.mrsloth.org), and TELEMETRY_KEY (shared secret that endpoint
- * expects) all live in the settings table, not environment variables —
- * so this can be turned on and pointed at a real endpoint without a
- * redeploy. Sends only: an anonymous instance id, hostname, library name,
- * app version, rough book/member counts, and basic runtime info (Node/Next
- * version, OS, process uptime). Never throws — a failed check-in never
- * affects the app.
+ * Disabled by default. Turning it on in Settings → System auto-fills the
+ * endpoint with DEFAULT_TELEMETRY_ENDPOINT if left blank — no manual setup
+ * needed for that part. The shared key is resolved in this order: the
+ * Settings-table value (typed once in the UI) → a TELEMETRY_KEY env var
+ * set on this deployment → nothing. The key is deliberately never
+ * hardcoded here — this file ships in the repo, and baking the real
+ * secret in would let anyone with source access read it and spoof
+ * check-ins for other deployments. Sends only: an anonymous instance id,
+ * hostname, library name, app version, rough book/member counts, and
+ * basic runtime info (Node/Next version, OS, process uptime). Never
+ * throws — a failed check-in never affects the app.
  */
 async function getOrCreateInstanceId(): Promise<string> {
   const existing = await prisma.settings.findUnique({ where: { key: INSTANCE_ID_KEY } });
@@ -43,8 +48,8 @@ export async function sendHeartbeat(): Promise<HeartbeatResult> {
   ]).catch(() => [null, null, null]);
   if (enabledSetting?.value !== "true") return { ok: false, message: "Version check-in is disabled" };
 
-  const endpoint = endpointSetting?.value;
-  const key = keySetting?.value;
+  const endpoint = endpointSetting?.value || DEFAULT_TELEMETRY_ENDPOINT;
+  const key = keySetting?.value || process.env.TELEMETRY_KEY;
   if (!endpoint || !key) return { ok: false, message: "Endpoint and key must both be set" };
 
   try {
